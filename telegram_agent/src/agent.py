@@ -23,15 +23,14 @@ llm = ChatOpenAI(
     base_url=BASE_URL, api_key=API_KEY, model=MODEL, disable_streaming="tool_calling"
 )
 
-config = load(
-    open(
-        path.join(
-            path.dirname(path.dirname(path.dirname(__file__))), "mcp_config.json"
-        ),
-        "r",
-        encoding="utf-8",
-    )
+config_file = path.join(
+    path.dirname(path.dirname(path.dirname(__file__))), "mcp_config.json"
 )
+if not path.exists(config_file):
+    print("mcp_config.json file not found: creating a empty one")
+    with open(config_file, "w", encoding="utf-8") as f:
+        f.write("{}")
+config = load(open(config_file, "r", encoding="utf-8"))
 
 
 async def run_agent() -> None:

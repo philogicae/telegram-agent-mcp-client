@@ -16,6 +16,8 @@ jobs:
         run: pip install uv
       - name: Install dependencies
         run: uv sync --locked --no-cache --no-editable
+      - name: Create dummy mcp_config.json file
+        run: echo '{"sequential-thinking":{"command":"uvx","args":["mcp-think-tool"],"transport":"stdio"}}' > mcp_config.json
       - name: Run ruff format
         run: uv run ruff format telegram_agent
       - name: Run ruff check
@@ -23,6 +25,10 @@ jobs:
       - name: Run mypy
         run: uv run mypy telegram_agent
       - name: Run tests
+        env:
+          OPENAI_API_BASE: "https://api.openai.com/v1"
+          OPENAI_API_KEY: "fake-key"
+          OPENAI_API_MODEL: "gpt5"
         run: uv run pytest telegram_agent
 
   build:
