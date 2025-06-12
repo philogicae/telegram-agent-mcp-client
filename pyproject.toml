@@ -6,7 +6,14 @@ authors = [{ name = "philogicae" }]
 requires-python = ">=3.10,<4.0"
 readme = "README.md"
 license = "MIT"
-dependencies = ["pydantic>=2.11.5", "python-dotenv>=1.1.0"]
+dependencies = [
+    "pydantic>=2.11.5",
+    "python-dotenv>=1.1.0",
+    "langchain-openai>=0.3.22",
+    "langchain-core>=0.3.65",
+    "langchain-mcp-adapters>=0.1.7",
+    "langgraph>=0.4.8",
+]
 
 [project.urls]
 Repository = "https://github.com/philogicae/telegram-agent-mcp-client"

@@ -1,7 +1,10 @@
-# import argparse
+from asyncio import run
+
+from .src import run_agent
 
 
-def cli() -> None:
+async def cli() -> None:
+    # import argparse
     """parser = argparse.ArgumentParser(description="Run Telegram Agent MCP Client.")
     parser.add_argument(
         "--key",
@@ -11,12 +14,8 @@ def cli() -> None:
     )
     args = parser.parse_args()"""
 
-    print("Started!")
-
-    from time import sleep
-
-    sleep(1000)
+    await run_agent()
 
 
 if __name__ == "__main__":
-    cli()
+    run(cli())

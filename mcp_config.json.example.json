@@ -1,0 +1,7 @@
+{
+  "sequential-thinking": {
+    "command": "uvx",
+    "args": ["mcp-think-tool"],
+    "transport": "stdio"
+  }
+}

@@ -17,3 +17,4 @@ wheels/
 # Envs
 .env
 .venv
+mcp_config.json
