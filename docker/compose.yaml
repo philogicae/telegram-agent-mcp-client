@@ -1,0 +1,23 @@
+name: telegram-agent-mcp-client
+
+services:
+  telegram-agent-mcp-client:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: telegram-agent-mcp-client
+    container_name: telegram-agent-mcp-client
+    ports:
+      - 8765:8000
+    env_file:
+      - ../.env
+    dns:
+      - 9.9.9.9
+      - 149.112.112.112
+      - 2620:fe::fe
+      - 2620:fe::9
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
