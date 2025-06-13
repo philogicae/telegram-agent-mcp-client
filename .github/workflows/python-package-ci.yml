@@ -17,7 +17,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --no-cache --no-editable
       - name: Create dummy mcp_config.json file
-        run: echo '{"sequential-thinking":{"command":"uvx","args":["mcp-think-tool"],"transport":"stdio"}}' > mcp_config.json
+        run: cp mcp_config.example.json mcp_config.json
       - name: Run ruff format
         run: uv run ruff format telegram_agent
       - name: Run ruff check

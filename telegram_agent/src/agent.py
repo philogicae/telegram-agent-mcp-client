@@ -1,4 +1,3 @@
-from json import load
 from os import getenv, path
 from typing import Any
 
@@ -7,6 +6,7 @@ from langchain_core.messages import HumanMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
+from pyjson5 import load
 
 load_dotenv()
 BASE_URL = getenv("OPENAI_API_BASE")
@@ -31,12 +31,14 @@ if not path.exists(config_file):
     with open(config_file, "w", encoding="utf-8") as f:
         f.write("{}")
 config = load(open(config_file, "r", encoding="utf-8"))
+# TODO: Change config structure
 
 
 async def run_agent() -> None:
     client = MultiServerMCPClient(config)
     tools = await client.get_tools()
     agent = create_react_agent(llm, tools)
+    # TODO: Change system prompts
     while True:
         try:
             user_input = input("Prompt: ")
