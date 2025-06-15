@@ -31,12 +31,13 @@ def get_llm() -> LanguageModelLike:
             base_url=getenv("OLLAMA_API_BASE"),
             model=getenv("OLLAMA_API_MODEL"),  # type: ignore
             disable_streaming=True,
+            num_gpu=0,  # CPU only
             num_thread=1,
             temperature=0.6,
             top_p=0.95,
             top_k=20,
-            num_ctx=6144,  # 2Go VRAM APU
-            num_predict=2048,
+            num_ctx=4096,  # 4096-6144 soft spot for 2Go VRAM on APU
+            num_predict=512,  # 512-1024-2048-4096 / -2
         )
         if getenv("LLM_CHOICE") == "ollama"
         else ChatOpenAI(
