@@ -1,15 +1,17 @@
 [project]
 name = "telegram-agent-mcp-client"
-version = "0.1.0"
+version = "0.2.0"
 description = "Telegram Agent MCP Client"
 authors = [{ name = "philogicae" }]
 requires-python = ">=3.10,<4.0"
 readme = "README.md"
 license = "MIT"
 dependencies = [
+    "rich>=14.0.0",
     "pydantic>=2.11.5",
     "python-dotenv>=1.1.0",
     "langchain-openai>=0.3.22",
+    "langchain-ollama>=0.3.3",
     "langchain-core>=0.3.65",
     "langchain-mcp-adapters>=0.1.7",
     "langgraph>=0.4.8",
