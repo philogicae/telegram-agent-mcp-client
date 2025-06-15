@@ -48,6 +48,11 @@ def get_llm() -> LanguageModelLike:
     )
 
 
+class ThinkTag:
+    start = getenv("THINK_TAG_START")
+    end = getenv("THINK_TAG_END")
+
+
 async def run_agent() -> None:
     tools = await MultiServerMCPClient(get_config()).get_tools()
     agent = create_react_agent(
@@ -79,9 +84,9 @@ async def run_agent() -> None:
 
                 msg = chunk[msg_type]["messages"][0]
                 think, text = None, None
-                if "<think>" in msg.content:
-                    think, text = msg.content.split("<think>", 1)[1].split(
-                        "</think>", 1
+                if ThinkTag.start and ThinkTag.end and ThinkTag.start in msg.content:
+                    think, text = msg.content.split(ThinkTag.start, 1)[1].split(
+                        ThinkTag.end, 1
                     )
                     think, text = think.strip() or None, text.strip() or None
                 else:
