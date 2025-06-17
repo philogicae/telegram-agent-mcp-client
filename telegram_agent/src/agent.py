@@ -2,11 +2,14 @@ from os import getenv, path
 from typing import Any
 
 from dotenv import load_dotenv
+from langchain_cerebras import ChatCerebras
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import HumanMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 from pyjson5 import load  # pylint: disable=no-name-in-module
 from rich import print as pr
@@ -27,24 +30,41 @@ def get_config() -> Any:
 
 def get_llm() -> LanguageModelLike:
     return (
-        ChatOllama(
+        ChatOllama(  # Local
             base_url=getenv("OLLAMA_API_BASE"),
             model=getenv("OLLAMA_API_MODEL"),  # type: ignore
-            disable_streaming=True,
+            disable_streaming="tool_calling",
             num_gpu=0,  # CPU only
             num_thread=1,
-            temperature=0.6,
+            temperature=0.5,
             top_p=0.95,
             top_k=20,
-            num_ctx=4096,  # 4096-6144 soft spot for 2Go VRAM on APU
+            num_ctx=4096,  # 2048-4096-6144 soft spot for 2Go VRAM on APU
             num_predict=512,  # 512-1024-2048-4096 / -2
         )
         if getenv("LLM_CHOICE") == "ollama"
-        else ChatOpenAI(
-            base_url=getenv("OPENAI_API_BASE"),
-            api_key=getenv("OPENAI_API_KEY"),  # type: ignore
-            model=getenv("OPENAI_API_MODEL"),  # type: ignore
-            disable_streaming=True,
+        else (
+            ChatCerebras(
+                api_key=getenv("CEREBRAS_API_KEY"),  # type: ignore
+                model=getenv("CEREBRAS_API_MODEL"),  # type: ignore
+                disable_streaming="tool_calling",
+            )
+            if getenv("LLM_CHOICE") == "cerebras"
+            else (
+                ChatGoogleGenerativeAI(
+                    api_key=getenv("GEMINI_API_KEY"),
+                    model=getenv("GEMINI_API_MODEL"),
+                    disable_streaming="tool_calling",
+                )
+                if getenv("LLM_CHOICE") == "gemini"
+                else ChatOpenAI(  # Default
+                    base_url=getenv("OPENAI_API_BASE"),
+                    api_key=getenv("OPENAI_API_KEY"),  # type: ignore
+                    model=getenv("OPENAI_API_MODEL"),  # type: ignore
+                    disable_streaming="tool_calling",
+                    temperature=0.5,
+                )
+            )
         )
     )
 
@@ -60,14 +80,15 @@ async def run_agent() -> None:
         name="General Agent",
         model=get_llm(),
         tools=tools,
-        prompt=None,  # TODO: Change system prompts
-        checkpointer=None,
+        prompt="You are a helpful agent, ready to have casual and funny conversations with the user. During your interactions, you are empowered with some tools. For example, you can find torrents. If someone asks you to do something you can't do with your available tools, joke about it. Have fun chatting!",
+        checkpointer=MemorySaver(),
         store=None,
         debug=False,
     )
+    config = {"configurable": {"thread_id": "abc123"}}
 
     # user_input = "Using think tool, give me a smart strategy to get rich in 10 years"
-    user_input = "Find torrent for: berserk"
+    user_input = "Find torrent for berserk"
     while True:
         try:
             print("------------ USERS ------------")
@@ -77,7 +98,8 @@ async def run_agent() -> None:
             if user_input.lower() == "exit":
                 break
             async for chunk in agent.astream(
-                {"messages": [HumanMessage(content=user_input)]}
+                {"messages": [HumanMessage(content=user_input)]},
+                config,  # type: ignore
             ):
                 msg_type = "agent"
                 if "tools" in chunk:
