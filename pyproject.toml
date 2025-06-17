@@ -8,9 +8,10 @@ readme = "README.md"
 license = "MIT"
 dependencies = [
     "rich>=14.0.0",
-    "pydantic>=2.11.5",
+    "pydantic>=2.11.7",
     "python-dotenv>=1.1.0",
-    "langchain-openai>=0.3.22",
+    "langchain-openai>=0.3.24",
+    "langchain-groq>=0.3.2",
     "langchain-cerebras>=0.5.0",
     "langchain-google-genai>=2.1.5",
     "langchain-ollama>=0.3.3",
@@ -29,12 +30,7 @@ DeepWiki = "https://deepwiki.com/philogicae/telegram-agent-mcp-client"
 telegram-agent-mcp-client = "telegram_agent.__main__:cli"
 
 [dependency-groups]
-dev = [
-    "ruff>=0.11.13",
-    "pytest>=8.4.0",
-    "pytest-asyncio>=1.0.0",
-    "mypy>=1.16.1",
-]
+dev = ["ruff>=0.12.0", "pytest>=8.4.0", "pytest-asyncio>=1.0.0", "mypy>=1.16.1"]
 
 [tool.hatch.build]
 include = ["telegram_agent"]

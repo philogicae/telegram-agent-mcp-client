@@ -1,77 +1,13 @@
-from os import getenv, path
 from typing import Any
 
-from dotenv import load_dotenv
-from langchain_cerebras import ChatCerebras
-from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import HumanMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_ollama import ChatOllama
-from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
-from pyjson5 import load  # pylint: disable=no-name-in-module
 from rich import print as pr
 
-load_dotenv()
-
-
-def get_config() -> Any:
-    config_file = path.join(  # TODO: Change config structure
-        path.dirname(path.dirname(path.dirname(__file__))), "mcp_config.json"
-    )
-    if not path.exists(config_file):
-        print("mcp_config.json file not found: creating a empty one")
-        with open(config_file, "w", encoding="utf-8") as f:
-            f.write("{}")
-    return load(open(config_file, "r", encoding="utf-8"))
-
-
-def get_llm() -> LanguageModelLike:
-    return (
-        ChatOllama(  # Local
-            base_url=getenv("OLLAMA_API_BASE"),
-            model=getenv("OLLAMA_API_MODEL"),  # type: ignore
-            disable_streaming="tool_calling",
-            num_gpu=0,  # CPU only
-            num_thread=1,
-            temperature=0.5,
-            top_p=0.95,
-            top_k=20,
-            num_ctx=4096,  # 2048-4096-6144 soft spot for 2Go VRAM on APU
-            num_predict=512,  # 512-1024-2048-4096 / -2
-        )
-        if getenv("LLM_CHOICE") == "ollama"
-        else (
-            ChatCerebras(
-                api_key=getenv("CEREBRAS_API_KEY"),  # type: ignore
-                model=getenv("CEREBRAS_API_MODEL"),  # type: ignore
-                disable_streaming="tool_calling",
-            )
-            if getenv("LLM_CHOICE") == "cerebras"
-            else (
-                ChatGoogleGenerativeAI(
-                    api_key=getenv("GEMINI_API_KEY"),
-                    model=getenv("GEMINI_API_MODEL"),
-                    disable_streaming="tool_calling",
-                )
-                if getenv("LLM_CHOICE") == "gemini"
-                else ChatOpenAI(  # Default
-                    base_url=getenv("OPENAI_API_BASE"),
-                    api_key=getenv("OPENAI_API_KEY"),  # type: ignore
-                    model=getenv("OPENAI_API_MODEL"),  # type: ignore
-                    disable_streaming="tool_calling",
-                    temperature=0.5,
-                )
-            )
-        )
-    )
-
-
-class ThinkTag:
-    start = getenv("THINK_TAG_START")
-    end = getenv("THINK_TAG_END")
+from .config import ThinkTag, get_config
+from .llm import get_llm
 
 
 async def run_agent() -> None:
