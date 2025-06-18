@@ -48,8 +48,16 @@ async def run_agent() -> None:
                         ThinkTag.end, 1
                     )
                     think, text = think.strip() or None, text.strip() or None
-                else:
+                elif isinstance(msg.content, str):
                     text = msg.content.strip() or None
+                elif isinstance(msg.content, list):
+                    for content in msg.content:
+                        if "thinking" in content:
+                            think = content["thinking"].strip() or None
+                        else:
+                            pr(content)
+                            pr("-> Unknown content")
+                            exit()
 
                 tool_calls: list[tuple[str, Any]] | None = None
                 if hasattr(msg, "tool_calls") and msg.tool_calls:

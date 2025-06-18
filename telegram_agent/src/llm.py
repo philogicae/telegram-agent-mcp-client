@@ -31,6 +31,7 @@ def get_llm() -> LanguageModelLike:
             api_key=getenv("GROQ_API_KEY"),  # type: ignore
             model=getenv("GROQ_API_MODEL"),  # type: ignore
             disable_streaming="tool_calling",
+            temperature=0.5,
         )
     if llm_choice == "cerebras":
         return ChatCerebras(
@@ -38,16 +39,21 @@ def get_llm() -> LanguageModelLike:
             model=getenv("CEREBRAS_API_MODEL"),  # type: ignore
             disable_streaming="tool_calling",
             disabled_params={"parallel_tool_calls": False},
+            temperature=0.5,
         )
     if llm_choice == "gemini":
         return ChatGemini(
             api_key=getenv("GEMINI_API_KEY"),
             model=getenv("GEMINI_API_MODEL"),
             disable_streaming="tool_calling",
+            temperature=0.5,
+            thinking_budget=-1,
+            include_thoughts=True,
         )
     return ChatOpenAI(
         base_url=getenv("OPENAI_API_BASE"),
         api_key=getenv("OPENAI_API_KEY"),  # type: ignore
         model=getenv("OPENAI_API_MODEL"),  # type: ignore
         disable_streaming="tool_calling",
+        temperature=0.5,
     )
