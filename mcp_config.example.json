@@ -1,7 +1,17 @@
 {
   "sequential-thinking": {
     "command": "uvx",
-    "args": ["mcp-think-tool"],
+    "args": ["sequential-thinking-mcp"],
+    "transport": "stdio"
+  },
+  "web-search": {
+    "command": "uvx",
+    "args": ["duckduckgo-mcp-server"],
+    "transport": "stdio"
+  },
+  "torrent-search": {
+    "command": "uvx",
+    "args": ["torrent-search-mcp"],
     "transport": "stdio"
   }
 }
