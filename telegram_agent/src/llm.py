@@ -47,8 +47,7 @@ def get_llm() -> LanguageModelLike:
             model=getenv("GEMINI_API_MODEL"),
             disable_streaming="tool_calling",
             temperature=0.5,
-            thinking_budget=-1,
-            include_thoughts=True,
+            thinking_budget=1024,  # -1 for dynamic/unlimited
         )
     return ChatOpenAI(
         base_url=getenv("OPENAI_API_BASE"),

@@ -1,16 +1,17 @@
-from typing import Any
-
 from langchain_core.messages import HumanMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
-from rich import print as pr
+from rich.console import Console
+from rich.markup import escape
+from rich.panel import Panel
 
 from .config import ThinkTag, get_config
 from .llm import get_llm
 
 
 async def run_agent() -> None:
+    console = Console()
     tools = await MultiServerMCPClient(get_config()).get_tools()
     agent = create_react_agent(
         name="General Agent",
@@ -50,33 +51,39 @@ async def run_agent() -> None:
                     think, text = think.strip() or None, text.strip() or None
                 elif isinstance(msg.content, str):
                     text = msg.content.strip() or None
-                elif isinstance(msg.content, list):
-                    for content in msg.content:
-                        if "thinking" in content:
-                            think = content["thinking"].strip() or None
-                        else:
-                            pr(content)
-                            pr("-> Unknown content")
-                            exit()
 
-                tool_calls: list[tuple[str, Any]] | None = None
+                tool_calls: str | None = None
                 if hasattr(msg, "tool_calls") and msg.tool_calls:
-                    tool_calls = [
-                        (tool.get("name"), tool.get("args")) for tool in msg.tool_calls
-                    ]
+                    tool_calls = "\n".join(
+                        [
+                            f"-> {tool.get('name')}: {tool.get('args')}"
+                            for tool in msg.tool_calls
+                        ]
+                    )
 
-                pr(
-                    f"------------ {msg_type.upper()} ------------"
-                    + "\n> think:"
-                    + ("\n" if think else " ")
-                    + f"{think}"
-                    + "\n> text:"
-                    + ("\n" if text else " ")
-                    + f"{text}"
-                    + "\n> tools:"
-                    + ("\n" if tool_calls else " ")
-                    + f"{tool_calls}"
-                )
+                print(f"------------ {msg_type.upper()} ------------")
+                if think:
+                    console.print(
+                        Panel(escape(think), title="Think", border_style="blue")
+                    )
+                if text:
+                    console.print(
+                        Panel(escape(text), title="Text", border_style="green")
+                    )
+                if tool_calls:
+                    console.print(
+                        Panel(escape(tool_calls), title="Tools", border_style="red")
+                    )
+                if hasattr(msg, "usage_metadata"):
+                    console.print(
+                        Panel(
+                            "\n".join(
+                                [f"{k}: {v}" for k, v in msg.usage_metadata.items()]
+                            ),
+                            title="Usage",
+                            border_style="purple",
+                        )
+                    )
                 user_input = ""
         except KeyboardInterrupt:
             exit(0)
