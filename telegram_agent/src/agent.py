@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from langchain_core.messages import HumanMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.checkpoint.memory import MemorySaver
@@ -32,6 +34,7 @@ async def run_agent() -> None:
             if user_input:
                 print(f"> {user_input}")
             user_input = user_input or input("> ")
+            start_time, end_time = datetime.now(), datetime.now()
             if user_input.lower() == "exit":
                 break
             async for chunk in agent.astream(
@@ -45,12 +48,15 @@ async def run_agent() -> None:
                 msg = chunk[msg_type]["messages"][0]
                 think, text = None, None
                 if ThinkTag.start and ThinkTag.end and ThinkTag.start in msg.content:
-                    think, text = msg.content.split(ThinkTag.start, 1)[1].split(
+                    splitted = msg.content.split(ThinkTag.start, 1)[1].split(
                         ThinkTag.end, 1
                     )
-                    think, text = think.strip() or None, text.strip() or None
+                    think, text = (
+                        splitted[0].strip(),
+                        splitted[1].strip() if len(splitted) > 1 else None,
+                    )
                 elif isinstance(msg.content, str):
-                    text = msg.content.strip() or None
+                    text = msg.content.strip()
 
                 tool_calls: str | None = None
                 if hasattr(msg, "tool_calls") and msg.tool_calls:
@@ -75,15 +81,19 @@ async def run_agent() -> None:
                         Panel(escape(tool_calls), title="Tools", border_style="red")
                     )
                 if hasattr(msg, "usage_metadata"):
+                    timer = datetime.now() - end_time
+                    end_time += timer
                     console.print(
                         Panel(
                             "\n".join(
                                 [f"{k}: {v}" for k, v in msg.usage_metadata.items()]
+                                + [f"Time: {timer.total_seconds()} seconds"]
                             ),
                             title="Usage",
                             border_style="purple",
                         )
                     )
-                user_input = ""
+            print(f"Total time: {(end_time - start_time).total_seconds()} seconds")
+            user_input = ""
         except KeyboardInterrupt:
             exit(0)
