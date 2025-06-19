@@ -25,15 +25,10 @@ async def run_agent() -> None:
         debug=False,
     )
     config = {"configurable": {"thread_id": "abc123"}}
-
-    # user_input = "Using think tool, give me a smart strategy to get rich in 10 years"
-    user_input = "Find torrent for berserk"
     while True:
         try:
             print("------------ USERS ------------")
-            if user_input:
-                print(f"> {user_input}")
-            user_input = user_input or input("> ")
+            user_input = input("> ")
             start_time, end_time = datetime.now(), datetime.now()
             if user_input.lower() == "exit":
                 break
@@ -94,6 +89,5 @@ async def run_agent() -> None:
                         )
                     )
             print(f"Total time: {(end_time - start_time).total_seconds()} seconds")
-            user_input = ""
         except KeyboardInterrupt:
             exit(0)
