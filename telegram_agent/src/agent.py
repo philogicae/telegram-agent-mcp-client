@@ -24,21 +24,27 @@ async def run_agent() -> None:
         store=None,
         debug=False,
     )
+
+    user_input = "Hey, I heard about berserk, what is it?" or input("> ")
     config = {"configurable": {"thread_id": "abc123"}}
+    called_tools = False
     while True:
         try:
-            print("------------ USERS ------------")
-            user_input = input("> ")
+            total_calls, total_tokens = 0, 0
+            total_agent_calls, total_tool_calls = 0, 0
+            named_tool_calls = {}
             start_time, end_time = datetime.now(), datetime.now()
-            if user_input.lower() == "exit":
-                break
             async for chunk in agent.astream(
                 {"messages": [HumanMessage(content=user_input)]},
                 config,  # type: ignore
             ):
+                total_calls += 1
                 msg_type = "agent"
                 if "tools" in chunk:
                     msg_type = "tools"
+                    total_tool_calls += 1
+                else:
+                    total_agent_calls += 1
 
                 msg = chunk[msg_type]["messages"][0]
                 think, text = None, None
@@ -61,16 +67,28 @@ async def run_agent() -> None:
                             for tool in msg.tool_calls
                         ]
                     )
+                    for tool in msg.tool_calls:
+                        called_tools = True
+                        tool_name = tool.get("name")
+                        if tool_name not in named_tool_calls:
+                            named_tool_calls[tool_name] = 1
+                        else:
+                            named_tool_calls[tool_name] += 1
 
-                print(f"------------ {msg_type.upper()} ------------")
                 if think:
                     console.print(
-                        Panel(escape(think), title="Think", border_style="blue")
+                        Panel(escape(think), title="Think", border_style="blue3")
                     )
                 if text:
                     console.print(
-                        Panel(escape(text), title="Text", border_style="green")
+                        Panel(
+                            escape(text),
+                            title="Result" if called_tools else "Agent",
+                            border_style=("green3" if called_tools else "bright_cyan"),
+                        )
                     )
+                    if called_tools:
+                        called_tools = False
                 if tool_calls:
                     console.print(
                         Panel(escape(tool_calls), title="Tools", border_style="red")
@@ -78,16 +96,31 @@ async def run_agent() -> None:
                 if hasattr(msg, "usage_metadata"):
                     timer = datetime.now() - end_time
                     end_time += timer
+                    total_tokens += msg.usage_metadata.get("total_tokens", 0)
                     console.print(
                         Panel(
-                            "\n".join(
-                                [f"{k}: {v}" for k, v in msg.usage_metadata.items()]
-                                + [f"Time: {timer.total_seconds()} seconds"]
+                            escape(
+                                " | ".join(
+                                    [f"{k}: {v}" for k, v in msg.usage_metadata.items()]
+                                    + [f"took: {timer.total_seconds()} sec."]
+                                )
                             ),
                             title="Usage",
                             border_style="purple",
                         )
                     )
-            print(f"Total time: {(end_time - start_time).total_seconds()} seconds")
+            console.print(
+                Panel(
+                    escape(
+                        f"total_calls: {total_calls} | agent_calls: {total_agent_calls} | tool_calls: {total_tool_calls}{(' (' + ', '.join([k + ': ' + str(v) for k, v in named_tool_calls.items()]) + ')') if named_tool_calls else ''} | total_tokens: {total_tokens} | took: {(end_time - start_time).total_seconds()} sec."
+                    ),
+                    title="Usage Summary",
+                    border_style="yellow",
+                )
+            )
+            exit()
+            user_input = input("> ")
+            if user_input.lower() == "exit":
+                break
         except KeyboardInterrupt:
             exit(0)
