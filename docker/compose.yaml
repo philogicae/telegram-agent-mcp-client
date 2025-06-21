@@ -1,24 +1,125 @@
 name: telegram-agent-mcp-client
 
+x-dns:
+  &default-dns
+  dns:
+    - 9.9.9.9
+    - 149.112.112.112
+    - 2620:fe::fe
+    - 2620:fe::9
+
+x-logging:
+  &default-logging
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+x-networks:
+  &default-networks
+  networks:
+    - ai-agent
+
 services:
-  telegram-agent-mcp-client:
-    container_name: telegram-agent-mcp-client
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    image: telegram-agent-mcp-client
+  # telegram-agent:
+  #   container_name: telegram-agent
+  #   build:
+  #     context: ..
+  #     dockerfile: docker/Dockerfile
+  #   image: telegram-agent
+  #   restart: unless-stopped
+  #   ports:
+  #     - 8765:8000
+  #   env_file:
+  #     - ../.env
+  #   <<: [*default-dns, *default-logging, *default-networks]
+
+  n8n:
+    container_name: n8n
+    image: docker.n8n.io/n8nio/n8n:next
     restart: unless-stopped
     ports:
-      - 8765:8000
+      - 5678:5678
     env_file:
-      - ../.env
-    dns:
-      - 9.9.9.9
-      - 149.112.112.112
-      - 2620:fe::fe
-      - 2620:fe::9
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+      - n8n.env
+    volumes:
+      - n8n_data:/home/node/.n8n
+    <<: [*default-dns, *default-logging, *default-networks]
+
+  metatool-web:
+    container_name: metatool-web
+    build:
+      context: ../../metatool-app
+      dockerfile: Dockerfile
+      target: runner
+    env_file:
+      - metatool.env
+    restart: unless-stopped
+    ports:
+      - '12005:3000'
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - metatool-postgres
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    <<: [*default-logging, *default-networks]
+
+  metatool-remote-hosting:
+    container_name: metatool-remote-hosting
+    build:
+      context: ../../metatool-app/remote-hosting
+      dockerfile: Dockerfile
+    env_file:
+      - metatool.env
+    restart: unless-stopped
+    ports:
+      - '12007:12007'
+    environment:
+      - NODE_ENV=production
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    <<: [*default-logging, *default-networks]
+
+  metatool-postgres:
+    container_name: metatool-postgres
+    image: postgres:16.2-alpine3.18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: metatool
+      POSTGRES_USER: metatool
+      POSTGRES_PASSWORD: m3t4t00l
+    ports:
+      - '8432:5432'
+    volumes:
+      - metatool-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U metatool" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    <<: [*default-logging, *default-networks]
+
+  drizzle-migrate:
+    container_name: drizzle-migrate
+    build:
+      context: ../../metatool-app
+      dockerfile: Dockerfile
+      target: migrator
+    command: pnpm drizzle-kit migrate
+    env_file:
+      - metatool.env
+    depends_on:
+      metatool-postgres:
+        condition: service_healthy  
+    <<: [*default-logging, *default-networks]
+
+networks:
+  ai-agent:
+    name: ai-agent
+    driver: bridge
+
+volumes:
+  n8n_data:
+  metatool-postgres:

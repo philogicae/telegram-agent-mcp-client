@@ -25,8 +25,10 @@ async def run_agent() -> None:
         debug=False,
     )
 
-    user_input = "Hey, I heard about berserk, what is it?" or input("> ")
-    config = {"configurable": {"thread_id": "abc123"}}
+    # user_input = "Hey, I heard about berserk, what is it?"
+    user_input = "Using think tool, identify and get magnet link of the last episode s0XeXX of severance"
+    user_input = user_input or input("> ")
+    config = {"configurable": {"thread_id": "test"}}
     called_tools = False
     while True:
         try:

@@ -16,5 +16,7 @@ wheels/
 
 # Envs
 .env
+**/*.env
 .venv
 mcp_config.json
+sync_tools.sh
