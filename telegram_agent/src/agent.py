@@ -19,14 +19,13 @@ async def run_agent() -> None:
         name="General Agent",
         model=get_llm(),
         tools=tools,
-        prompt="You are a helpful agent, ready to have casual and funny conversations with the user. During your interactions, you are empowered with some tools. For example, you can find torrents. If someone asks you to do something you can't do with your available tools, joke about it. Have fun chatting!",
+        prompt="You are an ultra smart helpful agent. You are empowered with a set of useful tools, but you can only call one at a time. Always use think tool to fulfill user's request step by step. Don't assume you know something when you actually don't know, don't hesitate to check the web to confirm information, and don't ask obvious questions to user.",
         checkpointer=MemorySaver(),
         store=None,
         debug=False,
     )
 
-    # user_input = "Hey, I heard about berserk, what is it?"
-    user_input = "Using think tool, identify the last episode s0XeXX of severance and get magnet link"
+    user_input = "Find magnet link of the last adaptation of Berserk"
     user_input = user_input or input("> ")
     config = {"configurable": {"thread_id": "test"}}
     called_tools = False
