@@ -13,5 +13,11 @@
     "command": "uvx",
     "args": ["torrent-search-mcp"],
     "transport": "stdio"
+  },
+  "torrent-client": {
+    "command": "uvx",
+    "args": ["rqbit-mcp"],
+    "env": { "RQBIT_URL": "http://localhost:3030" },
+    "transport": "stdio"
   }
 }

@@ -25,7 +25,9 @@ async def run_agent() -> None:
         debug=False,
     )
 
-    user_input = "Find magnet link of the last adaptation of Berserk"
+    user_input = ""
+    # user_input = "Find magnet link of the last adaptation of Berserk"
+    # user_input = "Check torrent list"
     user_input = user_input or input("> ")
     config = {"configurable": {"thread_id": "test"}}
     called_tools = False
@@ -119,7 +121,7 @@ async def run_agent() -> None:
                     border_style="yellow",
                 )
             )
-            exit()
+            # exit()
             user_input = input("> ")
             if user_input.lower() == "exit":
                 break
