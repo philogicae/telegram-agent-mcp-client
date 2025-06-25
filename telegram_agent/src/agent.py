@@ -32,6 +32,8 @@ async def run_agent() -> None:
     config = {"configurable": {"thread_id": "test"}}
     called_tools = False
     while True:
+        if not user_input or user_input.lower() == "exit":
+            exit(0)
         try:
             total_calls, total_tokens = 0, 0
             total_agent_calls, total_tool_calls = 0, 0
@@ -121,9 +123,6 @@ async def run_agent() -> None:
                     border_style="yellow",
                 )
             )
-            # exit()
-            user_input = input("> ")
-            if user_input.lower() == "exit":
-                break
+            user_input = ""
         except KeyboardInterrupt:
             exit(0)
