@@ -1,0 +1,94 @@
+name: telegram-agent-mcp-client
+
+x-dns:
+  &default-dns
+  dns:
+    - 9.9.9.9
+    - 149.112.112.112
+    - 2620:fe::fe
+    - 2620:fe::9
+
+x-logging:
+  &default-logging
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+x-networks:
+  &default-networks
+  networks:
+    - ai-agent
+
+services:
+  # telegram-agent:
+  #   container_name: telegram-agent
+  #   build:
+  #     context: ..
+  #     dockerfile: docker/Dockerfile
+  #   image: telegram-agent
+  #   restart: unless-stopped
+  #   ports:
+  #     - 8787:8000
+  #   env_file:
+  #     - ../.env
+  #   <<: [*default-dns, *default-logging, *default-networks]
+
+  # Core services
+  n8n:
+    container_name: n8n
+    image: docker.n8n.io/n8nio/n8n:next
+    restart: unless-stopped
+    ports:
+      - 5678:5678
+    env_file:
+      - n8n.env
+    volumes:
+      - n8n_data:/home/node/.n8n
+    <<: [*default-dns, *default-logging, *default-networks]
+
+  rqbit:
+    container_name: rqbit
+    image: ikatson/rqbit:main
+    restart: unless-stopped
+    ports:
+      - 3030:3030 # HTTP API port
+      - 4240:4240 # TCP/uTP BitTorrent port
+    environment:
+      RQBIT_UPNP_SERVER_ENABLE: "true"
+      RQBIT_UPNP_SERVER_FRIENDLY_NAME: rqbit-docker
+      RQBIT_HTTP_API_LISTEN_ADDR: 0.0.0.0:3030
+    volumes:
+      - rqbit_db:/home/rqbit/db
+      - rqbit_cache:/home/rqbit/cache
+      - /mnt/disk2/media:/home/rqbit/downloads
+    <<: [*default-logging]
+    network_mode: host # required for UPnP
+
+  # MCP services
+  torrent-search-mcp:
+    container_name: torrent-search-mcp
+    build:
+      context: ../../torrent-search-mcp
+      dockerfile: docker/Dockerfile
+    image: torrent-search-mcp
+    restart: unless-stopped
+    ports:
+      - 8765:8000
+    env_file:
+      - torrent_search.env
+    <<: [*default-dns, *default-logging, *default-networks]
+
+networks:
+  ai-agent:
+    name: ai-agent
+    driver: bridge
+
+volumes:
+  n8n_data:
+    driver: local
+  rqbit_db:
+    driver: local
+  rqbit_cache:
+    driver: local
