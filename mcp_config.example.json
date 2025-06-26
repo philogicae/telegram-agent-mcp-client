@@ -1,23 +1,42 @@
 {
-  "sequential-thinking": {
-    "command": "uvx",
-    "args": ["sequential-thinking-mcp"],
-    "transport": "stdio"
-  },
-  "web-search": {
-    "command": "uvx",
-    "args": ["duckduckgo-mcp-server"],
-    "transport": "stdio"
-  },
-  "torrent-search": {
-    "command": "uvx",
-    "args": ["torrent-search-mcp"],
-    "transport": "stdio"
-  },
-  "torrent-client": {
-    "command": "uvx",
-    "args": ["rqbit-mcp"],
-    "env": { "RQBIT_URL": "http://localhost:3030" },
-    "transport": "stdio"
+  "mcpServers": {
+    "sequential-thinking": {
+      "command": "uvx sequential-thinking-mcp",
+      "disabled": false
+    },
+    "web-search": {
+      "command": "uvx duckduckgo-mcp-server",
+      "edit": {
+        "search": {
+          "name": "web_search",
+          "description": "Search on the web and return formatted results"
+        },
+        "fetch_content": {
+          "name": "fetch_https_url",
+          "description": "Fetch and parse content from a webpage URL always starting with https://"
+        }
+      },
+      "disabled": false
+    },
+    "torrent-search": {
+      "serverUrl": "http://192.168.1.133:8765/sse",
+      "edit": {
+        "get_torrent_info": false
+      },
+      "disabled": false
+    },
+    "torrent-client": {
+      "command": "uvx rqbit-mcp",
+      "env": {
+        "RQBIT_URL": "http://192.168.1.133:3030"
+      },
+      "edit": {
+        "start_torrent": false,
+        "pause_torrent": false,
+        "delete_torrent": false,
+        "get_torrent_details": false
+      },
+      "disabled": false
+    }
   }
 }

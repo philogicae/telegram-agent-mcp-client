@@ -1,24 +1,23 @@
 from datetime import datetime
 
 from langchain_core.messages import HumanMessage
-from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
 
-from .config import ThinkTag, get_config
+from .config import ThinkTag
 from .llm import get_llm
+from .tools import get_tools
 
 
 async def run_agent() -> None:
     console = Console()
-    tools = await MultiServerMCPClient(get_config()).get_tools()
     agent = create_react_agent(
         name="General Agent",
         model=get_llm(),
-        tools=tools,
+        tools=await get_tools(),
         prompt="You are an ultra smart helpful agent. You are empowered with a set of useful tools, but you can only call one at a time. Always use think tool to fulfill user's request step by step. Don't assume you know something when you actually don't know, don't hesitate to check the web to confirm information, and don't ask obvious questions to user.",
         checkpointer=MemorySaver(),
         store=None,
@@ -28,13 +27,13 @@ async def run_agent() -> None:
     user_input = ""
     # user_input = "Find magnet link of the last adaptation of Berserk"
     # user_input = "Check torrent list"
-    user_input = user_input or input("> ")
     config = {"configurable": {"thread_id": "test"}}
     called_tools = False
     while True:
-        if not user_input or user_input.lower() == "exit":
-            exit(0)
         try:
+            user_input = user_input or input("> ")
+            if not user_input or user_input.lower() == "exit":
+                exit(0)
             total_calls, total_tokens = 0, 0
             total_agent_calls, total_tool_calls = 0, 0
             named_tool_calls = {}
