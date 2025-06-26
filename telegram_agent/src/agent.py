@@ -97,7 +97,7 @@ async def run_agent() -> None:
                     console.print(
                         Panel(escape(tool_calls), title="Tools", border_style="red")
                     )
-                if hasattr(msg, "usage_metadata"):
+                if hasattr(msg, "usage_metadata") and msg.usage_metadata:
                     timer = datetime.now() - end_time
                     end_time += timer
                     total_tokens += msg.usage_metadata.get("total_tokens", 0)
