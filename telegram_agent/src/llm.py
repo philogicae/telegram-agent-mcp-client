@@ -23,7 +23,7 @@ def get_llm() -> LanguageModelLike:
             temperature=0.5,
             top_p=0.95,
             top_k=20,
-            num_ctx=4096,  # 2048-4096-6144 soft spot for 2Go VRAM on APU
+            num_ctx=8192,  # 2048-4096-8192
             num_predict=512,  # 512-1024-2048-4096 / -2
         )
     if llm_choice == "groq":
