@@ -1186,6 +1186,18 @@ wheels = [
 ]
 
 [[package]]
+name = "pytelegrambotapi"
+version = "4.27.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ba/f2/29ae3731db33f7e1e0efcf7055adc8a88d2dde97541ff549d27349e597a2/pytelegrambotapi-4.27.0.tar.gz", hash = "sha256:d89362a34eaaa87b0aff6b2f5445a3af082f04193dcaadb481562def84c59ee9", size = 1355340, upload-time = "2025-05-03T09:34:46.728Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a8/ec/7dc84f817b692a6e1e673a0c335724a0926118541efff86446a20f0fa1f1/pytelegrambotapi-4.27.0-py3-none-any.whl", hash = "sha256:f555cecea9dcc48274c2592f8158e0c336654d3c5a4b86ce44342ffa5f76bd86", size = 287399, upload-time = "2025-05-03T09:34:41.264Z" },
+]
+
+[[package]]
 name = "pytest"
 version = "8.4.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1557,7 +1569,7 @@ wheels = [
 
 [[package]]
 name = "telegram-agent-mcp-client"
-version = "0.4.0"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "langchain" },
@@ -1571,6 +1583,7 @@ dependencies = [
     { name = "langgraph" },
     { name = "pydantic" },
     { name = "pyjson5" },
+    { name = "pytelegrambotapi" },
     { name = "python-dotenv" },
     { name = "rich" },
 ]
@@ -1596,6 +1609,7 @@ requires-dist = [
     { name = "langgraph", specifier = ">=0.4.8" },
     { name = "pydantic", specifier = ">=2.11.7" },
     { name = "pyjson5", specifier = ">=1.6.9" },
+    { name = "pytelegrambotapi", specifier = ">=4.27.0" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
     { name = "rich", specifier = ">=14.0.0" },
 ]
