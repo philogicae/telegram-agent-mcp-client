@@ -50,11 +50,11 @@ services:
 
   rqbit:
     container_name: rqbit
-    image: ikatson/rqbit:9.0.0-beta.1
+    image: ikatson/rqbit:main
     restart: unless-stopped
-    ports:
-      - 3030:3030 # HTTP API port
-      - 4240:4240 # TCP/uTP BitTorrent port
+    #ports: # Not needed on host
+    #  - 3030:3030 # HTTP API port
+    #  - 4240:4240 # TCP/uTP BitTorrent port
     environment:
       RQBIT_UPNP_SERVER_ENABLE: "true"
       RQBIT_UPNP_SERVER_FRIENDLY_NAME: rqbit-docker
@@ -62,7 +62,7 @@ services:
     volumes:
       - rqbit_db:/home/rqbit/db
       - rqbit_cache:/home/rqbit/cache
-      - /mnt/disk2/media:/home/rqbit/downloads
+      - /mnt/disk2/downloads:/home/rqbit/downloads
     <<: [*default-logging]
     network_mode: host # required for UPnP
 
@@ -87,8 +87,5 @@ networks:
 
 volumes:
   n8n_data:
-    driver: local
   rqbit_db:
-    driver: local
   rqbit_cache:
-    driver: local
