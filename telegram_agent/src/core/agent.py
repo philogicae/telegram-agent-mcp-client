@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
@@ -13,119 +14,136 @@ from .prompts import SYSTEM_PROMPT
 from .tools import get_tools
 
 
-async def run_agent() -> None:
-    console = Console()
-    agent = create_react_agent(
-        name="General Agent",
-        model=get_llm(),
-        tools=await get_tools(),
-        prompt=SYSTEM_PROMPT,
-        checkpointer=MemorySaver(),
-        store=None,
-        debug=False,
-    )
+class Agent:
+    agent: Any
+    initialized: bool = False
 
+    async def initialize(self) -> None:
+        self.agent = create_react_agent(
+            name="General Agent",
+            model=get_llm(),
+            tools=await get_tools(),
+            prompt=SYSTEM_PROMPT,
+            checkpointer=MemorySaver(),
+            store=None,
+            debug=False,
+        )
+        self.initialized = True
+
+    async def chat(self, thread_id: str | int, user_input: str) -> str:
+        if not self.initialized:
+            await self.initialize()
+        config = {"configurable": {"thread_id": str(thread_id)}}
+        console = Console()
+        if thread_id != "test":
+            console.print(f"> {user_input}")
+        total_calls, total_tokens = 0, 0
+        total_agent_calls, total_tool_calls = 0, 0
+        named_tool_calls = {}
+        called_tools = False
+        start_time, end_time = datetime.now(), datetime.now()
+        async for chunk in self.agent.astream(
+            {"messages": [HumanMessage(content=user_input)]},
+            config,  # type: ignore
+        ):
+            total_calls += 1
+            msg_type = "agent"
+            if "tools" in chunk:
+                msg_type = "tools"
+                total_tool_calls += 1
+            else:
+                total_agent_calls += 1
+
+            msg = chunk[msg_type]["messages"][0]
+            think, text = None, None
+            if ThinkTag.start and ThinkTag.end and ThinkTag.start in msg.content:
+                splitted = msg.content.split(ThinkTag.start, 1)[1].split(
+                    ThinkTag.end, 1
+                )
+                think, text = (
+                    splitted[0].strip(),
+                    splitted[1].strip() if len(splitted) > 1 else None,
+                )
+            elif isinstance(msg.content, str):
+                text = msg.content.strip()
+
+            tool_calls: str | None = None
+            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                tool_calls = "\n".join(
+                    [
+                        f"-> {tool.get('name')}: {tool.get('args')}"
+                        for tool in msg.tool_calls
+                    ]
+                )
+                for tool in msg.tool_calls:
+                    called_tools = True
+                    tool_name = tool.get("name")
+                    if tool_name not in named_tool_calls:
+                        named_tool_calls[tool_name] = 1
+                    else:
+                        named_tool_calls[tool_name] += 1
+
+            if think:
+                console.print(Panel(escape(think), title="Think", border_style="blue3"))
+            if text:
+                console.print(
+                    Panel(
+                        escape(text),
+                        title="Result" if called_tools else "Agent",
+                        border_style=("green3" if called_tools else "bright_cyan"),
+                    )
+                )
+            if called_tools:
+                called_tools = False
+            if tool_calls:
+                console.print(
+                    Panel(escape(tool_calls), title="Tools", border_style="red")
+                )
+            if hasattr(msg, "usage_metadata") and msg.usage_metadata:
+                timer = datetime.now() - end_time
+                end_time += timer
+                total_tokens += msg.usage_metadata.get("total_tokens", 0)
+                console.print(
+                    Panel(
+                        escape(
+                            " | ".join(
+                                [f"{k}: {v}" for k, v in msg.usage_metadata.items()]
+                                + [f"took: {timer.total_seconds()} sec."]
+                            )
+                        ),
+                        title="Usage",
+                        border_style="purple",
+                    )
+                )
+        console.print(
+            Panel(
+                escape(
+                    f"total_calls: {total_calls} | agent_calls: {total_agent_calls} | tool_calls: {total_tool_calls}{(' (' + ', '.join([k + ': ' + str(v) for k, v in named_tool_calls.items()]) + ')') if named_tool_calls else ''} | total_tokens: {total_tokens} | took: {(end_time - start_time).total_seconds()} sec."
+                ),
+                title="Usage Summary",
+                border_style="yellow",
+            )
+        )
+        return text if not called_tools else "..."
+
+
+async def run_agent() -> None:
     user_input = ""
+
     # user_input = "Find magnet link of the last adaptation of Berserk"
     # user_input = "Check torrent list and get statuses"
     # user_input = "trouve le premier film gladiator"
+
     if user_input:
-        console.print(f"> {user_input}")
-    config = {"configurable": {"thread_id": "test"}}
-    called_tools = False
+        print(f"> {user_input}")
+    agent = Agent()
+    await agent.initialize()
     while True:
         try:
             user_input = user_input or input("> ")
             if not user_input or user_input.lower() == "exit":
                 exit(0)
-            total_calls, total_tokens = 0, 0
-            total_agent_calls, total_tool_calls = 0, 0
-            named_tool_calls = {}
-            start_time, end_time = datetime.now(), datetime.now()
-            async for chunk in agent.astream(
-                {"messages": [HumanMessage(content=user_input)]},
-                config,  # type: ignore
-            ):
-                total_calls += 1
-                msg_type = "agent"
-                if "tools" in chunk:
-                    msg_type = "tools"
-                    total_tool_calls += 1
-                else:
-                    total_agent_calls += 1
-
-                msg = chunk[msg_type]["messages"][0]
-                think, text = None, None
-                if ThinkTag.start and ThinkTag.end and ThinkTag.start in msg.content:
-                    splitted = msg.content.split(ThinkTag.start, 1)[1].split(
-                        ThinkTag.end, 1
-                    )
-                    think, text = (
-                        splitted[0].strip(),
-                        splitted[1].strip() if len(splitted) > 1 else None,
-                    )
-                elif isinstance(msg.content, str):
-                    text = msg.content.strip()
-
-                tool_calls: str | None = None
-                if hasattr(msg, "tool_calls") and msg.tool_calls:
-                    tool_calls = "\n".join(
-                        [
-                            f"-> {tool.get('name')}: {tool.get('args')}"
-                            for tool in msg.tool_calls
-                        ]
-                    )
-                    for tool in msg.tool_calls:
-                        called_tools = True
-                        tool_name = tool.get("name")
-                        if tool_name not in named_tool_calls:
-                            named_tool_calls[tool_name] = 1
-                        else:
-                            named_tool_calls[tool_name] += 1
-
-                if think:
-                    console.print(
-                        Panel(escape(think), title="Think", border_style="blue3")
-                    )
-                if text:
-                    console.print(
-                        Panel(
-                            escape(text),
-                            title="Result" if called_tools else "Agent",
-                            border_style=("green3" if called_tools else "bright_cyan"),
-                        )
-                    )
-                    if called_tools:
-                        called_tools = False
-                if tool_calls:
-                    console.print(
-                        Panel(escape(tool_calls), title="Tools", border_style="red")
-                    )
-                if hasattr(msg, "usage_metadata") and msg.usage_metadata:
-                    timer = datetime.now() - end_time
-                    end_time += timer
-                    total_tokens += msg.usage_metadata.get("total_tokens", 0)
-                    console.print(
-                        Panel(
-                            escape(
-                                " | ".join(
-                                    [f"{k}: {v}" for k, v in msg.usage_metadata.items()]
-                                    + [f"took: {timer.total_seconds()} sec."]
-                                )
-                            ),
-                            title="Usage",
-                            border_style="purple",
-                        )
-                    )
-            console.print(
-                Panel(
-                    escape(
-                        f"total_calls: {total_calls} | agent_calls: {total_agent_calls} | tool_calls: {total_tool_calls}{(' (' + ', '.join([k + ': ' + str(v) for k, v in named_tool_calls.items()]) + ')') if named_tool_calls else ''} | total_tokens: {total_tokens} | took: {(end_time - start_time).total_seconds()} sec."
-                    ),
-                    title="Usage Summary",
-                    border_style="yellow",
-                )
-            )
+            await agent.chat("test", user_input)
             user_input = ""
         except KeyboardInterrupt:
             exit(0)

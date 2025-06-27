@@ -15,7 +15,8 @@ class ThinkTag:
 
 def get_config() -> tuple[dict[str, Any], dict[str, Any]]:
     config_file = path.join(
-        path.dirname(path.dirname(path.dirname(__file__))), "mcp_config.json"
+        path.dirname(path.dirname(path.dirname(path.dirname(__file__)))),
+        "mcp_config.json",
     )
     if not path.exists(config_file):
         print("mcp_config.json file not found: creating a empty one")
