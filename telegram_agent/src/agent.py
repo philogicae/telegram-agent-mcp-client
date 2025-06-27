@@ -9,6 +9,7 @@ from rich.panel import Panel
 
 from .config import ThinkTag
 from .llm import get_llm
+from .prompts import SYSTEM_PROMPT
 from .tools import get_tools
 
 
@@ -18,7 +19,7 @@ async def run_agent() -> None:
         name="General Agent",
         model=get_llm(),
         tools=await get_tools(),
-        prompt="You are an ultra smart helpful agent. You are empowered with a set of useful tools, but you can only call one at a time. Always use think tool to fulfill user's request step by step. Don't assume you know something when you actually don't know, don't hesitate to check the web to confirm information, and don't ask obvious questions to user.",
+        prompt=SYSTEM_PROMPT,
         checkpointer=MemorySaver(),
         store=None,
         debug=False,
@@ -27,6 +28,9 @@ async def run_agent() -> None:
     user_input = ""
     # user_input = "Find magnet link of the last adaptation of Berserk"
     # user_input = "Check torrent list and get statuses"
+    # user_input = "trouve le premier film gladiator"
+    if user_input:
+        console.print(f"> {user_input}")
     config = {"configurable": {"thread_id": "test"}}
     called_tools = False
     while True:
