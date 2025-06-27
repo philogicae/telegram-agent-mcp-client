@@ -18,17 +18,30 @@
       },
       "disabled": false
     },
+    "news-search": {
+      "command": "npx -y @modelcontextprotocol/server-brave-search",
+      "edit": {
+        "brave_web_search": {
+          "description": "Search on the web using the Brave Search API, ideal for news and articles. Use this for broad information gathering and recent events."
+        },
+        "brave_local_search": false
+      },
+      "env": {
+        "BRAVE_API_KEY": "<add-your-key>"
+      },
+      "disabled": true
+    },
     "torrent-search": {
-      "serverUrl": "http://192.168.1.133:8765/sse",
+      "serverUrl": "http://localhost:8765/sse",
       "edit": {
         "get_torrent_info": false
       },
-      "disabled": false
+      "disabled": true
     },
     "torrent-client": {
       "command": "uvx rqbit-mcp",
       "env": {
-        "RQBIT_URL": "http://192.168.1.133:3030"
+        "RQBIT_URL": "http://localhost:3030"
       },
       "edit": {
         "start_torrent": false,
@@ -36,7 +49,7 @@
         "delete_torrent": false,
         "get_torrent_details": false
       },
-      "disabled": false
+      "disabled": true
     }
   }
 }
