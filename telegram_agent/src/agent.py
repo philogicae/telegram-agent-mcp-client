@@ -26,7 +26,7 @@ async def run_agent() -> None:
 
     user_input = ""
     # user_input = "Find magnet link of the last adaptation of Berserk"
-    # user_input = "Check torrent list"
+    # user_input = "Check torrent list and get statuses"
     config = {"configurable": {"thread_id": "test"}}
     called_tools = False
     while True:
