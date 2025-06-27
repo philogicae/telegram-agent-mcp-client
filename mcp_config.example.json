@@ -22,12 +22,28 @@
       "command": "npx -y @modelcontextprotocol/server-brave-search",
       "edit": {
         "brave_web_search": {
-          "description": "Search on the web using the Brave Search API, ideal for news and articles. Use this for broad information gathering and recent events."
+          "name": "news_search",
+          "description": "Search news on the web using Brave Search, ideal for news and articles. Use this for broad information gathering and recent events. Always add 'news' keyword if missing."
         },
         "brave_local_search": false
       },
       "env": {
+        // Free: 2000 queries by month
         "BRAVE_API_KEY": "<add-your-key>"
+      },
+      "disabled": true
+    },
+    "deep-search": {
+      "command": "uvx mcp-search-linkup",
+      "edit": {
+        "search-web": {
+          "name": "deep_search",
+          "description": "Deep search on the web using Linkup. Always use 'deep' depth by default. Returns comprehensive content from the most relevant sources"
+        }
+      },
+      "env": {
+        //  Free: 1000 standard or 100 deep queries by month
+        "LINKUP_API_KEY": "<add-your-key>"
       },
       "disabled": true
     },
