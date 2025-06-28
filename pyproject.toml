@@ -22,6 +22,8 @@ dependencies = [
     "langgraph>=0.4.8",
     "pytelegrambotapi>=4.27.0",
     "aiohttp>=3.12.13",
+    "aiosqlite>=0.21.0",
+    "langgraph-checkpoint-sqlite>=2.0.10",
 ]
 
 [project.urls]
