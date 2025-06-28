@@ -10,9 +10,14 @@ if __name__ == "__main__":
         action="store_true",
         help="Run as Telegram bot. Default: CLI",
     )
+    parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="Run as Telegram bot in dev mode. Default: False",
+    )
     args = parser.parse_args()
 
     if args.telegram:
-        run(run_bot())
+        run(run_bot(dev=args.dev))
     else:
         run(run_agent())
