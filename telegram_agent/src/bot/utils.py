@@ -2,7 +2,7 @@ from time import time
 
 
 class Timer:
-    def __init__(self):
+    def __init__(self) -> None:
         self.start = time()
 
     def done(self) -> str:

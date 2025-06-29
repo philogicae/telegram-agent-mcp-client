@@ -1,11 +1,13 @@
 from time import sleep, time
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from telebot.async_telebot import AsyncTeleBot
 from telebot.types import Message
 
+from .abstract import Bot
 
-class Bot:
+
+class TelegramBot(Bot):
     bot: AsyncTeleBot
     last_call: float = 0
     delay: float = 0.2
@@ -15,15 +17,15 @@ class Bot:
 
     def __init__(
         self,
-        telegram_id: str | None = None,
+        telegram_id: str,
         delay: float | None = None,
         group_msg_trigger: str | None = None,
         waiting: str | None = None,
     ):
         """Must call initialize() and start() after"""
         self.bot = AsyncTeleBot(
-            token=str(telegram_id),
-            parse_mode="MARKDOWN",  # TODO: Fix wrong parsing
+            token=telegram_id,
+            parse_mode="MARKDOWN",
             disable_web_page_preview=True,
         )
         if delay:
@@ -33,7 +35,7 @@ class Bot:
         if waiting:
             self.waiting = waiting
 
-    async def initialize(self, chat: Callable[..., Any]) -> "Bot":
+    async def initialize(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
         await self.bot.set_my_commands([])
         me = await self.bot.get_me()
 
@@ -51,12 +53,12 @@ class Bot:
                 - If it's a reply to the bot
                 - If it starts with group_msg_trigger
             """
-            text = message.text.strip()
+            text = str(message.text).strip()
             if text.startswith(self.group_msg_trigger):
                 message.text = text[1:].strip()
-            await chat(message)
-
-        return self
+            handler = kwargs.get("chat")
+            if handler:
+                await handler(message)
 
     async def start(self) -> None:
         await self.bot.infinity_polling(skip_pending=True, timeout=300)
@@ -68,7 +70,7 @@ class Bot:
         return self.last_call + self.delay < time()
 
     async def exec(
-        self, method: Callable[..., Any], *args: Any, **kwargs: Any
+        self, method: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any
     ) -> Message:
         while True:
             if self.is_free():
@@ -86,13 +88,13 @@ class Bot:
             self.bot.send_message, message.chat.id, text or self.waiting
         )
         if not text:
-            self.edit_cache[msg.id] = [msg.text]
+            self.edit_cache[msg.id] = [str(msg.text)]
         return msg
 
     async def reply(self, to_message: Message, text: str | None = None) -> Message:
         msg = await self.exec(self.bot.reply_to, to_message, text or self.waiting)
         if not text:
-            self.edit_cache[msg.id] = [msg.text]
+            self.edit_cache[msg.id] = [str(msg.text)]
         return msg
 
     async def edit(self, message: Message, text: str, replace: bool = False) -> Message:
@@ -103,7 +105,9 @@ class Bot:
             if text != "✅":
                 self.edit_cache[message.id].insert(-1, text)
             else:
-                self.edit_cache[message.id][-2] += f" {text}"
+                self.edit_cache[message.id][
+                    -2
+                ] = f"✅ {self.edit_cache[message.id][-2][2:-3]}"
             edited = "\n".join(self.edit_cache[message.id])
         return await self.exec(
             self.bot.edit_message_text, edited, message.chat.id, message.id
