@@ -1,7 +1,7 @@
 import argparse
 from asyncio import run
 
-from .src import run_agent, run_bot
+from .src import run_agent, run_telegram_bot
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run Telegram Agent MCP Client")
@@ -13,11 +13,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dev",
         action="store_true",
-        help="Run as Telegram bot in dev mode. Default: False",
+        help="Run in dev mode. Default: False",
     )
     args = parser.parse_args()
 
     if args.telegram:
-        run(run_bot(dev=args.dev))
+        run(run_telegram_bot(dev=args.dev))
     else:
-        run(run_agent())
+        run(run_agent(dev=args.dev))

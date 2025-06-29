@@ -20,3 +20,6 @@ wheels/
 .venv
 mcp_config.json
 sync_tools.sh
+
+# DB
+tmp

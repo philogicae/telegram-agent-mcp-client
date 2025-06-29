@@ -1,3 +1,5 @@
+from os import makedirs
+from re import sub
 from time import time
 from typing import Any, AsyncGenerator
 
@@ -16,32 +18,26 @@ from .prompts import SYSTEM_PROMPT
 from .tools import get_tools
 
 
-async def create_short_term_memory():
-    return AsyncSqliteSaver(connect("mem.sqlite"))
+def create_short_term_memory() -> AsyncSqliteSaver:
+    makedirs("tmp", exist_ok=True)
+    return AsyncSqliteSaver(connect("tmp/mem.sqlite"))
 
 
-def create_long_term_memory():
+def create_long_term_memory() -> InMemoryStore:
     return InMemoryStore()
 
 
 class Agent:
-    agent: Any
-
-    def __init__(self):
-        """Must call initialize() after"""  # TODO: Refactor and add Langchain Swarm
-        pass
-
-    async def initialize(self) -> "Agent":
-        self.agent = create_react_agent(
+    def __init__(self) -> None:
+        self.agent = create_react_agent(  # TODO: Swarm agents
             name="Root Agent",
             model=get_llm(),
-            tools=await get_tools(),
+            tools=get_tools(),
             prompt=SYSTEM_PROMPT,
-            checkpointer=await create_short_term_memory(),
-            # store=create_long_term_memory(),
+            checkpointer=create_short_term_memory(),
+            store=create_long_term_memory(),
             debug=False,
         )
-        return self
 
     async def chat(self, content: Any) -> AsyncGenerator[tuple[str, bool], None]:
         console, thread_id, user = Console(), "test", None
@@ -59,7 +55,7 @@ class Agent:
             config = {"configurable": {"thread_id": thread_id}}
             total_calls, total_tokens = 0, 0
             total_agent_calls, total_tool_calls = 0, 0
-            calls_by_tool = {}
+            calls_by_tool: dict[str, int] = {}
             called_tool: str | None = None
             start_time, end_time = time(), time()
             async for chunk in self.agent.astream(
@@ -73,9 +69,10 @@ class Agent:
                     total_tool_calls += 1
                 else:
                     total_agent_calls += 1
-
                 msg = chunk[msg_type]["messages"][0]
-                think, text, log, status = None, None, None, False
+
+                # Think and Text
+                think, text = None, None
                 if ThinkTag.start and ThinkTag.end and ThinkTag.start in msg.content:
                     splitted = msg.content.split(ThinkTag.start, 1)[1].split(
                         ThinkTag.end, 1
@@ -87,20 +84,25 @@ class Agent:
                 elif isinstance(msg.content, str):
                     text = msg.content.strip()
 
+                if text:
+                    text = text.replace("\n* ", "\n- ").replace(
+                        "**", "*"
+                    )  # Fix for Telegram Markdown
+
+                # Tools
                 tool_calls: str | None = None
                 if hasattr(msg, "tool_calls") and msg.tool_calls:
-                    tool_calls = "\n".join(
-                        [
-                            f"-> {tool.get('name')}: {tool.get('args')}"
-                            for tool in msg.tool_calls
-                        ]
-                    )
+                    listed = []
                     for tool in msg.tool_calls:
                         called_tool = tool.get("name")
-                        if called_tool not in calls_by_tool:
-                            calls_by_tool[called_tool] = 1
-                        else:
-                            calls_by_tool[called_tool] += 1
+                        calls_by_tool[called_tool] = (
+                            calls_by_tool.get(called_tool, 0) + 1
+                        )
+                        listed.append(f"-> {called_tool}: {tool.get('args')}")
+                    tool_calls = "\n".join(listed)
+
+                # Logging
+                log, status = "", False
 
                 if think:
                     console.print(
@@ -116,11 +118,9 @@ class Agent:
                         )
                     )
                     if called_tool:
+                        if called_tool != "think":
+                            log = "✅"
                         called_tool = None
-                        log, status = (
-                            ("✅" if called_tool != "think" else None),
-                            False,
-                        )
                     else:
                         log, status = text, True
 
@@ -128,18 +128,14 @@ class Agent:
                     console.print(
                         Panel(escape(tool_calls), title="Tools", border_style="red")
                     )
-                    log, status = (
-                        (
-                            f"🛠️ **{called_tool}** invoked..."
-                            if called_tool != "think"
-                            else "🔍 Analyzing..."
-                        ),
-                        False,
-                    )
+                    if called_tool != "think":
+                        log = f"🛠️ *{sub('_|-', ' ', str(called_tool)).title()}*..."
 
-                if log:
-                    yield log.replace("`", "'"), status
+                if not status:
+                    print(f"-> YIELD: {log if log else 'EMPTY'}")
+                    yield log, status
 
+                # Usage
                 if hasattr(msg, "usage_metadata") and msg.usage_metadata:
                     timer = time() - end_time
                     end_time += timer
@@ -156,6 +152,8 @@ class Agent:
                             border_style="purple",
                         )
                     )
+
+            # Usage Summary
             console.print(
                 Panel(
                     escape(
@@ -166,13 +164,21 @@ class Agent:
                 )
             )
 
-    async def cli_chat(self, content: str) -> None:
-        async for _ in self.chat(content):
-            pass
+            # Final step
+            nicer_log = f"{log[:21]}...{log[-21:]}" if log and len(log) > 45 else log
+            print(f"-> FINAL: {nicer_log}")
+            yield log, status
+
+    async def cli_chat(self, content: str, debug: bool = False) -> None:
+        async for step, done in self.chat(content):
+            if debug and step:
+                text = f"{step[:21]}...{step[-21:]}" if len(step) > 45 else step
+                print(f'Done: {done} | Step: "{text}"')
+                input("continue...")
 
 
-async def run_agent() -> None:
-    agent = await Agent().initialize()
+async def run_agent(dev: bool = False) -> None:
+    agent = Agent()
     content = ""
 
     # content = "Find magnet link of the last adaptation of Berserk"
@@ -186,7 +192,7 @@ async def run_agent() -> None:
             content = (content or input("> ")).strip()
             if not content:
                 exit()
-            await agent.cli_chat(content)
+            await agent.cli_chat(content, debug=dev)
             content = ""
         except KeyboardInterrupt:
             exit()

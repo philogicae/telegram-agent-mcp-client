@@ -9,7 +9,7 @@
       "edit": {
         "search": {
           "name": "web_search",
-          "description": "Search on the web and return formatted results"
+          "description": "Search on the web and return formatted results. If failure, fallback to `deep_search` using 'standard' depth."
         },
         "fetch_content": {
           "name": "fetch_https_url",
@@ -23,7 +23,7 @@
       "edit": {
         "brave_web_search": {
           "name": "news_search",
-          "description": "Search news on the web using Brave Search, ideal for news and articles. Use this for broad information gathering and recent events. Always add 'news' keyword if missing."
+          "description": "Search news on the web using Brave Search, ideal for news and articles. Use this for broad information gathering and recent events. Always add 'news' keyword if missing. Only call this tool if the request is news-related."
         },
         "brave_local_search": false
       },
@@ -38,7 +38,7 @@
       "edit": {
         "search-web": {
           "name": "deep_search",
-          "description": "Deep search on the web using Linkup. Always use 'deep' depth by default. Returns comprehensive content from the most relevant sources"
+          "description": "Deep search on the web using Linkup. Always use 'deep' depth by default. Returns comprehensive content from the most relevant sources. Only call this tool if `deep search` is explicitely requested by the user."
         }
       },
       "env": {
