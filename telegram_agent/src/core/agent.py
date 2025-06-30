@@ -1,6 +1,6 @@
+from datetime import datetime
 from os import makedirs
 from re import sub
-from time import time
 from typing import Any, AsyncGenerator
 
 from aiosqlite import connect
@@ -11,6 +11,7 @@ from langgraph.store.memory import InMemoryStore
 from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
+from telebot.types import Message as TelegramMessage
 
 from .config import ThinkTag
 from .llm import get_llm
@@ -39,14 +40,17 @@ class Agent:
             debug=False,
         )
 
-    async def chat(self, content: Any) -> AsyncGenerator[tuple[str, bool], None]:
+    async def chat(
+        self, content: str | TelegramMessage | Any
+    ) -> AsyncGenerator[tuple[str, bool], None]:
         console, thread_id, user = Console(), "test", None
         if isinstance(content, str):
             content = content.strip()
-        elif content:  # Telegram Message
+        elif isinstance(content, TelegramMessage):
             thread_id = str(content.chat.id)
-            user = content.from_user.first_name
-            content = f"{user}: {content.text}".strip()
+            user = content.from_user.first_name if content.from_user else "User"
+            date = datetime.fromtimestamp(content.date).strftime("%Y-%m-%d %H:%M:%S")
+            content = f"[{date}] {user}: {content.text}".strip()
             console.print(Panel(escape(content), title="User", border_style="white"))
 
         if not content:
@@ -57,7 +61,10 @@ class Agent:
             total_agent_calls, total_tool_calls = 0, 0
             calls_by_tool: dict[str, int] = {}
             called_tool: str | None = None
-            start_time, end_time = time(), time()
+            start_time, end_time = (
+                datetime.now().timestamp(),
+                datetime.now().timestamp(),
+            )
             async for chunk in self.agent.astream(
                 {"messages": [HumanMessage(content)]},
                 config,  # type: ignore
@@ -137,7 +144,7 @@ class Agent:
 
                 # Usage
                 if hasattr(msg, "usage_metadata") and msg.usage_metadata:
-                    timer = time() - end_time
+                    timer = datetime.now().timestamp() - end_time
                     end_time += timer
                     total_tokens += msg.usage_metadata.get("total_tokens", 0)
                     console.print(

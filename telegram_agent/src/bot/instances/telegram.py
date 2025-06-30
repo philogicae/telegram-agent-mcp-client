@@ -4,7 +4,7 @@ from typing import Any, Awaitable, Callable
 from telebot.async_telebot import AsyncTeleBot
 from telebot.types import Message
 
-from .abstract import Bot
+from ..abstract import Bot
 
 
 class TelegramBot(Bot):
@@ -12,7 +12,7 @@ class TelegramBot(Bot):
     last_call: float = 0
     delay: float = 0.2
     group_msg_trigger: str = "!"
-    waiting: str = "I'm thinking..."
+    waiting: str = "💭 I'm thinking..."
     edit_cache: dict[int, list[str]] = {}
 
     def __init__(
@@ -105,9 +105,9 @@ class TelegramBot(Bot):
             if text != "✅":
                 self.edit_cache[message.id].insert(-1, text)
             else:
-                self.edit_cache[message.id][
-                    -2
-                ] = f"✅ {self.edit_cache[message.id][-2][2:-3]}"
+                self.edit_cache[message.id][-2] = (
+                    f"✅ {self.edit_cache[message.id][-2][2:-3]}"
+                )
             edited = "\n".join(self.edit_cache[message.id])
         return await self.exec(
             self.bot.edit_message_text, edited, message.chat.id, message.id

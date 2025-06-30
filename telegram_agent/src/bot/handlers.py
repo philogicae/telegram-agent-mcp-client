@@ -15,6 +15,7 @@ async def telegram_chat(agentic_bot: AgenticBot, message: Message) -> None:
     reply = await agentic_bot.bot.reply(message)
     async for step, done in agentic_bot.agent.chat(message):
         if step:
+            agentic_bot.log.info("SENT")  # TODO: Remove
             if done:
                 await agentic_bot.bot.final(reply, step)
             else:

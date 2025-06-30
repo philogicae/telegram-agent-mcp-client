@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 from ..core import Agent
 from .abstract import AgenticBot
 from .handlers import telegram_chat
+from .instances import TelegramBot
 from .logging import TelegramLogger
-from .telegram_bot import TelegramBot
 
 load_dotenv()
 

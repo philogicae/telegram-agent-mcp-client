@@ -9,11 +9,14 @@ from .utils import Timer
 
 
 class Logger(ABC):
+    instance: str = ""
+    level: Any = INFO
+
     def __init__(self) -> None:
         basicConfig(
             format="%(message)s",
             datefmt="[%d-%m %X]",
-            level=INFO,
+            level=self.level,
             handlers=[RichHandler()],
         )
         self.logger = getLogger("rich")
@@ -21,8 +24,14 @@ class Logger(ABC):
     def info(self, log: str) -> None:
         self.logger.info(log)
 
+    def warn(self, log: str) -> None:
+        self.logger.warning(f"WARN: {log}")
+
     def error(self, err: Exception) -> None:
-        self.logger.error(f"Error: {err}")
+        self.logger.error(f"ERROR: {err}")
+
+    def debug(self, log: str) -> None:
+        self.logger.debug(f"DEBUG: {log}")
 
     @abstractmethod
     def received(self, msg: Any) -> Timer:
