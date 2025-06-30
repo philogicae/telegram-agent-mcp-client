@@ -9,6 +9,7 @@ from .src import (
     run_agent,
     run_telegram_bot,
     telegram_chat,
+    telegram_report_issue,
 )
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "TelegramBot",
     "TelegramLogger",
     "telegram_chat",
+    "telegram_report_issue",
     "run_agent",
     "run_telegram_bot",
 ]

@@ -7,6 +7,7 @@ from .bot import (
     TelegramLogger,
     run_telegram_bot,
     telegram_chat,
+    telegram_report_issue,
 )
 from .core import Agent, run_agent
 
@@ -19,6 +20,7 @@ __all__ = [
     "TelegramBot",
     "TelegramLogger",
     "telegram_chat",
+    "telegram_report_issue",
     "run_agent",
     "run_telegram_bot",
 ]

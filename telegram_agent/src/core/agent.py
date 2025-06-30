@@ -19,9 +19,10 @@ from .prompts import SYSTEM_PROMPT
 from .tools import get_tools
 
 
-def create_short_term_memory() -> AsyncSqliteSaver:
-    makedirs("tmp", exist_ok=True)
-    return AsyncSqliteSaver(connect("tmp/mem.sqlite"))
+def create_short_term_memory(dev: bool = False) -> AsyncSqliteSaver:
+    db_folder = f"tmp{'/dev' if dev else ''}"
+    makedirs(db_folder, exist_ok=True)
+    return AsyncSqliteSaver(connect(f"{db_folder}/mem.sqlite"))
 
 
 def create_long_term_memory() -> InMemoryStore:
@@ -29,19 +30,19 @@ def create_long_term_memory() -> InMemoryStore:
 
 
 class Agent:
-    def __init__(self) -> None:
+    def __init__(self, dev: bool = False) -> None:
         self.agent = create_react_agent(  # TODO: Swarm agents
             name="Root Agent",
             model=get_llm(),
             tools=get_tools(),
             prompt=SYSTEM_PROMPT,
-            checkpointer=create_short_term_memory(),
+            checkpointer=create_short_term_memory(dev),
             store=create_long_term_memory(),
             debug=False,
         )
 
     async def chat(
-        self, content: str | TelegramMessage | Any
+        self, content: str | TelegramMessage | Any, dev: bool = False
     ) -> AsyncGenerator[tuple[str, bool], None]:
         console, thread_id, user = Console(), "test", None
         if isinstance(content, str):
@@ -91,11 +92,6 @@ class Agent:
                 elif isinstance(msg.content, str):
                     text = msg.content.strip()
 
-                if text:
-                    text = text.replace("\n* ", "\n- ").replace(
-                        "**", "*"
-                    )  # Fix for Telegram Markdown
-
                 # Tools
                 tool_calls: str | None = None
                 if hasattr(msg, "tool_calls") and msg.tool_calls:
@@ -109,12 +105,19 @@ class Agent:
                     tool_calls = "\n".join(listed)
 
                 # Logging
-                log, status = "", False
+                step, done = "", False
 
                 if think:
                     console.print(
                         Panel(escape(think), title="Think", border_style="blue3")
                     )
+
+                if tool_calls:
+                    console.print(
+                        Panel(escape(tool_calls), title="Tools", border_style="red")
+                    )
+                    if called_tool != "think":
+                        step = f"🛠️ *{sub('_|-', ' ', str(called_tool)).title()}*..."
 
                 if text:
                     console.print(
@@ -126,21 +129,10 @@ class Agent:
                     )
                     if called_tool:
                         if called_tool != "think":
-                            log = "✅"
+                            step = "✅"
                         called_tool = None
                     else:
-                        log, status = text, True
-
-                if tool_calls:
-                    console.print(
-                        Panel(escape(tool_calls), title="Tools", border_style="red")
-                    )
-                    if called_tool != "think":
-                        log = f"🛠️ *{sub('_|-', ' ', str(called_tool)).title()}*..."
-
-                if not status:
-                    print(f"-> YIELD: {log if log else 'EMPTY'}")
-                    yield log, status
+                        step, done = text, True
 
                 # Usage
                 if hasattr(msg, "usage_metadata") and msg.usage_metadata:
@@ -160,6 +152,12 @@ class Agent:
                         )
                     )
 
+                # Intermediate step
+                if step and not done:
+                    if dev:
+                        console.print(f"-> YIELD: {step}")
+                    yield step, False
+
             # Usage Summary
             console.print(
                 Panel(
@@ -172,15 +170,22 @@ class Agent:
             )
 
             # Final step
-            nicer_log = f"{log[:21]}...{log[-21:]}" if log and len(log) > 45 else log
-            print(f"-> FINAL: {nicer_log}")
-            yield log, status
+            if not step:
+                step = "..."  # Avoid empty reply
+            if dev:
+                console.print(
+                    "-> FINAL: "
+                    + (
+                        f"{step[:21]}...{step[-21:]}"
+                        if step and len(step) > 45
+                        else step
+                    )
+                )
+            yield step, True
 
-    async def cli_chat(self, content: str, debug: bool = False) -> None:
-        async for step, done in self.chat(content):
-            if debug and step:
-                text = f"{step[:21]}...{step[-21:]}" if len(step) > 45 else step
-                print(f'Done: {done} | Step: "{text}"')
+    async def cli_chat(self, content: str, dev: bool = False) -> None:
+        async for step, _ in self.chat(content, dev):
+            if dev and step:
                 input("continue...")
 
 
@@ -199,7 +204,7 @@ async def run_agent(dev: bool = False) -> None:
             content = (content or input("> ")).strip()
             if not content:
                 exit()
-            await agent.cli_chat(content, debug=dev)
+            await agent.cli_chat(content, dev)
             content = ""
         except KeyboardInterrupt:
             exit()

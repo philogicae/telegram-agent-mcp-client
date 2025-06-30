@@ -1,6 +1,6 @@
 from .abstract import AgenticBot, Bot, Logger
 from .bots import AgenticTelegramBot, run_telegram_bot
-from .handlers import telegram_chat
+from .handlers import telegram_chat, telegram_report_issue
 from .instances import TelegramBot
 from .logging import TelegramLogger
 
@@ -13,4 +13,5 @@ __all__ = [
     "AgenticTelegramBot",
     "run_telegram_bot",
     "telegram_chat",
+    "telegram_report_issue",
 ]

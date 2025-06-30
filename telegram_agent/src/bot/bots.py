@@ -13,10 +13,10 @@ load_dotenv()
 
 
 class AgenticTelegramBot(AgenticBot):
-    def __init__(self, telegram_id: str, **kwargs) -> None:  # type: ignore
+    def __init__(self, telegram_id: str, dev: bool = False, **kwargs) -> None:  # type: ignore
         self.log = TelegramLogger()
-        self.bot = TelegramBot(telegram_id, **kwargs)
-        self.agent = Agent()
+        self.bot = TelegramBot(telegram_id, dev=dev, **kwargs)
+        self.agent = Agent(dev=dev)
 
     async def run(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
         try:
@@ -43,6 +43,7 @@ async def run_telegram_bot(dev: bool = False) -> None:
 
     bot = AgenticTelegramBot(
         str(telegram_id),
+        dev=dev,
         delay=0.2,
         group_msg_trigger="!",
         waiting="💭 I'm thinking...",

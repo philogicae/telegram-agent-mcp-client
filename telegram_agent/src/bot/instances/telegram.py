@@ -1,4 +1,5 @@
-from time import sleep, time
+from asyncio import sleep
+from time import time
 from typing import Any, Awaitable, Callable
 
 from telebot.async_telebot import AsyncTeleBot
@@ -9,6 +10,7 @@ from ..abstract import Bot
 
 class TelegramBot(Bot):
     bot: AsyncTeleBot
+    dev: bool = False
     last_call: float = 0
     delay: float = 0.2
     group_msg_trigger: str = "!"
@@ -18,6 +20,7 @@ class TelegramBot(Bot):
     def __init__(
         self,
         telegram_id: str,
+        dev: bool = False,
         delay: float | None = None,
         group_msg_trigger: str | None = None,
         waiting: str | None = None,
@@ -34,6 +37,8 @@ class TelegramBot(Bot):
             self.group_msg_trigger = group_msg_trigger
         if waiting:
             self.waiting = waiting
+        if dev:
+            self.dev = dev
 
     async def initialize(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
         await self.bot.set_my_commands([])
@@ -58,7 +63,7 @@ class TelegramBot(Bot):
                 message.text = text[1:].strip()
             handler = kwargs.get("chat")
             if handler:
-                await handler(message)
+                await handler(message, dev=self.dev)
 
     async def start(self) -> None:
         await self.bot.infinity_polling(skip_pending=True, timeout=300)
@@ -71,55 +76,65 @@ class TelegramBot(Bot):
 
     async def exec(
         self, method: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any
-    ) -> Message:
+    ) -> Any:
+        retry = 0
         while True:
             if self.is_free():
                 try:
-                    result: Message = await method(*args, **kwargs)
+                    result: Any = await method(*args, **kwargs)
                     self.called()
                     return result
-                except Exception:
-                    pass
+                except Exception as e:
+                    retry += 1
+                    if retry > 3:
+                        raise e
             else:
-                sleep(self.delay)
+                await sleep(self.delay)
 
-    async def send(self, message: Message, text: str | None = None) -> Message:
-        msg = await self.exec(
-            self.bot.send_message, message.chat.id, text or self.waiting
+    async def send(
+        self, message_or_chat_id: Message | int | str, text: str | None = None
+    ) -> Message:
+        msg: Message = await self.exec(
+            self.bot.send_message,
+            (
+                message_or_chat_id.chat.id
+                if isinstance(message_or_chat_id, Message)
+                else message_or_chat_id
+            ),
+            text or self.waiting,
         )
         if not text:
             self.edit_cache[msg.id] = [str(msg.text)]
         return msg
 
     async def reply(self, to_message: Message, text: str | None = None) -> Message:
-        msg = await self.exec(self.bot.reply_to, to_message, text or self.waiting)
+        msg: Message = await self.exec(
+            self.bot.reply_to, to_message, text or self.waiting
+        )
         if not text:
             self.edit_cache[msg.id] = [str(msg.text)]
         return msg
 
-    async def edit(self, message: Message, text: str, replace: bool = False) -> Message:
-        edited = text
-        if replace:
-            del self.edit_cache[message.id]
-        else:
-            if text != "✅":
-                self.edit_cache[message.id].insert(-1, text)
-            else:
-                self.edit_cache[message.id][-2] = (
-                    f"✅ {self.edit_cache[message.id][-2][2:-3]}"
-                )
-            edited = "\n".join(self.edit_cache[message.id])
-        return await self.exec(
-            self.bot.edit_message_text, edited, message.chat.id, message.id
-        )
-
-    async def final(
-        self, message: Message, text: str, replace: bool = False
-    ) -> Message:
+    async def edit(
+        self, message: Message, text: str, replace: bool = False, final: bool = False
+    ) -> Message | bool:
         edited = text
         if not replace:
-            edited = "\n".join(self.edit_cache[message.id][:-1]) + f"\n\n{text}"
-        del self.edit_cache[message.id]
-        return await self.exec(
+            if final:
+                edited = (
+                    "\n".join(self.edit_cache[message.id][:-1]) + f"\n\n{text}"
+                ).strip()
+            else:
+                if text != "✅":  # Tool call
+                    self.edit_cache[message.id].insert(-1, text)
+                else:  # Tool result
+                    self.edit_cache[message.id][-2] = (
+                        f"✅ {self.edit_cache[message.id][-2][2:-3]}"
+                    )
+                edited = "\n".join(self.edit_cache[message.id])
+        msg: Message | bool = await self.exec(
             self.bot.edit_message_text, edited, message.chat.id, message.id
         )
+        if replace or final:
+            del self.edit_cache[message.id]
+        return msg
