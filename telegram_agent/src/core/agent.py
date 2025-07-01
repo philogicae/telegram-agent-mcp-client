@@ -124,6 +124,13 @@ class Agent:
                     )
                 elif isinstance(msg.content, str):
                     text = msg.content.strip()
+                # For Gemini Thinking
+                """ elif isinstance(msg.content, list):
+                    for item in msg.content:
+                        if isinstance(item, str):
+                            text = item.strip()
+                        elif isinstance(item, dict):
+                            think = item["thinking"].strip() """
 
                 # Tools
                 tool_calls: str | None = None

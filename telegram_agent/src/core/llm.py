@@ -48,6 +48,7 @@ def get_llm() -> LanguageModelLike:
             disable_streaming="tool_calling",
             temperature=0.5,
             thinking_budget=1024,  # -1 for dynamic/unlimited
+            # include_thoughts=True,
         )
     return ChatOpenAI(
         base_url=getenv("OPENAI_API_BASE"),
