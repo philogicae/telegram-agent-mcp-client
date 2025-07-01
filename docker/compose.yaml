@@ -29,13 +29,17 @@ services:
       dockerfile: docker/Dockerfile
     image: telegram-agent
     restart: unless-stopped
-    ports:
-      - 8787:8000
+    command: ["uv", "run", "--locked", "--no-sync", "-m", "telegram_agent", "--telegram"]
     env_file:
       - ../.env
+    volumes:
+      - agent_data:/data
     <<: [*default-dns, *default-logging, *default-networks]
 
 networks:
   ai-agent:
     name: ai-agent
     driver: bridge
+
+volumes:
+  agent_data:

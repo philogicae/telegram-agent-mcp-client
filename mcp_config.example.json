@@ -57,7 +57,8 @@
     "torrent-client": {
       "command": "uvx rqbit-mcp",
       "env": {
-        "RQBIT_URL": "http://localhost:3030"
+        "RQBIT_URL": "http://localhost:3030",
+        "RQBIT_HTTP_BASIC_AUTH_USERPASS": "username:password" // Optional
       },
       "edit": {
         "start_torrent": false,
