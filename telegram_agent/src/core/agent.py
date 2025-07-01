@@ -182,8 +182,8 @@ class Agent:
             # Final step
             if not step:
                 step = "..."  # Avoid empty reply
-            elif step in "✅❌":
-                step = text
+            elif step in "✅❌" and text:
+                step = str(text)
             if dev:
                 console.print(
                     "-> FINAL: "
