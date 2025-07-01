@@ -15,11 +15,12 @@ load_dotenv()
 class AgenticTelegramBot(AgenticBot):
     def __init__(self, telegram_id: str, dev: bool = False, **kwargs) -> None:  # type: ignore
         self.log = TelegramLogger()
-        self.bot = TelegramBot(telegram_id, dev=dev, **kwargs)
-        self.agent = Agent(dev=dev)
+        self.bot = TelegramBot(telegram_id, **kwargs)
+        self.dev = dev
 
     async def run(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
         try:
+            self.agent = await Agent.init_with_tools(self.dev)
             await self.bot.initialize(**self.prepare_handlers(**kwargs))
             self.log.info("TelegramBot is ready!")
             await self.bot.start()
@@ -41,11 +42,5 @@ async def run_telegram_bot(dev: bool = False) -> None:
         if not telegram_id:
             raise ValueError("TELEGRAM_BOT_ID is not set")
 
-    bot = AgenticTelegramBot(
-        str(telegram_id),
-        dev=True,
-        delay=0.2,
-        group_msg_trigger="!",
-        waiting="💭  I'm thinking...",
-    )
-    await bot.run(chat=telegram_chat)
+    with AgenticTelegramBot(telegram_id, dev) as bot:
+        await bot.run(chat=telegram_chat)

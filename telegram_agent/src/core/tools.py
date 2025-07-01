@@ -1,6 +1,3 @@
-from asyncio import get_running_loop
-
-import nest_asyncio
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from rich.console import Console
@@ -8,11 +5,10 @@ from rich.console import Console
 from .config import get_config
 
 
-def get_tools() -> list[BaseTool]:
-    nest_asyncio.apply()  # type: ignore
+async def get_tools() -> list[BaseTool]:
     config, edit_config = get_config()
     client = MultiServerMCPClient(config)
-    raw_tools = get_running_loop().run_until_complete(client.get_tools())
+    raw_tools = await client.get_tools()
     tools: list[BaseTool] = []
     for tool in raw_tools:
         if tool.name in edit_config:

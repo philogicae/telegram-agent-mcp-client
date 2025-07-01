@@ -1,3 +1,4 @@
+from enum import Enum
 from json import dump
 from os import getenv, path
 from typing import Any
@@ -11,6 +12,12 @@ load_dotenv()
 class ThinkTag:
     start = getenv("THINK_TAG_START")
     end = getenv("THINK_TAG_END")
+
+
+class Flag(Enum):
+    ERROR = "error"
+    FAILED = "failed"
+    ERREUR = "erreur"
 
 
 def get_config() -> tuple[dict[str, Any], dict[str, Any]]:

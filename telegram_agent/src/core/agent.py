@@ -1,19 +1,22 @@
 from datetime import datetime
 from os import makedirs
 from re import sub
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Callable, Sequence
 
 from aiosqlite import connect
 from langchain_core.messages import HumanMessage
+from langchain_core.tools import BaseTool
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import create_react_agent
+from langgraph.prebuilt.tool_node import ToolNode
 from langgraph.store.memory import InMemoryStore
 from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
 from telebot.types import Message as TelegramMessage
 
-from .config import ThinkTag
+from .config import Flag, ThinkTag
 from .llm import get_llm
 from .prompts import SYSTEM_PROMPT
 from .tools import get_tools
@@ -30,19 +33,49 @@ def store() -> InMemoryStore:
 
 
 class Agent:
-    def __init__(self, dev: bool = False) -> None:
+    agent: CompiledStateGraph[Any]
+    dev: bool
+    debug: bool
+    tools: Sequence[BaseTool | Callable[..., Any] | dict[str, Any]] | ToolNode | None
+
+    def __init__(
+        self,
+        tools: (
+            Sequence[BaseTool | Callable[..., Any] | dict[str, Any]] | ToolNode | None
+        ) = None,
+        dev: bool = False,
+        debug: bool = False,
+    ) -> None:
         self.agent = create_react_agent(  # TODO: Swarm agents
             name="Root Agent",
             model=get_llm(),
-            tools=get_tools(),
+            tools=tools if tools else [],
             prompt=SYSTEM_PROMPT,
             checkpointer=checkpointer(dev),
             store=store(),
-            debug=False,
+            debug=debug,
         )
+        self.tools = tools
+        self.dev = dev
+        self.debug = debug
+
+    def __enter__(self) -> "Agent":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+        pass
+
+    @staticmethod
+    async def load_tools() -> list[BaseTool]:
+        return await get_tools()
+
+    @staticmethod
+    async def init_with_tools(dev: bool = False, debug: bool = False) -> "Agent":
+        tools = await Agent.load_tools()
+        return Agent(tools, dev, debug)
 
     async def chat(
-        self, content: str | TelegramMessage | Any, dev: bool = False
+        self, content: str | TelegramMessage | Any
     ) -> AsyncGenerator[tuple[str, bool], None]:
         console, thread_id, user = Console(), "test", None
         if isinstance(content, str):
@@ -130,14 +163,8 @@ class Agent:
                     if called_tool:
                         if called_tool != "think":
                             step = "✅"
-                            for flag in [
-                                " error",
-                                "error ",
-                                " failed",
-                                "failed ",
-                                "erreur",
-                            ]:
-                                if flag in text.lower():
+                            for flag in Flag:
+                                if flag.value in text.lower():
                                     step = "❌"
                                     break
                         called_tool = None
@@ -164,7 +191,7 @@ class Agent:
 
                 # Intermediate step
                 if step and not done:
-                    if dev:
+                    if self.dev:
                         console.print(f"-> YIELD: {step}")
                     yield step, False
 
@@ -184,7 +211,7 @@ class Agent:
                 step = "..."  # Avoid empty reply
             elif step in "✅❌" and text:
                 step = str(text)
-            if dev:
+            if self.dev:
                 console.print(
                     "-> FINAL: "
                     + (
@@ -195,28 +222,24 @@ class Agent:
                 )
             yield step, True
 
-    async def cli_chat(self, content: str, dev: bool = False) -> None:
-        async for step, _ in self.chat(content, dev):
-            if dev and step:
-                input("continue...")
-
 
 async def run_agent(dev: bool = False) -> None:
-    agent = Agent()
     content = ""
-
     # content = "Find magnet link of the last adaptation of Berserk"
     # content = "Check torrent list and get statuses"
     # content = "trouve le premier film gladiator"
 
-    if content:
-        print(f"> {content}")
-    while True:
-        try:
-            content = (content or input("> ")).strip()
-            if not content:
-                exit()
-            await agent.cli_chat(content, dev)
-            content = ""
-        except KeyboardInterrupt:
-            exit()
+    with await Agent.init_with_tools(dev) as agent:
+        if content:
+            print(f"> {content}")
+        while True:
+            try:
+                content = (content or input("> ")).strip()
+                if not content:
+                    break
+                async for step, done in agent.chat(content):
+                    if dev and step and not done:
+                        input("Press enter to continue...")
+                content = ""
+            except KeyboardInterrupt:
+                break

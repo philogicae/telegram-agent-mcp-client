@@ -43,6 +43,9 @@ class Logger(ABC):
 
 
 class Bot(ABC):
+    group_msg_trigger: str = "!"
+    waiting: str = "💭  I'm thinking..."
+
     @abstractmethod
     async def initialize(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
         pass
@@ -53,9 +56,15 @@ class Bot(ABC):
 
 
 class AgenticBot(ABC):
-    log: Logger
     bot: Any
+    log: Logger
     agent: Any
+
+    def __enter__(self) -> "AgenticBot":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+        pass
 
     def prepare_handlers(
         self, **kwargs: Callable[..., Awaitable[Any]]
@@ -69,7 +78,7 @@ class AgenticBot(ABC):
 
 def handler(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
     @wraps(func)
-    async def wrapper(agentic: AgenticBot, *args, **kwargs) -> Any:  # type: ignore
-        return await func(agentic, *args, **kwargs)
+    async def wrapper(instance: AgenticBot, *args, **kwargs) -> Any:  # type: ignore
+        return await func(instance, *args, **kwargs)
 
     return wrapper

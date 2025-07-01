@@ -10,17 +10,13 @@ from ..abstract import Bot
 
 class TelegramBot(Bot):
     bot: AsyncTeleBot
-    dev: bool = False
     last_call: float = 0
     delay: float = 0.2
-    group_msg_trigger: str = "!"
-    waiting: str = "💭  I'm thinking..."
     edit_cache: dict[int, list[str]] = {}
 
     def __init__(
         self,
         telegram_id: str,
-        dev: bool = False,
         delay: float | None = None,
         group_msg_trigger: str | None = None,
         waiting: str | None = None,
@@ -37,8 +33,6 @@ class TelegramBot(Bot):
             self.group_msg_trigger = group_msg_trigger
         if waiting:
             self.waiting = waiting
-        if dev:
-            self.dev = dev
 
     async def initialize(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
         await self.bot.set_my_commands([])
@@ -63,7 +57,7 @@ class TelegramBot(Bot):
                 message.text = text[1:].strip()
             handler = kwargs.get("chat")
             if handler:
-                await handler(message, dev=self.dev)
+                await handler(message)
 
     async def start(self) -> None:
         await self.bot.infinity_polling(skip_pending=True, timeout=300)
