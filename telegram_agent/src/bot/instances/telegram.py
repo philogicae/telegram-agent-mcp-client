@@ -14,7 +14,7 @@ class TelegramBot(Bot):
     last_call: float = 0
     delay: float = 0.2
     group_msg_trigger: str = "!"
-    waiting: str = "💭 I'm thinking..."
+    waiting: str = "💭  I'm thinking..."
     edit_cache: dict[int, list[str]] = {}
 
     def __init__(
@@ -125,12 +125,13 @@ class TelegramBot(Bot):
                     "\n".join(self.edit_cache[message.id][:-1]) + f"\n\n{text}"
                 ).strip()
             else:
-                if text != "✅":  # Tool call
-                    self.edit_cache[message.id].insert(-1, text)
+                if text not in "✅❌":  # Tool call
+                    self.edit_cache[message.id][-1] = text
                 else:  # Tool result
-                    self.edit_cache[message.id][-2] = (
-                        f"✅ {self.edit_cache[message.id][-2][2:-3]}"
+                    self.edit_cache[message.id][-1] = (
+                        f"{text}  {self.edit_cache[message.id][-1][3:-3]}"
                     )
+                    self.edit_cache[message.id].append(self.waiting)
                 edited = "\n".join(self.edit_cache[message.id])
         msg: Message | bool = await self.exec(
             self.bot.edit_message_text, edited, message.chat.id, message.id

@@ -19,13 +19,13 @@ from .prompts import SYSTEM_PROMPT
 from .tools import get_tools
 
 
-def create_short_term_memory(dev: bool = False) -> AsyncSqliteSaver:
-    db_folder = f"tmp{'/dev' if dev else ''}"
-    makedirs(db_folder, exist_ok=True)
-    return AsyncSqliteSaver(connect(f"{db_folder}/mem.sqlite"))
+def checkpointer(dev: bool = False) -> AsyncSqliteSaver:
+    data_folder = "data/dev" if dev else "data/prod"
+    makedirs(data_folder, exist_ok=True)
+    return AsyncSqliteSaver(connect(f"{data_folder}/checkpointer.sqlite"))
 
 
-def create_long_term_memory() -> InMemoryStore:
+def store() -> InMemoryStore:
     return InMemoryStore()
 
 
@@ -36,8 +36,8 @@ class Agent:
             model=get_llm(),
             tools=get_tools(),
             prompt=SYSTEM_PROMPT,
-            checkpointer=create_short_term_memory(dev),
-            store=create_long_term_memory(),
+            checkpointer=checkpointer(dev),
+            store=store(),
             debug=False,
         )
 
@@ -130,6 +130,16 @@ class Agent:
                     if called_tool:
                         if called_tool != "think":
                             step = "✅"
+                            for flag in [
+                                " error",
+                                "error ",
+                                " failed",
+                                "failed ",
+                                "erreur",
+                            ]:
+                                if flag in text.lower():
+                                    step = "❌"
+                                    break
                         called_tool = None
                     else:
                         step, done = text, True
@@ -172,6 +182,8 @@ class Agent:
             # Final step
             if not step:
                 step = "..."  # Avoid empty reply
+            elif step in "✅❌":
+                step = text
             if dev:
                 console.print(
                     "-> FINAL: "

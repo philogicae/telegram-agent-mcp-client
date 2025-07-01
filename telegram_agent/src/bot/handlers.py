@@ -12,37 +12,40 @@ TELEGRAM_CHAT_DEV = getenv("TELEGRAM_CHAT_DEV")
 
 
 async def telegram_report_issue(
-    agentic: AgenticBot, msg: Message, e: Exception
+    agentic: AgenticBot, orig_msg: Message, reply_msg: Message, e: Exception | str
 ) -> None:
-    agentic.log.info(f"-> TELEGRAM EXCEPTION: {e}")
-    user, name = unpack_user(msg)
+    cause = "Telegram" if isinstance(e, Exception) else "Agent"
+    agentic.log.info(f"-> {cause} Exception: {e}")
+    user, name = unpack_user(orig_msg)
     if TELEGRAM_CHAT_DEV:
         await agentic.bot.send(
             TELEGRAM_CHAT_DEV,
-            f"⚠️ Issue detected on chat:\n- *{msg.chat.id}* | {msg.chat.title or 'Private'}\n- @{user}: {name}",
+            f"⚠️ {cause} issue detected on chat:\n- *{orig_msg.chat.id}* | {orig_msg.chat.title or 'Private'}\n- @{user}: {name}",
         )
     await agentic.bot.reply(
-        msg,
-        "⚠️ Something went wrong...\n🚒 Reported automatically to admin",
+        reply_msg,
+        f"⚠️ Something went wrong with {cause}...\n🚒 Reported automatically to admin",
     )
 
 
 @handler
-async def telegram_chat(
-    agentic: AgenticBot, message: Message, dev: bool = False
-) -> None:
-    timer = agentic.log.received(message)
-    if message.text in ["/start", "/help"]:
-        await agentic.bot.send(message, "🌟 Welcome! How can I help you?")
+async def telegram_chat(agentic: AgenticBot, msg: Message, dev: bool = False) -> None:
+    timer = agentic.log.received(msg)
+    if msg.text in ["/start", "/help"]:
+        await agentic.bot.send(msg, "🌟 Welcome! How can I help you?")
         return
 
-    init = agentic.bot.reply if message.chat.type != "private" else agentic.bot.send
-    reply = await init(message)
+    init = agentic.bot.reply if msg.chat.type != "private" else agentic.bot.send
+    reply = await init(msg)
     try:
-        async for step, done in agentic.agent.chat(message, dev):
+        async for step, done in agentic.agent.chat(msg, dev):
             await agentic.bot.edit(reply, fixed_markdown(step), final=done)
+            if step == "❌":
+                await sleep(0.5)
+                await telegram_report_issue(agentic, msg, reply, "Tool error")
             if not done:
                 await sleep(0.5)  # No need to spam
     except Exception as e:
-        await telegram_report_issue(agentic, message, e)
-    agentic.log.sent(message, timer)
+        await sleep(0.5)
+        await telegram_report_issue(agentic, msg, reply, e)
+    agentic.log.sent(msg, timer)

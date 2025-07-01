@@ -43,9 +43,9 @@ async def run_telegram_bot(dev: bool = False) -> None:
 
     bot = AgenticTelegramBot(
         str(telegram_id),
-        dev=dev,
+        dev=True,
         delay=0.2,
         group_msg_trigger="!",
-        waiting="💭 I'm thinking...",
+        waiting="💭  I'm thinking...",
     )
     await bot.run(chat=telegram_chat)

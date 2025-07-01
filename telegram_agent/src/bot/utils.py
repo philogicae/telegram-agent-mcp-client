@@ -37,7 +37,8 @@ def fixed_markdown(text: str) -> str:
     }
     for k, v in replacements.items():
         text = text.replace(k, v)
-    return escape_single_char(text, ["*", "~"]).strip()
+    escaped = ["*", "~"]
+    return escape_single_char(text, escaped).strip()
 
 
 def unpack_user(msg: Message) -> tuple[str, str]:
