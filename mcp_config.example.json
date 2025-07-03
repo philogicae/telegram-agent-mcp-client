@@ -48,18 +48,14 @@
       "disabled": true
     },
     "torrent-search": {
-      "serverUrl": "http://localhost:8765/sse",
+      "serverUrl": "http://localhost:8005/sse",
       "edit": {
         "get_torrent_info": false
       },
       "disabled": true
     },
     "torrent-client": {
-      "command": "uvx rqbit-mcp",
-      "env": {
-        "RQBIT_URL": "http://localhost:3030",
-        "RQBIT_HTTP_BASIC_AUTH_USERPASS": "username:password" // Optional
-      },
+      "serverUrl": "http://localhost:8006/sse",
       "edit": {
         "start_torrent": false,
         "pause_torrent": false,

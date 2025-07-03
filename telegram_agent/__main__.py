@@ -3,7 +3,8 @@ from asyncio import run
 
 from .src import run_agent, run_telegram_bot
 
-if __name__ == "__main__":
+
+def cli() -> None:
     parser = argparse.ArgumentParser(description="Run Telegram Agent MCP Client")
     parser.add_argument(
         "--telegram",
@@ -21,3 +22,7 @@ if __name__ == "__main__":
         run(run_telegram_bot(dev=args.dev))
     else:
         run(run_agent(dev=args.dev))
+
+
+if __name__ == "__main__":
+    cli()

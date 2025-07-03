@@ -152,13 +152,6 @@ class Agent:
                         Panel(escape(think), title="Think", border_style="blue3")
                     )
 
-                if tool_calls:
-                    console.print(
-                        Panel(escape(tool_calls), title="Tools", border_style="red")
-                    )
-                    if called_tool != "think":
-                        step = f"🛠️ *{sub('_|-', ' ', str(called_tool)).title()}*..."
-
                 if text:
                     console.print(
                         Panel(
@@ -177,6 +170,13 @@ class Agent:
                         called_tool = None
                     else:
                         step, done = text, True
+
+                if tool_calls:
+                    console.print(
+                        Panel(escape(tool_calls), title="Tools", border_style="red")
+                    )
+                    if called_tool != "think":
+                        step = f"🛠️ *{sub('_|-', ' ', str(called_tool)).title()}*..."
 
                 # Usage
                 if hasattr(msg, "usage_metadata") and msg.usage_metadata:

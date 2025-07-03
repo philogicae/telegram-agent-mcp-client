@@ -15,16 +15,15 @@ class ThinkTag:
 
 
 class Flag(Enum):
-    ERROR = "error"
-    FAILED = "failed"
+    _ERROR = " error"
+    ERROR_ = "error "
+    _FAILED = " failed"
+    FAILED_ = "failed "
     ERREUR = "erreur"
 
 
 def get_config() -> tuple[dict[str, Any], dict[str, Any]]:
-    config_file = path.join(
-        path.dirname(path.dirname(path.dirname(path.dirname(__file__)))),
-        "mcp_config.json",
-    )
+    config_file = getenv("MCP_CONFIG_FILE", "mcp_config.json")
     if not path.exists(config_file):
         print("mcp_config.json file not found: creating a empty one")
         with open(config_file, "w", encoding="utf-8") as f:
