@@ -63,6 +63,21 @@
         "get_torrent_details": false
       },
       "disabled": true
+    },
+    "emby-media-server": {
+      "command": "uvx mcp-openapi-proxy",
+      "env": {
+        "OPENAPI_SPEC_URL": "http://localhost:8096/openapi.json",
+        "EXTRA_HEADERS": "X-Emby-Token:<add-your-key>",
+        "TOOL_WHITELIST": "/Library/Refresh"
+      },
+      "edit": {
+        "post_Library_Refresh": {
+          "name": "refresh_media_library",
+          "description": "Refresh media library and return no response body."
+        }
+      },
+      "disabled": true
     }
   }
 }
