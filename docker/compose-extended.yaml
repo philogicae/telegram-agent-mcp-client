@@ -26,7 +26,7 @@ services:
       dockerfile: docker/Dockerfile
     image: telegram-agent
     restart: unless-stopped
-    command: "uv run --locked --no-sync -m telegram_agent --telegram"
+    command: "telegram-agent-mcp-client --telegram"
     env_file:
       - ../.env
     volumes:
@@ -37,7 +37,7 @@ services:
     container_name: telegram-agent-dev
     image: telegram-agent
     restart: unless-stopped
-    command: "uv run --locked --no-sync -m telegram_agent --telegram --dev"
+    command: "telegram-agent-mcp-client --telegram --dev"
     env_file:
       - ../.env
     volumes:
@@ -66,10 +66,6 @@ services:
       - 4240:4240 # TCP/uTP BitTorrent port
     env_file:
       - rqbit.env
-    environment:
-      RQBIT_UPNP_SERVER_ENABLE: true
-      RQBIT_UPNP_SERVER_FRIENDLY_NAME: rqbit-docker
-      RQBIT_HTTP_API_LISTEN_ADDR: 0.0.0.0:3030
     volumes:
       - rqbit_db:/home/rqbit/db
       - rqbit_cache:/home/rqbit/cache
@@ -80,16 +76,29 @@ services:
   # MCP services
   torrent-search-mcp:
     container_name: torrent-search-mcp
-    build:
-      context: ../../torrent-search-mcp
-      dockerfile: docker/Dockerfile
+    build: ../../torrent-search-mcp
     image: torrent-search-mcp
     restart: unless-stopped
     ports:
-      - 8765:8000
+      - 8005:8000
     env_file:
       - torrent_search.env
+    volumes:
+      - torrents:/torrents
     <<: [*default-dns, *default-logging, *default-networks]
+
+  rqbit-mcp:
+    container_name: rqbit-mcp
+    build: ../../rqbit-mcp
+    image: rqbit-mcp
+    restart: unless-stopped
+    ports:
+      - 8006:8000
+    env_file:
+      - rqbit.env
+    volumes:
+      - torrents:/torrents
+    <<: [*default-logging, *default-networks]
 
 networks:
   ai-agent:
@@ -100,5 +109,6 @@ networks:
 volumes:
   agent_data:
   n8n_data:
+  torrents:
   rqbit_db:
   rqbit_cache:

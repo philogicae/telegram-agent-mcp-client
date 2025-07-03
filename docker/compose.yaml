@@ -29,7 +29,7 @@ services:
       dockerfile: docker/Dockerfile
     image: telegram-agent
     restart: unless-stopped
-    command: ["uv", "run", "--locked", "--no-sync", "-m", "telegram_agent", "--telegram"]
+    command: "telegram-agent-mcp-client --telegram"
     env_file:
       - ../.env
     volumes:
