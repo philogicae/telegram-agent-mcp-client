@@ -1,30 +1,30 @@
 [project]
 name = "telegram-agent-mcp-client"
-version = "0.5.0"
+version = "0.6.0"
 description = "Telegram Agent MCP Client"
 authors = [{ name = "philogicae" }]
 requires-python = ">=3.11,<4.0"
 readme = "README.md"
 license = "MIT"
 dependencies = [
-    "rich>=14.0.0",
-    "pydantic>=2.11.7",
-    "python-dotenv>=1.1.0",
-    "pyjson5>=1.6.9",
-    "langchain>=0.3.25",
-    "langchain-openai>=0.3.24",
-    "langchain-groq>=0.3.2",
-    "langchain-cerebras>=0.5.0",
-    "langchain-google-genai>=2.1.5",
-    "langchain-ollama>=0.3.3",
-    "langchain-core>=0.3.65",
-    "langchain-mcp-adapters>=0.1.7",
-    "langgraph>=0.4.8",
-    "pytelegrambotapi>=4.27.0",
-    "aiohttp>=3.12.13",
-    "aiosqlite>=0.21.0",
-    "langgraph-checkpoint-sqlite>=2.0.10",
-    "nest-asyncio>=1.6.0",
+    "rich",
+    "pydantic",
+    "python-dotenv",
+    "pyjson5",
+    "langchain",
+    "langchain-openai",
+    "langchain-groq",
+    "langchain-cerebras",
+    "langchain-google-genai",
+    "langchain-ollama",
+    "langchain-core",
+    "langchain-mcp-adapters",
+    "langgraph",
+    "pytelegrambotapi",
+    "aiohttp",
+    "aiosqlite",
+    "langgraph-checkpoint-sqlite",
+    "nest-asyncio",
 ]
 
 [project.urls]
@@ -36,7 +36,7 @@ DeepWiki = "https://deepwiki.com/philogicae/telegram-agent-mcp-client"
 telegram-agent-mcp-client = "telegram_agent.__main__:cli"
 
 [dependency-groups]
-dev = ["ruff>=0.12.0", "pytest>=8.4.0", "pytest-asyncio>=1.0.0", "mypy>=1.16.1"]
+dev = ["ruff", "pytest", "pytest-asyncio", "mypy"]
 
 [tool.hatch.build]
 include = ["telegram_agent"]
