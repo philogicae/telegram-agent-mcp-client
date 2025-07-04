@@ -24,14 +24,12 @@ x-networks:
 services:
   telegram-agent:
     container_name: telegram-agent
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
+    build: .
     image: telegram-agent
     restart: unless-stopped
     command: "telegram-agent-mcp-client --telegram"
     env_file:
-      - ../.env
+      - .env
     volumes:
       - agent_data:/data
     <<: [*default-dns, *default-logging, *default-networks]

@@ -21,30 +21,28 @@ x-networks: &default-networks
 services:
   telegram-agent:
     container_name: telegram-agent
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
+    build: .
     image: telegram-agent
     restart: unless-stopped
     command: "telegram-agent-mcp-client --telegram"
     env_file:
-      - ../.env
+      - .env
     volumes:
       - agent_data:/data
     <<: [*default-dns, *default-logging, *default-networks]
-  
+
   telegram-agent-dev:
     container_name: telegram-agent-dev
     image: telegram-agent
     restart: unless-stopped
     command: "telegram-agent-mcp-client --telegram --dev"
     env_file:
-      - ../.env
+      - .env
     volumes:
       - agent_data:/data
     <<: [*default-dns, *default-logging, *default-networks]
 
-  # Core services
+  # External services
   n8n:
     container_name: n8n
     image: docker.n8n.io/n8nio/n8n:next
@@ -52,7 +50,7 @@ services:
     ports:
       - 5678:5678
     env_file:
-      - n8n.env
+      - docker-envs/n8n.env
     volumes:
       - n8n_data:/home/node/.n8n
     <<: [*default-dns, *default-logging, *default-networks]
@@ -65,7 +63,7 @@ services:
       - 3030:3030 # HTTP API port
       - 4240:4240 # TCP/uTP BitTorrent port
     env_file:
-      - rqbit.env
+      - docker-envs/rqbit.env
     volumes:
       - rqbit_db:/home/rqbit/db
       - rqbit_cache:/home/rqbit/cache
@@ -76,26 +74,26 @@ services:
   # MCP services
   torrent-search-mcp:
     container_name: torrent-search-mcp
-    build: ../../torrent-search-mcp
+    build: ../torrent-search-mcp
     image: torrent-search-mcp
     restart: unless-stopped
     ports:
       - 8005:8000
     env_file:
-      - torrent_search.env
+      - docker-envs/torrent_search.env
     volumes:
       - torrents:/torrents
     <<: [*default-dns, *default-logging, *default-networks]
 
   rqbit-mcp:
     container_name: rqbit-mcp
-    build: ../../rqbit-mcp
+    build: ../rqbit-mcp
     image: rqbit-mcp
     restart: unless-stopped
     ports:
       - 8006:8000
     env_file:
-      - rqbit.env
+      - docker-envs/rqbit.env
     volumes:
       - torrents:/torrents
     <<: [*default-logging, *default-networks]

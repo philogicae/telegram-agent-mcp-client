@@ -19,5 +19,5 @@ wheels/
 **/*.env
 .venv
 mcp_config.json
-docker/trackers.txt
+docker-envs/*.txt
 data
