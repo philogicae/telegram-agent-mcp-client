@@ -9,7 +9,7 @@ from .bot import (
     telegram_chat,
     telegram_report_issue,
 )
-from .core import Agent, run_agent
+from .core import Agent, run_agent, run_tools
 
 __all__ = [
     "AgenticBot",
@@ -23,4 +23,5 @@ __all__ = [
     "telegram_report_issue",
     "run_agent",
     "run_telegram_bot",
+    "run_tools",
 ]
