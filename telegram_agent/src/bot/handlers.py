@@ -14,13 +14,16 @@ TELEGRAM_CHAT_DEV = getenv("TELEGRAM_CHAT_DEV")
 async def telegram_report_issue(
     instance: AgenticBot, orig_msg: Message, reply_msg: Message, e: Exception | str
 ) -> None:
-    cause = "Telegram" if isinstance(e, Exception) else "Agent"
+    cause, error = "Telegram", ""
+    if isinstance(e, str):
+        cause = "Agent"
+        error = f"\n- {e}"
     instance.log.info(f"-> {cause} Exception: {e}")
     user, name = unpack_user(orig_msg)
     if TELEGRAM_CHAT_DEV:
         await instance.bot.send(
             TELEGRAM_CHAT_DEV,
-            f"⚠️ {cause} issue detected on chat:\n- *{orig_msg.chat.id}* | {orig_msg.chat.title or 'Private'}\n- @{user}: {name}",
+            f"⚠️ {cause} issue detected on chat:\n- *{orig_msg.chat.id}* | {orig_msg.chat.title or 'Private'}\n- @{user}: {name}{error}",
         )
     await instance.bot.reply(
         reply_msg,
@@ -40,12 +43,16 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
     try:
         async for step, done in instance.agent.chat(msg):
             await instance.bot.edit(reply, fixed_markdown(step), final=done)
-            if step == "❌":
-                await sleep(0.5)
-                await telegram_report_issue(instance, msg, reply, "Tool error")
+            if step.startswith("✅"):
+                pass
+                # tool = step[3:]
+                # TODO: pinned new download message
+            elif step.startswith("❌"):
+                await telegram_report_issue(
+                    instance, msg, reply, f"Tool error = {step[3:]}"
+                )
             if not done:
                 await sleep(0.5)  # No need to spam
     except Exception as e:
-        await sleep(0.5)
         await telegram_report_issue(instance, msg, reply, e)
     instance.log.sent(msg, timer)

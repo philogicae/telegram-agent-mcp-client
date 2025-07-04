@@ -88,7 +88,7 @@ class Agent:
             console.print(Panel(escape(content), title="User", border_style="white"))
 
         if not content:
-            yield "", True
+            yield "...", True  # Avoid empty reply
         else:
             config = {"configurable": {"thread_id": thread_id}}
             total_calls, total_tokens = 0, 0
@@ -167,6 +167,7 @@ class Agent:
                                 if flag.value in text.lower():
                                     step = "❌"
                                     break
+                            step += f": {called_tool}"
                         called_tool = None
                     else:
                         step, done = text, True
@@ -216,7 +217,7 @@ class Agent:
             # Final step
             if not step:
                 step = "..."  # Avoid empty reply
-            elif step in "✅❌" and text:
+            elif (step.startswith("✅") or step.startswith("❌")) and text:
                 step = str(text)
             if self.dev:
                 console.print(

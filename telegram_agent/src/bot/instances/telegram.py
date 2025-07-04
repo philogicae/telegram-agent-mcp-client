@@ -119,11 +119,11 @@ class TelegramBot(Bot):
                     "\n".join(self.edit_cache[message.id][:-1]) + f"\n\n{text}"
                 ).strip()
             else:
-                if text not in "✅❌":  # Tool call
+                if not text.startswith("✅") and not text.startswith("❌"):  # Tool call
                     self.edit_cache[message.id][-1] = text
                 else:  # Tool result
                     self.edit_cache[message.id][-1] = (
-                        f"{text}  {self.edit_cache[message.id][-1][3:-3]}"
+                        f"{text[0]}  {self.edit_cache[message.id][-1][3:-3]}"
                     )
                     self.edit_cache[message.id].append(self.waiting)
                 edited = "\n".join(self.edit_cache[message.id])
