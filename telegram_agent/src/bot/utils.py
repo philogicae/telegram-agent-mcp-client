@@ -48,3 +48,11 @@ def unpack_user(msg: Message) -> tuple[str, str]:
             msg.from_user.first_name,
         )
     return "?", "Unknown"
+
+
+def progress_bar(
+    current: int | float, total: int | float, prefix: str = "", suffix: str = ""
+) -> str:
+    percent = 100 * current / total
+    progress = "█" * int(percent) + " " * (100 - int(percent))
+    return f"{prefix} |{progress}| {percent:.1f}% {suffix}"
