@@ -76,7 +76,7 @@ class Agent:
 
     async def chat(
         self, content: str | TelegramMessage | Any
-    ) -> AsyncGenerator[tuple[str, bool], None]:
+    ) -> AsyncGenerator[tuple[str, bool, dict[str, str]], None]:
         console, thread_id, user = Console(), "test", None
         if isinstance(content, str):
             content = content.strip()
@@ -88,7 +88,7 @@ class Agent:
             console.print(Panel(escape(content), title="User", border_style="white"))
 
         if not content:
-            yield "...", True  # Avoid empty reply
+            yield "...", True, {}  # Avoid empty reply
         else:
             config = {"configurable": {"thread_id": thread_id}}
             total_calls, total_tokens = 0, 0
@@ -110,6 +110,7 @@ class Agent:
                     total_tool_calls += 1
                 else:
                     total_agent_calls += 1
+                    called_tool = None
                 msg = chunk[msg_type]["messages"][0]
 
                 # Think and Text
@@ -145,7 +146,9 @@ class Agent:
                     tool_calls = "\n".join(listed)
 
                 # Logging
-                step, done = "", False
+                step: str = ""
+                done: bool = False
+                extra: dict[str, str] = {}
 
                 if think:
                     console.print(
@@ -156,19 +159,20 @@ class Agent:
                     console.print(
                         Panel(
                             escape(text),
-                            title="Result" if called_tool else "Agent",
-                            border_style=("green3" if called_tool else "bright_cyan"),
+                            title="Result" if msg_type == "tools" else "Agent",
+                            border_style=(
+                                "green3" if msg_type == "tools" else "bright_cyan"
+                            ),
                         )
                     )
-                    if called_tool:
-                        if called_tool != "think":
+                    if msg_type == "tools":
+                        if called_tool and called_tool != "think":
                             step = "✅"
                             for flag in Flag:
                                 if flag.value in text.lower():
                                     step = "❌"
                                     break
-                            step += f": {called_tool}"
-                        called_tool = None
+                            extra = {"tool": called_tool, "output": text}
                     else:
                         step, done = text, True
 
@@ -176,8 +180,8 @@ class Agent:
                     console.print(
                         Panel(escape(tool_calls), title="Tools", border_style="red")
                     )
-                    if called_tool != "think":
-                        step = f"🛠️ *{sub('_|-', ' ', str(called_tool)).title()}*..."
+                    if called_tool and called_tool != "think":
+                        step = f"🛠️  *{sub('_|-', ' ', str(called_tool)).title()}*..."
 
                 # Usage
                 if hasattr(msg, "usage_metadata") and msg.usage_metadata:
@@ -200,8 +204,11 @@ class Agent:
                 # Intermediate step
                 if step and not done:
                     if self.dev:
-                        console.print(f"-> YIELD: {step}")
-                    yield step, False
+                        intermediate_step = f"-> YIELD: {step}"
+                        if extra:
+                            intermediate_step += f" {extra['tool']}"
+                        console.print(intermediate_step)
+                    yield step, False, extra
 
             # Usage Summary
             console.print(
@@ -217,7 +224,7 @@ class Agent:
             # Final step
             if not step:
                 step = "..."  # Avoid empty reply
-            elif (step.startswith("✅") or step.startswith("❌")) and text:
+            elif step in "✅❌" and text:
                 step = str(text)
             if self.dev:
                 console.print(
@@ -228,7 +235,7 @@ class Agent:
                         else step
                     )
                 )
-            yield step, True
+            yield step, True, extra
 
 
 async def run_agent(dev: bool = False) -> None:
@@ -245,7 +252,7 @@ async def run_agent(dev: bool = False) -> None:
                 content = (content or input("> ")).strip()
                 if not content:
                     break
-                async for step, done in agent.chat(content):
+                async for step, done, _ in agent.chat(content):
                     if dev and step and not done:
                         input("Press enter to continue...")
                 content = ""

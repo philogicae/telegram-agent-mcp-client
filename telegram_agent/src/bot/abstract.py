@@ -44,7 +44,7 @@ class Logger(ABC):
 
 class Bot(ABC):
     group_msg_trigger: str = "!"
-    waiting: str = "💭  I'm thinking..."
+    waiting: str = "💭  _I'm thinking_..."
 
     @abstractmethod
     async def initialize(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:

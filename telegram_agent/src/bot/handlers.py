@@ -11,6 +11,7 @@ load_dotenv()
 TELEGRAM_CHAT_DEV = getenv("TELEGRAM_CHAT_DEV")
 
 
+@handler
 async def telegram_report_issue(
     instance: AgenticBot, orig_msg: Message, reply_msg: Message, e: Exception | str
 ) -> None:
@@ -41,18 +42,24 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
     init = instance.bot.reply if msg.chat.type != "private" else instance.bot.send
     reply = await init(msg)
     try:
-        async for step, done in instance.agent.chat(msg):
+        async for step, done, extra in instance.agent.chat(msg):
             await instance.bot.edit(reply, fixed_markdown(step), final=done)
-            if step.startswith("✅"):
-                pass
-                # tool = step[3:]
-                # TODO: pinned new download message
-            elif step.startswith("❌"):
+            if step == "✅":
+                if extra.get("tool") == "download_torrent":
+                    await telegram_new_download(instance, msg.chat.id, extra)
+            elif step == "❌":
                 await telegram_report_issue(
-                    instance, msg, reply, f"Tool error = {step[3:]}"
+                    instance, msg, reply, f"Tool error = {extra['tool']}"
                 )
             if not done:
                 await sleep(0.5)  # No need to spam
     except Exception as e:
         await telegram_report_issue(instance, msg, reply, e)
     instance.log.sent(msg, timer)
+
+
+@handler
+async def telegram_new_download(
+    instance: AgenticBot, chat_id: int, data: dict[str, str]
+) -> None:
+    pass

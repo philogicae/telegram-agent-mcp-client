@@ -1,3 +1,4 @@
+from asyncio import gather
 from os import getenv
 from typing import Any, Awaitable, Callable
 
@@ -8,6 +9,7 @@ from .abstract import AgenticBot
 from .handlers import telegram_chat
 from .instances import TelegramBot
 from .logging import TelegramLogger
+from .managers import DownloadManager
 
 load_dotenv()
 
@@ -23,7 +25,10 @@ class AgenticTelegramBot(AgenticBot):
             self.agent = await Agent.init_with_tools(self.dev)
             await self.bot.initialize(**self.prepare_handlers(**kwargs))
             self.log.info("TelegramBot is ready!")
-            await self.bot.start()
+            await gather(
+                self.bot.start(),
+                DownloadManager(self).start(),
+            )
         except KeyboardInterrupt:
             self.log.info("Killed by KeyboardInterrupt")
         except Exception as e:

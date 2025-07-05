@@ -119,17 +119,35 @@ class TelegramBot(Bot):
                     "\n".join(self.edit_cache[message.id][:-1]) + f"\n\n{text}"
                 ).strip()
             else:
-                if not text.startswith("✅") and not text.startswith("❌"):  # Tool call
+                if text not in "✅❌":  # Tool call
                     self.edit_cache[message.id][-1] = text
                 else:  # Tool result
                     self.edit_cache[message.id][-1] = (
-                        f"{text[0]}  {self.edit_cache[message.id][-1][3:-3]}"
+                        f"{text}{self.edit_cache[message.id][-1][1:-3]}"
                     )
                     self.edit_cache[message.id].append(self.waiting)
                 edited = "\n".join(self.edit_cache[message.id])
         msg: Message | bool = await self.exec(
             self.bot.edit_message_text, edited, message.chat.id, message.id
         )
-        if replace or final:
+        if (replace or final) and message.id in self.edit_cache:
             del self.edit_cache[message.id]
         return msg
+
+    async def pin(self, message: Message) -> bool:
+        success: bool = await self.exec(
+            self.bot.pin_chat_message, message.chat.id, message.id, True
+        )
+        return success
+
+    async def unpin(self, message: Message) -> bool:
+        success: bool = await self.exec(
+            self.bot.unpin_chat_message, message.chat.id, message.id
+        )
+        return success
+
+    async def delete(self, message: Message) -> bool:
+        success: bool = await self.exec(
+            self.bot.delete_message, message.chat.id, message.id
+        )
+        return success
