@@ -50,6 +50,7 @@
     "torrent-search": {
       "serverUrl": "http://localhost:8005/sse",
       "edit": {
+        "get_magnet_link_or_torrent_file": { "name": "get_torrent_file" },
         "get_torrent_info": false
       },
       "disabled": true

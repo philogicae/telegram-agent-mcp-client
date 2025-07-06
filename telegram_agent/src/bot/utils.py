@@ -50,9 +50,9 @@ def unpack_user(msg: Message) -> tuple[str, str]:
     return "?", "Unknown"
 
 
-def progress_bar(current: int | float, total: int | float, size: int = 20) -> str:
+def progress_bar(current: int | float, total: int | float, size: int = 15) -> str:
     ratio = current / total
     scaled_percent = int(size * ratio)
     progress = "▓" * scaled_percent + "░" * (size - scaled_percent)
-    percent = f"{100 * ratio:.1f}%".rjust(5, "0")
-    return f"{progress}  {percent}"
+    percent = f"{100 * ratio:.1f}%".rjust(5, " ")
+    return f"{progress} {percent}"

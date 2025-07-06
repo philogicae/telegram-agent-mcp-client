@@ -40,20 +40,23 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
         return
 
     init = instance.bot.reply if msg.chat.type != "private" else instance.bot.send
-    reply = await init(msg)
+    reply, prev = await init(msg), ""
     try:
         async for step, done, extra in instance.agent.chat(msg):
-            await instance.bot.edit(reply, fixed_markdown(step), final=done)
-            if step == "✅":
-                tool = extra.get("tool")
-                if tool and tool in instance.managers:
-                    await instance.managers[tool].notify(
-                        msg.chat.id, extra.get("output")
+            text = fixed_markdown(step)
+            if text != prev:
+                await instance.bot.edit(reply, text, final=done)
+                prev = text
+                if step == "✅":
+                    tool = extra.get("tool")
+                    if tool and tool in instance.managers:
+                        await instance.managers[tool].notify(
+                            msg.chat.id, extra.get("output")
+                        )
+                elif step == "❌":
+                    await telegram_report_issue(
+                        instance, msg, reply, f"Tool error = {extra.get('tool')}"
                     )
-            elif step == "❌":
-                await telegram_report_issue(
-                    instance, msg, reply, f"Tool error = {extra.get('tool')}"
-                )
             if not done:
                 await sleep(0.5)  # No need to spam
     except Exception as e:

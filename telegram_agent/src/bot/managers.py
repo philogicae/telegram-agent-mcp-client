@@ -43,7 +43,7 @@ class DownloadManager(Manager):
             if self.torrents:
                 await self.update_torrent_stats()
                 await self.update_chats()
-            await sleep(1)
+            await sleep(4)
 
     async def notify(self, chat_id: int, data: str) -> None:
         torrent = loads(data)
@@ -89,7 +89,7 @@ class DownloadManager(Manager):
                     await self.instance.bot.pin(message.obj)
                 elif message.prev != text:
                     await self.instance.bot.edit(message.obj, text, replace=True)
-                    message.prev = text
+                message.prev = text
             if finished:
                 for torrent_id, torrent in finished:
                     await self.instance.bot.send(chat_id, f"✅  {torrent.name}")
@@ -97,6 +97,7 @@ class DownloadManager(Manager):
                     del self.torrents[torrent_id]
             if not active and finished:
                 if message.obj:
+                    await self.instance.bot.unpin(message.obj)
                     await self.instance.bot.delete(message.obj)
                 to_delete.append(chat_id)
         if to_delete:
@@ -112,12 +113,10 @@ class DownloadManager(Manager):
                 torrent.stats["total_bytes"],  # type: ignore
             )
             files.append(
-                f"{status}  {torrent.name}\n{progress_bar(current_bytes, total_bytes)}"
+                f"{status} {progress_bar(current_bytes, total_bytes)}\n{torrent.name}"
             )
             current += current_bytes
             total += total_bytes
-        header = (
-            f"⬇️  *Total [{len(torrents)}]*  {progress_bar(current, total, size=10)}  ⬇️"
-        )
+        header = f"⬇️ *[{len(torrents)}]* {progress_bar(current, total, size=11)} ⬇️"
         content = "\n\n".join(files)
         return f"{header}\n\n{content}"
