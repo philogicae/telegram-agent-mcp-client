@@ -22,6 +22,7 @@ class Torrent(BaseModel):
 
 class Message(BaseModel):
     obj: Any
+    prev: str
     torrent_ids: set[str]
 
 
@@ -50,7 +51,7 @@ class DownloadManager(Manager):
             name=torrent["details"]["name"], stats=True
         )
         if chat_id not in self.chats:
-            self.chats[chat_id] = Message(obj=None, torrent_ids=set())
+            self.chats[chat_id] = Message(obj=None, prev="", torrent_ids=set())
         self.chats[chat_id].torrent_ids.add(torrent["details"]["info_hash"])
         await self.refresh_media_lib()
 
@@ -71,6 +72,7 @@ class DownloadManager(Manager):
             )
 
     async def update_chats(self) -> None:
+        to_delete = []
         for chat_id, message in self.chats.items():
             active: list[Torrent] = []
             finished: list[tuple[str, Torrent]] = []
@@ -85,8 +87,9 @@ class DownloadManager(Manager):
                 if not message.obj:
                     message.obj = await self.instance.bot.send(chat_id, text)
                     await self.instance.bot.pin(message.obj)
-                else:
+                elif message.prev != text:
                     await self.instance.bot.edit(message.obj, text, replace=True)
+                    message.prev = text
             if finished:
                 for torrent_id, torrent in finished:
                     await self.instance.bot.send(chat_id, f"✅  {torrent.name}")
@@ -95,20 +98,26 @@ class DownloadManager(Manager):
             if not active and finished:
                 if message.obj:
                     await self.instance.bot.delete(message.obj)
+                to_delete.append(chat_id)
+        if to_delete:
+            for chat_id in to_delete:
                 del self.chats[chat_id]
 
     def create_message(self, torrents: list[Torrent]) -> str:
         current, total, files = 0, 0, []
         for torrent in torrents:
+            status = "🟢" if torrent.stats["state"] == "live" else "🟧"  # type: ignore
             current_bytes, total_bytes = (
                 torrent.stats["progress_bytes"],  # type: ignore
                 torrent.stats["total_bytes"],  # type: ignore
             )
             files.append(
-                f"- {torrent.name}\n{progress_bar(current_bytes, total_bytes)}"
+                f"{status}  {torrent.name}\n{progress_bar(current_bytes, total_bytes)}"
             )
             current += current_bytes
             total += total_bytes
-        header = f"⬇️  *{len(torrents)}:*  {progress_bar(current, total, size=10)}"
-        content = "\n".join(files)
-        return f"{header}\n{content}"
+        header = (
+            f"⬇️  *Total [{len(torrents)}]*  {progress_bar(current, total, size=10)}  ⬇️"
+        )
+        content = "\n\n".join(files)
+        return f"{header}\n\n{content}"
