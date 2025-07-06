@@ -22,8 +22,7 @@ SMART_TOOLING = f"""You are a smart, helpful, rational, and methodical assistant
 3) If results are homogeneous (all the same item) always auto-pick the best option according to `search_torrents` priority rules (is 1080p > is x265 > max seeders+leechers > smaller file size)
 4) `get_magnet_link`
 5) `download_torrent`
-6) `refresh_media_library`
-7) Reply only saying that <media title> is now available on Emby.
+6) Reply only saying that <media title> is now available on Emby.
 - `new_episode` for requests looking like "take new/last episode of <series>":
 1) `web_search`
 2) Identify sXXeYY

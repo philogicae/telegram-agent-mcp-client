@@ -45,21 +45,17 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
         async for step, done, extra in instance.agent.chat(msg):
             await instance.bot.edit(reply, fixed_markdown(step), final=done)
             if step == "✅":
-                if extra.get("tool") == "download_torrent":
-                    await telegram_new_download(instance, msg.chat.id, extra)
+                tool = extra.get("tool")
+                if tool and tool in instance.managers:
+                    await instance.managers[tool].notify(
+                        msg.chat.id, extra.get("output")
+                    )
             elif step == "❌":
                 await telegram_report_issue(
-                    instance, msg, reply, f"Tool error = {extra['tool']}"
+                    instance, msg, reply, f"Tool error = {extra.get('tool')}"
                 )
             if not done:
                 await sleep(0.5)  # No need to spam
     except Exception as e:
         await telegram_report_issue(instance, msg, reply, e)
     instance.log.sent(msg, timer)
-
-
-@handler
-async def telegram_new_download(
-    instance: AgenticBot, chat_id: int, data: dict[str, str]
-) -> None:
-    pass

@@ -1,10 +1,7 @@
-from asyncio import gather
 from os import getenv
-from typing import Any, Awaitable, Callable
 
 from dotenv import load_dotenv
 
-from ..core import Agent
 from .abstract import AgenticBot
 from .handlers import telegram_chat
 from .instances import TelegramBot
@@ -15,24 +12,16 @@ load_dotenv()
 
 
 class AgenticTelegramBot(AgenticBot):
-    def __init__(self, telegram_id: str, dev: bool = False, **kwargs) -> None:  # type: ignore
+    def __init__(  # type: ignore
+        self,
+        telegram_id: str,
+        dev: bool = False,
+        managers: dict[str, type] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(dev, managers)
         self.log = TelegramLogger()
         self.bot = TelegramBot(telegram_id, **kwargs)
-        self.dev = dev
-
-    async def run(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
-        try:
-            self.agent = await Agent.init_with_tools(self.dev)
-            await self.bot.initialize(**self.prepare_handlers(**kwargs))
-            self.log.info("TelegramBot is ready!")
-            await gather(
-                self.bot.start(),
-                DownloadManager(self).start(),
-            )
-        except KeyboardInterrupt:
-            self.log.info("Killed by KeyboardInterrupt")
-        except Exception as e:
-            self.log.error(e)
 
 
 async def run_telegram_bot(dev: bool = False) -> None:
@@ -47,5 +36,7 @@ async def run_telegram_bot(dev: bool = False) -> None:
         if not telegram_id:
             raise ValueError("TELEGRAM_BOT_ID is not set")
 
-    with AgenticTelegramBot(telegram_id, dev) as bot:
+    with AgenticTelegramBot(
+        telegram_id, dev, {"download_torrent": DownloadManager}
+    ) as bot:
         await bot.run(chat=telegram_chat)

@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
+from asyncio import gather
 from functools import partial, wraps
 from logging import INFO, basicConfig, getLogger
 from typing import Any, Awaitable, Callable
 
 from rich.logging import RichHandler
 
+from ..core import Agent
 from .utils import Timer
 
 
@@ -55,10 +57,28 @@ class Bot(ABC):
         pass
 
 
+class Manager(ABC):
+    @abstractmethod
+    async def start(self) -> None:
+        pass
+
+    @abstractmethod
+    async def notify(self, chat_id: int, data: Any) -> None:
+        pass
+
+
 class AgenticBot(ABC):
+    dev: bool = False
     bot: Any
     log: Logger
     agent: Any
+    managers: dict[str, Manager]
+
+    def __init__(
+        self, dev: bool = False, managers: dict[str, type] | None = None
+    ) -> None:
+        self.dev = dev
+        self.managers = {k: v(self) for k, v in managers.items()} if managers else {}
 
     def __enter__(self) -> "AgenticBot":
         return self
@@ -71,9 +91,19 @@ class AgenticBot(ABC):
     ) -> dict[str, Callable[..., Awaitable[Any]]]:
         return {k: partial(v, self) for k, v in kwargs.items()}
 
-    @abstractmethod
     async def run(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
-        pass
+        try:
+            self.agent = await Agent.init_with_tools(self.dev)
+            await self.bot.initialize(**self.prepare_handlers(**kwargs))
+            self.log.info(f"{self.bot.__class__.__name__} is ready!")
+            await gather(
+                self.bot.start(),
+                *map(lambda manager: manager.start(), self.managers.values()),
+            )
+        except KeyboardInterrupt:
+            self.log.info(f"{self.bot.__class__.__name__} killed by KeyboardInterrupt")
+        except Exception as e:
+            self.log.error(e)
 
 
 def handler(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:

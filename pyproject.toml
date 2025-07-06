@@ -25,6 +25,7 @@ dependencies = [
     "aiosqlite",
     "langgraph-checkpoint-sqlite",
     "nest-asyncio",
+    "rqbit-mcp",
 ]
 
 [project.urls]
