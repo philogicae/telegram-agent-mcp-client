@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
-from asyncio import gather
+from asyncio import gather, sleep
 from functools import partial, wraps
 from logging import INFO, basicConfig, getLogger
+from time import time
 from typing import Any, Awaitable, Callable
 
 from rich.logging import RichHandler
@@ -45,8 +46,23 @@ class Logger(ABC):
 
 
 class Bot(ABC):
+    last_call: float = 0
+    delay: float = 0.2
     group_msg_trigger: str = "!"
     waiting: str = "💭  _I'm thinking_..."
+
+    def __init__(
+        self,
+        delay: float | None = None,
+        group_msg_trigger: str | None = None,
+        waiting: str | None = None,
+    ) -> None:
+        if delay:
+            self.delay = delay
+        if group_msg_trigger:
+            self.group_msg_trigger = group_msg_trigger
+        if waiting:
+            self.waiting = waiting
 
     @abstractmethod
     async def initialize(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
@@ -54,6 +70,53 @@ class Bot(ABC):
 
     @abstractmethod
     async def start(self) -> None:
+        pass
+
+    def _called(self) -> None:
+        self.last_call = time()
+
+    def _is_free(self) -> bool:
+        return self.last_call + self.delay < time()
+
+    async def _exec(
+        self, method: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any
+    ) -> Any:
+        retry = 0
+        while True:
+            if self._is_free():
+                try:
+                    result: Any = await method(*args, **kwargs)
+                    self._called()
+                    return result
+                except Exception as e:
+                    retry += 1
+                    if retry > 3:
+                        raise e
+            else:
+                await sleep(self.delay)
+
+    @abstractmethod
+    async def send(self, *args: Any, **kwargs: Any) -> Any:
+        pass
+
+    @abstractmethod
+    async def reply(self, *args: Any, **kwargs: Any) -> Any:
+        pass
+
+    @abstractmethod
+    async def edit(self, *args: Any, **kwargs: Any) -> Any:
+        pass
+
+    @abstractmethod
+    async def pin(self, *args: Any, **kwargs: Any) -> Any:
+        pass
+
+    @abstractmethod
+    async def unpin(self, *args: Any, **kwargs: Any) -> Any:
+        pass
+
+    @abstractmethod
+    async def delete(self, *args: Any, **kwargs: Any) -> Any:
         pass
 
 

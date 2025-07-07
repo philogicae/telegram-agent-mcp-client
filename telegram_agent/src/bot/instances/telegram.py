@@ -1,5 +1,4 @@
-from asyncio import sleep
-from time import time
+# pylint: disable=arguments-differ
 from typing import Any, Awaitable, Callable
 
 from telebot.async_telebot import AsyncTeleBot
@@ -10,8 +9,6 @@ from ..abstract import Bot
 
 class TelegramBot(Bot):
     bot: AsyncTeleBot
-    last_call: float = 0
-    delay: float = 0.2
     edit_cache: dict[int, list[str]] = {}
 
     def __init__(
@@ -22,17 +19,12 @@ class TelegramBot(Bot):
         waiting: str | None = None,
     ):
         """Must call initialize() and start() after"""
+        super().__init__(delay, group_msg_trigger, waiting)
         self.bot = AsyncTeleBot(
             token=telegram_id,
             parse_mode="MARKDOWN",
             disable_web_page_preview=True,
         )
-        if delay:
-            self.delay = delay
-        if group_msg_trigger:
-            self.group_msg_trigger = group_msg_trigger
-        if waiting:
-            self.waiting = waiting
 
     async def initialize(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
         await self.bot.set_my_commands([])
@@ -62,33 +54,10 @@ class TelegramBot(Bot):
     async def start(self) -> None:
         await self.bot.infinity_polling(skip_pending=True, timeout=300)
 
-    def called(self) -> None:
-        self.last_call = time()
-
-    def is_free(self) -> bool:
-        return self.last_call + self.delay < time()
-
-    async def exec(
-        self, method: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any
-    ) -> Any:
-        retry = 0
-        while True:
-            if self.is_free():
-                try:
-                    result: Any = await method(*args, **kwargs)
-                    self.called()
-                    return result
-                except Exception as e:
-                    retry += 1
-                    if retry > 3:
-                        raise e
-            else:
-                await sleep(self.delay)
-
     async def send(
         self, message_or_chat_id: Message | int | str, text: str | None = None
     ) -> Message:
-        msg: Message = await self.exec(
+        msg: Message = await self._exec(
             self.bot.send_message,
             (
                 message_or_chat_id.chat.id
@@ -102,7 +71,7 @@ class TelegramBot(Bot):
         return msg
 
     async def reply(self, to_message: Message, text: str | None = None) -> Message:
-        msg: Message = await self.exec(
+        msg: Message = await self._exec(
             self.bot.reply_to, to_message, text or self.waiting
         )
         if not text:
@@ -127,7 +96,7 @@ class TelegramBot(Bot):
                     )
                     self.edit_cache[message.id].append(self.waiting)
                 edited = "\n".join(self.edit_cache[message.id])
-        msg: Message | bool = await self.exec(
+        msg: Message | bool = await self._exec(
             self.bot.edit_message_text, edited, message.chat.id, message.id
         )
         if (replace or final) and message.id in self.edit_cache:
@@ -135,19 +104,19 @@ class TelegramBot(Bot):
         return msg
 
     async def pin(self, message: Message) -> bool:
-        success: bool = await self.exec(
+        success: bool = await self._exec(
             self.bot.pin_chat_message, message.chat.id, message.id, True
         )
         return success
 
     async def unpin(self, message: Message) -> bool:
-        success: bool = await self.exec(
+        success: bool = await self._exec(
             self.bot.unpin_chat_message, message.chat.id, message.id
         )
         return success
 
     async def delete(self, message: Message) -> bool:
-        success: bool = await self.exec(
+        success: bool = await self._exec(
             self.bot.delete_message, message.chat.id, message.id
         )
         return success

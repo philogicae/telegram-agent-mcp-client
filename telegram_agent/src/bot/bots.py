@@ -36,7 +36,8 @@ async def run_telegram_bot(dev: bool = False) -> None:
         if not telegram_id:
             raise ValueError("TELEGRAM_BOT_ID is not set")
 
-    with AgenticTelegramBot(
-        telegram_id, dev, {"download_torrent": DownloadManager}
-    ) as bot:
+    managers: dict[str, type] = {}
+    if getenv("RQBIT_URL"):
+        managers["download_torrent"] = DownloadManager
+    with AgenticTelegramBot(telegram_id, dev, managers) as bot:
         await bot.run(chat=telegram_chat)
