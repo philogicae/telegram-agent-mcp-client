@@ -38,6 +38,7 @@ def get_config() -> tuple[dict[str, Any], dict[str, Any]]:
         # Ignore disabled servers
         if settings.get("disabled"):
             continue
+        del settings["disabled"]
 
         # stdio
         if settings.get("command"):
