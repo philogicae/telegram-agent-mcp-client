@@ -31,19 +31,22 @@ class DownloadManager(Manager):
     client: RqbitClient
     torrents: dict[str, Torrent]
     chats: dict[int, Message]
+    delay: float = 4
 
-    def __init__(self, instance: AgenticBot):
+    def __init__(self, instance: AgenticBot, delay: float | None = None):
         self.instance = instance
         self.client = RqbitClient()
         self.torrents = {}
         self.chats = {}
+        if delay:
+            self.delay = delay
 
     async def start(self) -> None:
         while True:
             if self.torrents:
                 await self.update_torrent_stats()
                 await self.update_chats()
-            await sleep(4)
+            await sleep(self.delay)
 
     async def notify(self, chat_id: int, data: str) -> None:
         torrent = loads(data)
