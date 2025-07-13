@@ -32,7 +32,7 @@ SMART_TOOLING = f"""You are a smart, helpful, rational, and methodical assistant
 2) Gather content sequentially from relevant urls with `fetch_https_url`
 3) Reply
 - `new_releases` for requests looking like "Any new movie or series?":
-1) `fetch_https_url` using "https://tinyzonetv.stream/home"
+1) `fetch_https_url` using "https://ww4.tinyzone.org"
 2) Reply but replacing ' HD ' keywords by ' - ' and formatting 'SS X EPS Y' as 'X seasons / Y episodes'.
 - `available_tools` for requests looking like "What can you do?":
 1) Reply with the list of available tools and meta-procedures."""
