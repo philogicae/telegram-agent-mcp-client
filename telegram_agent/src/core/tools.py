@@ -9,6 +9,19 @@ async def get_tools(display: bool = True) -> list[BaseTool]:
     config, edit_config = get_config()
     client = MultiServerMCPClient(config)
     raw_tools = await client.get_tools()
+
+    # Set higher timeout and disable logging callback
+    for c in client.connections:
+        if client.connections[c]["transport"] in [
+            "sse",
+            "streamable_http",
+        ]:
+            client.connections[c]["timeout"] = 10.0  # type: ignore
+        client.connections[c]["session_kwargs"] = {
+            "logging_callback": lambda *args: None
+        }
+
+    # Override tools
     tools: list[BaseTool] = []
     for tool in raw_tools:
         if tool.name in edit_config:
@@ -18,6 +31,7 @@ async def get_tools(display: bool = True) -> list[BaseTool]:
             tool.name = item.get("name") or tool.name
             tool.description = item.get("description") or tool.description
         tools.append(tool)
+
     if display:
         console = Console()
         console.print(f"\nAvailable tools: {len(tools)}")
