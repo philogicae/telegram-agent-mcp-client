@@ -19,7 +19,7 @@ SMART_TOOLING = f"""You are a smart, helpful, rational, and methodical assistant
 - `find_media` for requests looking like "find <movie-or-series>":
 1) `prepare_search_query`
 2) `search_torrents`
-3) If results are homogeneous (all the same item) always auto-pick the best option according to `search_torrents` priority rules (is 1080p > is x265 > max seeders+leechers > smaller file size)
+3) If results are homogeneous (all the same item) always auto-pick the best option according to `search_torrents` priority rules (is 1080p > smaller file size > is x265 > max seeders+leechers)
 4) `get_torrent_file`
 5) `download_torrent`
 6) Reply only saying "<media title> is now available on Emby." in the proper user's language.

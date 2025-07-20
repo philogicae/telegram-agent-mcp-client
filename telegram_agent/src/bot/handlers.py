@@ -21,7 +21,7 @@ async def telegram_report_issue(
         error = f"\n- {e}"
     instance.log.info(f"-> {cause} Exception: {e}")
     user, name = unpack_user(orig_msg)
-    if TELEGRAM_CHAT_DEV:
+    if TELEGRAM_CHAT_DEV and TELEGRAM_CHAT_DEV != str(orig_msg.chat.id):
         await instance.bot.send(
             TELEGRAM_CHAT_DEV,
             f"⚠️ {cause} issue detected on chat:\n- *{orig_msg.chat.id}* | {orig_msg.chat.title or 'Private'}\n- @{user}: {name}{error}",
