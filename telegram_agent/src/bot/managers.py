@@ -97,6 +97,7 @@ class DownloadManager(Manager):
                 for torrent_id, torrent in finished:
                     await self.instance.bot.send(chat_id, f"✅  {torrent.name}")
                     message.torrent_ids.remove(torrent_id)
+                    await self.client.forget_torrent(torrent_id)
                     del self.torrents[torrent_id]
             if not active and finished:
                 if message.obj:
