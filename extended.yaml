@@ -19,41 +19,18 @@ x-networks: &default-networks
     - ai-agent
 
 services:
-  telegram-agent:
-    container_name: telegram-agent
-    build: .
-    image: telegram-agent
-    restart: unless-stopped
-    command: "telegram-agent-mcp-client --telegram"
-    env_file:
-      - .env
-    volumes:
-      - agent_data:/data
-    <<: [*default-dns, *default-logging, *default-networks]
-
-  telegram-agent-dev:
-    container_name: telegram-agent-dev
-    image: telegram-agent
-    restart: unless-stopped
-    command: "telegram-agent-mcp-client --telegram --dev"
-    env_file:
-      - .env
-    volumes:
-      - agent_data:/data
-    <<: [*default-dns, *default-logging, *default-networks]
-
   # External services
-  n8n:
-    container_name: n8n
-    image: docker.n8n.io/n8nio/n8n:next
-    restart: unless-stopped
-    ports:
-      - 5678:5678
-    env_file:
-      - docker-envs/n8n.env
-    volumes:
-      - n8n_data:/home/node/.n8n
-    <<: [*default-dns, *default-logging, *default-networks]
+  # n8n:
+  #   container_name: n8n
+  #   image: docker.n8n.io/n8nio/n8n:next
+  #   restart: unless-stopped
+  #   ports:
+  #     - 5678:5678
+  #   env_file:
+  #     - docker-envs/n8n.env
+  #   volumes:
+  #     - n8n_data:/home/node/.n8n
+  #   <<: [*default-dns, *default-logging, *default-networks]
 
   rqbit:
     container_name: rqbit
@@ -98,14 +75,7 @@ services:
       - torrents:/torrents
     <<: [*default-logging, *default-networks]
 
-networks:
-  ai-agent:
-    name: ai-agent
-    driver: bridge
-    enable_ipv6: true
-
 volumes:
-  agent_data:
   n8n_data:
   torrents:
   rqbit_db:
