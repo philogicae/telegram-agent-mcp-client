@@ -60,7 +60,7 @@
       "edit": {
         "start_torrent": false,
         "pause_torrent": false,
-        "delete_torrent": false,
+        "forget_torrent": false,
         "get_torrent_details": false
       },
       "disabled": true
