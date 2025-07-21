@@ -13,6 +13,7 @@ from .utils import progress_bar
 
 load_dotenv()
 MEDIA_LIB_REFRESH = getenv("MEDIA_LIB_REFRESH")
+SEPARATOR = r"\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_"
 
 
 class Torrent(BaseModel):
@@ -55,6 +56,12 @@ class DownloadManager(Manager):
         )
         if chat_id not in self.chats:
             self.chats[chat_id] = Message(obj=None, prev="", torrent_ids=set())
+        else:  # Recreate message
+            old_message_obj = self.chats[chat_id].obj
+            if old_message_obj:
+                await self.instance.bot.unpin(old_message_obj)
+                await self.instance.bot.delete(old_message_obj)
+            self.chats[chat_id].obj = None
         self.chats[chat_id].torrent_ids.add(torrent["details"]["info_hash"])
         await self.refresh_media_lib()
 
@@ -111,16 +118,29 @@ class DownloadManager(Manager):
     def create_message(self, torrents: list[Torrent]) -> str:
         current, total, files = 0, 0, []
         for torrent in torrents:
-            status = "🟢" if torrent.stats["state"] == "live" else "🟧"  # type: ignore
+            status = "🟢" if torrent.stats.get("state") == "live" else "🟧"  # type: ignore
             current_bytes, total_bytes = (
                 torrent.stats["progress_bytes"],  # type: ignore
                 torrent.stats["total_bytes"],  # type: ignore
             )
+            stats: dict[str, Any] = torrent.stats.get("live") or {}  # type: ignore
+            peers = stats.get("snapshot", {}).get("peer_stats", {})
+            live = peers.get("live", 0)
+            seen = peers.get("seen", 0)
+            download_speed = stats.get("download_speed", {}).get("human_readable", "♾")
+            time_remaining = (stats.get("time_remaining") or {}).get(
+                "human_readable", "♾"
+            )
+            details = (
+                f"👤 {live}/{seen} 📊 {download_speed.ljust(12)} ⏰ {time_remaining}\n"
+                if live
+                else ""
+            )
             files.append(
-                f"{status} {progress_bar(current_bytes, total_bytes)}\n{torrent.name}"
+                f"`{torrent.name}`\n{details}{status} {progress_bar(current_bytes, total_bytes)}"
             )
             current += current_bytes
             total += total_bytes
-        header = f"⬇️ *[{len(torrents)}]* {progress_bar(current, total, size=11)} ⬇️"
-        content = "\n\n".join(files)
-        return f"{header}\n\n{content}"
+        header = f"⬇️ *[{len(torrents)}]* {progress_bar(current, total, size=11)} ⬇️\n{SEPARATOR}"
+        content = f"\n{SEPARATOR}\n".join(files)
+        return f"{header}\n{content}"
