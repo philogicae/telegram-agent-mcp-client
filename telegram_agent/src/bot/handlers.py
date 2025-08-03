@@ -2,7 +2,7 @@ from asyncio import sleep
 from os import getenv
 
 from dotenv import load_dotenv
-from telebot.types import Document, Message
+from telebot.types import Message
 
 from .abstract import AgenticBot, handler
 from .utils import fixed_markdown, unpack_user
@@ -65,7 +65,12 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
 
 
 @handler
-async def telegram_file(instance: AgenticBot, document: Document) -> None:
-    timer = instance.log.received(document)
-    print(document)
-    instance.log.sent(document, timer)
+async def telegram_file(instance: AgenticBot, msg: Message) -> None:
+    timer = instance.log.received(msg)
+    doc = msg.document
+    if doc:
+        file_name = doc.file_name
+        file_info = await instance.bot.bot.get_file(doc.file_id)
+        # downloaded_file = instance.bot.download_file(file_info.file_path)
+        print(file_name, file_info)
+    instance.log.sent(msg, timer)

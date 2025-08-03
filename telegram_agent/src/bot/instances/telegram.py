@@ -2,7 +2,7 @@
 from typing import Any, Awaitable, Callable
 
 from telebot.async_telebot import AsyncTeleBot
-from telebot.types import Document, Message
+from telebot.types import Message
 
 from ..abstract import Bot
 
@@ -57,10 +57,10 @@ class TelegramBot(Bot):
             or m.text.startswith(self.group_msg_trigger),
             content_types=["document"],
         )  # type: ignore
-        async def _handle_file(document: Document) -> None:
+        async def _handle_file(message: Message) -> None:
             handler = kwargs.get("document")
             if handler:
-                await handler(document)
+                await handler(message)
 
     async def start(self) -> None:
         await self.bot.infinity_polling(skip_pending=True, timeout=300)
