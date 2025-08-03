@@ -2,7 +2,7 @@ from asyncio import sleep
 from os import getenv
 
 from dotenv import load_dotenv
-from telebot.types import Message
+from telebot.types import Document, Message
 
 from .abstract import AgenticBot, handler
 from .utils import fixed_markdown, unpack_user
@@ -62,3 +62,10 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
     except Exception as e:
         await telegram_report_issue(instance, msg, reply, e)
     instance.log.sent(msg, timer)
+
+
+@handler
+async def telegram_file(instance: AgenticBot, document: Document) -> None:
+    timer = instance.log.received(document)
+    print(document)
+    instance.log.sent(document, timer)

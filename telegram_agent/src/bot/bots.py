@@ -3,7 +3,7 @@ from os import getenv
 from dotenv import load_dotenv
 
 from .abstract import AgenticBot
-from .handlers import telegram_chat
+from .handlers import telegram_chat, telegram_file
 from .instances import TelegramBot
 from .logging import TelegramLogger
 from .managers import DownloadManager
@@ -40,4 +40,4 @@ async def run_telegram_bot(dev: bool = False) -> None:
     if getenv("RQBIT_URL"):
         managers["download_torrent"] = DownloadManager
     with AgenticTelegramBot(telegram_id, dev, managers) as bot:
-        await bot.run(chat=telegram_chat)
+        await bot.run(chat=telegram_chat, document=telegram_file)
