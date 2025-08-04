@@ -119,16 +119,16 @@ wheels = [
 
 [[package]]
 name = "anyio"
-version = "4.9.0"
+version = "4.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "idna" },
     { name = "sniffio" },
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/95/7d/4c1bd541d4dffa1b52bd83fb8527089e097a106fc90b467a7313b105f840/anyio-4.9.0.tar.gz", hash = "sha256:673c0c244e15788651a4ff38710fea9675823028a6f08a5eda409e0c9840a028", size = 190949, upload-time = "2025-03-17T00:02:54.77Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f1/b4/636b3b65173d3ce9a38ef5f0522789614e590dab6a8d505340a4efe4c567/anyio-4.10.0.tar.gz", hash = "sha256:3f3fae35c96039744587aa5b8371e7e8e603c0702999535961dd336026973ba6", size = 213252, upload-time = "2025-08-04T08:54:26.451Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a1/ee/48ca1a7c89ffec8b6a0c5d02b89c305671d5ffd8d3c94acf8b8c408575bb/anyio-4.9.0-py3-none-any.whl", hash = "sha256:9f76d541cad6e36af7beb62e978876f3b41e3e04f2c1fbf0884604c0a9c4d93c", size = 100916, upload-time = "2025-03-17T00:02:52.713Z" },
+    { url = "https://files.pythonhosted.org/packages/6f/12/e5e0282d673bb9746bacfb6e2dba8719989d3660cdb2ea79aee9a9651afb/anyio-4.10.0-py3-none-any.whl", hash = "sha256:60e474ac86736bbfd6f210f7a61218939c318f43f9972497381f1c5e930ed3d1", size = 107213, upload-time = "2025-08-04T08:54:24.882Z" },
 ]
 
 [[package]]
@@ -2287,16 +2287,16 @@ wheels = [
 
 [[package]]
 name = "rqbit-mcp"
-version = "0.7.0"
+version = "0.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastmcp" },
     { name = "httpx", extra = ["http2"] },
     { name = "python-dotenv" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/9b/6db2e79d0df3a843e7cf0bd6cbbd5782fdf0febe3f0e0ecec99c4a9dd9e9/rqbit_mcp-0.7.0.tar.gz", hash = "sha256:9052457c2758230e2e6689b328e64ece646bb074216c706b434ef28098378e86", size = 7835, upload-time = "2025-07-20T21:04:05.349Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/99/c33c055318ea706c599b34a8cb97ed07ddfc0f521b86344921dd72589348/rqbit_mcp-0.7.1.tar.gz", hash = "sha256:eba768be65db2aaf122c9b8d9702c67ade70e95b43c01e6b1082e87aded7e692", size = 7837, upload-time = "2025-08-04T14:03:41.547Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ea/6c/5ee8d3c48a79d866401f8368647c58c38b171e34cbc41a615b765a3b63af/rqbit_mcp-0.7.0-py3-none-any.whl", hash = "sha256:ce4f7bf79e38a251ae98bc3268d675d095076badb4e1c5bb489e21dd5a08a095", size = 10175, upload-time = "2025-07-20T21:04:04.095Z" },
+    { url = "https://files.pythonhosted.org/packages/e9/40/04ef652de7c566ac903af634bcfd38474e95fb87ad6ca2dae426a300dd16/rqbit_mcp-0.7.1-py3-none-any.whl", hash = "sha256:83515b389a344995e19876bfe1987652ca13f25f7628a1943eca4f82d67a5ca3", size = 10175, upload-time = "2025-08-04T14:03:40.097Z" },
 ]
 
 [[package]]
