@@ -125,13 +125,12 @@ class Agent:
                     )
                 elif isinstance(msg.content, str):
                     text = msg.content.strip()
-                # For Gemini Thinking
-                """ elif isinstance(msg.content, list):
+                elif isinstance(msg.content, list):
                     for item in msg.content:
                         if isinstance(item, str):
                             text = item.strip()
-                        elif isinstance(item, dict):
-                            think = item["thinking"].strip() """
+                        elif isinstance(item, dict) and "text" in item:
+                            text = item["text"].strip()
 
                 # Tools
                 tool_calls: str | None = None
@@ -181,7 +180,7 @@ class Agent:
                         Panel(escape(tool_calls), title="Tools", border_style="red")
                     )
                     if called_tool and called_tool != "think":
-                        step = f"🛠️  *{sub('_|-', ' ', str(called_tool)).title()}*..."
+                        step = f"🛠️  {sub('_|-', ' ', str(called_tool)).title()}..."
 
                 # Usage
                 if hasattr(msg, "usage_metadata") and msg.usage_metadata:
