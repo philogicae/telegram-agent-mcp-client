@@ -36,7 +36,7 @@ class Logger(ABC):
     def warn(self, log: str) -> None:
         self.logger.warning(f"WARN: {log}")
 
-    def error(self, err: Exception) -> None:
+    def error(self, err: Exception | str) -> None:
         self.logger.error(f"ERROR: {err}")
 
     def debug(self, log: str) -> None:
@@ -56,12 +56,14 @@ class Bot(ABC):
     delay: float = 0.2
     group_msg_trigger: str = "!"
     waiting: str = "💭  I'm thinking..."
+    retries: int = 5
 
     def __init__(
         self,
         delay: float | None = None,
         group_msg_trigger: str | None = None,
         waiting: str | None = None,
+        retries: int | None = None,
     ) -> None:
         if delay:
             self.delay = delay
@@ -69,6 +71,8 @@ class Bot(ABC):
             self.group_msg_trigger = group_msg_trigger
         if waiting:
             self.waiting = waiting
+        if retries:
+            self.retries = retries
 
     @abstractmethod
     async def initialize(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
@@ -96,7 +100,7 @@ class Bot(ABC):
                     return result
                 except Exception as e:
                     retry += 1
-                    if retry > 3:
+                    if retry > self.retries:
                         raise e
             else:
                 await sleep(self.delay)

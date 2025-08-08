@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from telebot.types import Message
 
 from .abstract import AgenticBot, handler
-from .utils import fixed_markdown, unpack_user
+from .utils import unpack_user
 
 load_dotenv()
 TELEGRAM_CHAT_DEV = getenv("TELEGRAM_CHAT_DEV")
@@ -19,7 +19,7 @@ async def telegram_report_issue(
     if isinstance(e, str):
         cause = "Agent"
         error = f"\n- {e}"
-    instance.log.info(f"-> {cause} Exception: {e}")
+    instance.log.error(f"-> {cause} Exception: {e}")
     user, name = unpack_user(orig_msg)
     if TELEGRAM_CHAT_DEV and TELEGRAM_CHAT_DEV != str(orig_msg.chat.id):
         await instance.bot.send(
@@ -43,7 +43,7 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
     reply, prev = await init(msg), ""
     try:
         async for step, done, extra in instance.agent.chat(msg):
-            text = fixed_markdown(step)
+            text = step  # fixed_markdown(step)
             if text != prev:
                 await instance.bot.edit(reply, text, final=done)
                 prev = text

@@ -52,6 +52,8 @@ def unpack_user(msg: Message) -> tuple[str, str]:
 
 
 def progress_bar(current: int | float, total: int | float, size: int = 15) -> str:
+    if total < 1:
+        total = 1
     ratio = current / total
     scaled_percent = int(size * ratio)
     progress = "▓" * scaled_percent + "░" * (size - scaled_percent)

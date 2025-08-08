@@ -67,8 +67,11 @@ class DownloadManager(Manager):
 
     async def refresh_media_lib(self) -> None:
         if MEDIA_LIB_REFRESH:
-            async with AsyncClient() as client:
-                await client.post(MEDIA_LIB_REFRESH)
+            try:
+                async with AsyncClient() as http:
+                    await http.post(MEDIA_LIB_REFRESH)
+            except Exception as e:
+                self.instance.log.error(f"Refreshing media lib: {e}")
 
     async def update_torrent_stats(self) -> None:
         if not self.torrents:
@@ -78,7 +81,9 @@ class DownloadManager(Manager):
         )
         for torrent_id, stats in zip(self.torrents.keys(), results):
             self.torrents[torrent_id].stats = (
-                stats if isinstance(stats, dict) and not stats["finished"] else False
+                stats
+                if isinstance(stats, dict) and not stats.get("finished")
+                else False
             )
 
     async def update_chats(self) -> None:
@@ -118,17 +123,20 @@ class DownloadManager(Manager):
     def create_message(self, torrents: list[Torrent]) -> str:
         current, total, files = 0, 0, []
         for torrent in torrents:
-            status = "🟢" if torrent.stats.get("state") == "live" else "🟧"  # type: ignore
+            stats = torrent.stats if isinstance(torrent.stats, dict) else {}
+            status = "🟢" if stats.get("state") == "live" else "🟧"
             current_bytes, total_bytes = (
-                torrent.stats["progress_bytes"],  # type: ignore
-                torrent.stats["total_bytes"],  # type: ignore
+                stats.get("progress_bytes", 0),
+                stats.get("total_bytes", 0),
             )
-            stats: dict[str, Any] = torrent.stats.get("live") or {}  # type: ignore
-            peers = stats.get("snapshot", {}).get("peer_stats", {})
+            live_stats = stats.get("live") or {}
+            peers = live_stats.get("snapshot", {}).get("peer_stats", {})
             live = peers.get("live", 0)
             seen = peers.get("seen", 0)
-            download_speed = stats.get("download_speed", {}).get("human_readable", "♾")
-            time_remaining = (stats.get("time_remaining") or {}).get(
+            download_speed = live_stats.get("download_speed", {}).get(
+                "human_readable", "♾"
+            )
+            time_remaining = (live_stats.get("time_remaining") or {}).get(
                 "human_readable", "♾"
             )
             details = (

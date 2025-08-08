@@ -11,8 +11,8 @@ from ..utils import reply_markup
 
 class TelegramBot(Bot):
     bot: AsyncTeleBot
-    edit_cache: dict[int, Any] = {}
     max_msg_length: int = 1000
+    pagination_action: list[str] = ["first", "prev", "next", "last"]
 
     def __init__(
         self,
@@ -20,14 +20,19 @@ class TelegramBot(Bot):
         delay: float | None = None,
         group_msg_trigger: str | None = None,
         waiting: str | None = None,
+        retries: int | None = None,
+        max_msg_length: int | None = None,
     ):
         """Must call initialize() and start() after"""
-        super().__init__(delay, group_msg_trigger, waiting)
+        super().__init__(delay, group_msg_trigger, waiting, retries)
+        if max_msg_length:
+            self.max_msg_length = max_msg_length
         self.bot = AsyncTeleBot(
             token=telegram_id,
             # parse_mode="MARKDOWN",
             disable_web_page_preview=True,
         )
+        self.edit_cache: dict[int, Any] = {}
 
     async def initialize(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
         await self.bot.set_my_commands([])
@@ -55,7 +60,7 @@ class TelegramBot(Bot):
                 await handler(message)
 
         @self.bot.callback_query_handler(
-            func=lambda call: call.data in ["first", "prev", "next", "last"]
+            func=lambda call: call.data in self.pagination_action
         )  # type: ignore
         async def _handle_page(call: CallbackQuery) -> None:
             if isinstance(call.message, Message):
@@ -63,8 +68,7 @@ class TelegramBot(Bot):
 
         @self.bot.message_handler(
             func=lambda m: m.chat.type == "private"
-            or (m.reply_to_message and m.reply_to_message.from_user.id == me.id)
-            or m.text.startswith(self.group_msg_trigger),
+            or (m.reply_to_message and m.reply_to_message.from_user.id == me.id),
             content_types=["document"],
         )  # type: ignore
         async def _handle_file(message: Message) -> None:
@@ -116,9 +120,11 @@ class TelegramBot(Bot):
         if not replace and message.id not in self.edit_cache:
             return False
         orig, edited = "", text
+        cache = self.edit_cache.get(message.id, {})
         if not replace:
-            cache = self.edit_cache[message.id]
-            content = cache["content"]
+            content = cache.get("content")
+            if not content:
+                return False
             orig = "\n".join(content)
             if final:
                 edited = ("\n".join(content[:-1]) + f"\n\n{text}").strip()
@@ -169,16 +175,16 @@ class TelegramBot(Bot):
             )
         cache = self.edit_cache.get(msg.id)
         if not cache:
-            cache = {"current": page, "content": text, "pages": pages}
+            cache = {"current": page, "content": [text], "pages": pages}
             self.edit_cache[msg.id] = cache
         elif "content" not in cache:
-            cache["content"] = text
+            cache["content"] = [text]
         cache.update({"current": page, "pages": pages})
         return msg
 
     async def change_page(self, message: Message, action: str | None = None) -> None:
         cache = self.edit_cache.get(message.id)
-        if cache and "pages" in cache and action in ["first", "prev", "next", "last"]:
+        if cache and "pages" in cache and action in self.pagination_action:
             move = -1 if action == "prev" else 1
             new_index = 0
             if action in ["prev", "next"]:
