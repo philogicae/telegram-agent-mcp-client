@@ -17,7 +17,7 @@ services:
     build: .
     image: telegram-agent
     restart: unless-stopped
-    command: "telegram-agent-mcp-client --telegram"
+    command: telegram-agent-mcp-client --telegram
     env_file:
       - .env
     volumes:
