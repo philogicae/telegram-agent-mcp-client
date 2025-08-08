@@ -1,12 +1,5 @@
 name: telegram-agent-mcp-client
 
-x-dns: &default-dns
-  dns:
-    - 9.9.9.9
-    - 149.112.112.112
-    - 2620:fe::fe
-    - 2620:fe::9
-
 x-logging: &default-logging
   logging:
     driver: "json-file"
@@ -29,13 +22,12 @@ services:
       - .env
     volumes:
       - agent_data:/data
-    <<: [ *default-dns, *default-logging, *default-networks ]
+    <<: [ *default-logging, *default-networks ]
 
 networks:
   ai-agent:
     name: ai-agent
     driver: bridge
-    enable_ipv6: true
 
 volumes:
   agent_data:

@@ -21,3 +21,4 @@ wheels/
 mcp_config.json
 docker-envs/*.txt
 data
+scripts/.*

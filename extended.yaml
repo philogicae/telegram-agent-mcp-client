@@ -75,6 +75,12 @@ services:
       - torrents:/torrents
     <<: [*default-logging, *default-networks]
 
+networks:
+  ai-agent:
+    name: ai-agent
+    driver: bridge
+    enable_ipv6: true
+
 volumes:
   n8n_data:
   torrents:
