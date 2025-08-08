@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
 from asyncio import gather, sleep
 from functools import partial, wraps
-from logging import INFO, basicConfig, getLogger
+from logging import INFO, WARNING
+from logging import Logger as Logging
+from logging import basicConfig, getLogger
 from time import time
 from typing import Any, Awaitable, Callable
 
@@ -18,11 +20,15 @@ class Logger(ABC):
     def __init__(self) -> None:
         basicConfig(
             format="%(message)s",
-            datefmt="[%d-%m %X]",
+            datefmt="[%X]",
             level=self.level,
-            handlers=[RichHandler()],
+            handlers=[RichHandler(rich_tracebacks=True)],
         )
-        self.logger = getLogger("rich")
+        parent_logger = __name__.rsplit(".", maxsplit=1)[0]
+        for lib in Logging.manager.loggerDict:
+            if not lib.startswith(parent_logger):
+                getLogger(lib).setLevel(WARNING)
+        self.logger = getLogger("BOT")
 
     def info(self, log: str) -> None:
         self.logger.info(log)
@@ -49,7 +55,7 @@ class Bot(ABC):
     last_call: float = 0
     delay: float = 0.2
     group_msg_trigger: str = "!"
-    waiting: str = "💭  _I'm thinking_..."
+    waiting: str = "💭  I'm thinking..."
 
     def __init__(
         self,

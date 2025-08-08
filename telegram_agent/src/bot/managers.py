@@ -13,7 +13,7 @@ from .utils import progress_bar
 
 load_dotenv()
 MEDIA_LIB_REFRESH = getenv("MEDIA_LIB_REFRESH")
-SEPARATOR = r"\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_"
+SEPARATOR = "___________________________________"
 
 
 class Torrent(BaseModel):
@@ -137,10 +137,10 @@ class DownloadManager(Manager):
                 else ""
             )
             files.append(
-                f"`{torrent.name}`\n{details}{status} {progress_bar(current_bytes, total_bytes)}"
+                f"{torrent.name}\n{details}{status} {progress_bar(current_bytes, total_bytes)}"
             )
             current += current_bytes
             total += total_bytes
-        header = f"⬇️ *[{len(torrents)}]* {progress_bar(current, total, size=11)} ⬇️\n{SEPARATOR}"
+        header = f"⬇️ [{len(torrents)}] {progress_bar(current, total, size=11)} ⬇️\n{SEPARATOR}"
         content = f"\n{SEPARATOR}\n".join(files)
         return f"{header}\n{content}"

@@ -1,6 +1,7 @@
 from time import time
 
-from telebot.types import Message
+from telebot.types import InlineKeyboardMarkup, Message
+from telebot.util import quick_markup
 
 
 class Timer:
@@ -56,3 +57,16 @@ def progress_bar(current: int | float, total: int | float, size: int = 15) -> st
     progress = "▓" * scaled_percent + "░" * (size - scaled_percent)
     percent = f"{100 * ratio:.1f}%".rjust(5, " ")
     return f"{progress} {percent}"
+
+
+def reply_markup(index: int, total: int) -> InlineKeyboardMarkup:
+    return quick_markup(
+        {
+            "⏮️": {"callback_data": "first"},
+            "◀️": {"callback_data": "prev"},
+            f"{index + 1}/{total}": {"callback_data": "none"},
+            "▶️": {"callback_data": "next"},
+            "⏭️": {"callback_data": "last"},
+        },
+        row_width=5,
+    )
