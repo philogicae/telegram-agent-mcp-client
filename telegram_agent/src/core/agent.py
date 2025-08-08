@@ -4,9 +4,13 @@ from re import sub
 from typing import Any, AsyncGenerator, Callable, Sequence
 
 from aiosqlite import connect
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage  # , RemoveMessage
+from langchain_core.messages.utils import count_tokens_approximately, trim_messages
 from langchain_core.tools import BaseTool
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
+# from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import create_react_agent
 from langgraph.prebuilt.tool_node import ToolNode
@@ -20,6 +24,21 @@ from .config import Flag, ThinkTag
 from .llm import get_llm
 from .prompts import SYSTEM_PROMPT
 from .tools import get_tools
+
+
+def pre_model_hook(state: dict[str, Any]) -> dict[str, Any]:
+    trimmed_messages = trim_messages(
+        state["messages"],
+        strategy="last",
+        include_system=True,
+        token_counter=count_tokens_approximately,
+        max_tokens=10000,
+        start_on="human",
+        end_on=("human", "tool"),
+        allow_partial=True,
+    )
+    # return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES), *trimmed_messages]}
+    return {"llm_input_messages": trimmed_messages}
 
 
 def checkpointer(dev: bool = False) -> AsyncSqliteSaver:
@@ -51,8 +70,9 @@ class Agent:
             model=get_llm(),
             tools=tools if tools else [],
             prompt=SYSTEM_PROMPT,
-            checkpointer=checkpointer(dev),
-            store=store(),
+            # pre_model_hook=pre_model_hook,
+            checkpointer=InMemorySaver(),  # checkpointer(dev),
+            # store=store(),
             debug=debug,
         )
         self.tools = tools
