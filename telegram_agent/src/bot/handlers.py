@@ -43,10 +43,9 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
     reply, prev = await init(msg), ""
     try:
         async for step, done, extra in instance.agent.chat(msg):
-            text = step  # fixed_markdown(step)
-            if text != prev:
-                await instance.bot.edit(reply, text, final=done)
-                prev = text
+            if step != prev:
+                await instance.bot.edit(reply, step, final=done)
+                prev = step
                 if step == "✅":
                     tool = extra.get("tool")
                     if tool and tool in instance.managers:

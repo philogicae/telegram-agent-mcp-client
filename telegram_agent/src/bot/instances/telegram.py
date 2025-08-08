@@ -2,11 +2,15 @@
 from typing import Any, Awaitable, Callable
 
 from telebot.async_telebot import AsyncTeleBot
-from telebot.types import CallbackQuery, Message
+from telebot.types import CallbackQuery, LinkPreviewOptions, Message
 from telebot.util import smart_split
 
 from ..abstract import Bot
 from ..utils import reply_markup
+
+disable_web_page_preview = {
+    "link_preview_options": LinkPreviewOptions(is_disabled=True)
+}
 
 
 class TelegramBot(Bot):
@@ -27,11 +31,7 @@ class TelegramBot(Bot):
         super().__init__(delay, group_msg_trigger, waiting, retries)
         if max_msg_length:
             self.max_msg_length = max_msg_length
-        self.bot = AsyncTeleBot(
-            token=telegram_id,
-            # parse_mode="MARKDOWN",
-            disable_web_page_preview=True,
-        )
+        self.bot = AsyncTeleBot(token=telegram_id)
         self.edit_cache: dict[int, Any] = {}
 
     async def initialize(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
@@ -96,6 +96,7 @@ class TelegramBot(Bot):
             self.bot.send_message,
             ref,
             text or self.waiting,
+            **disable_web_page_preview,
         )
         if not text:
             self.edit_cache[msg.id] = {"current": 0, "content": [str(msg.text)]}
@@ -108,7 +109,10 @@ class TelegramBot(Bot):
             )
             return paginated_msg
         msg: Message = await self._exec(
-            self.bot.reply_to, to_message, text or self.waiting
+            self.bot.reply_to,
+            to_message,
+            text or self.waiting,
+            **disable_web_page_preview,
         )
         if not text:
             self.edit_cache[msg.id] = {"current": 0, "content": [str(msg.text)]}
@@ -146,7 +150,11 @@ class TelegramBot(Bot):
                 )
             else:  # Single message
                 msg = await self._exec(
-                    self.bot.edit_message_text, edited, message.chat.id, message.id
+                    self.bot.edit_message_text,
+                    edited,
+                    message.chat.id,
+                    message.id,
+                    **disable_web_page_preview,
                 )
                 if (replace or final) and message.id in self.edit_cache:
                     del self.edit_cache[message.id]
@@ -168,10 +176,15 @@ class TelegramBot(Bot):
                 ref[0],
                 ref[1],
                 reply_markup=reply_markup(page, len(pages)),
+                **disable_web_page_preview,
             )
         else:  # Send/Reply
             msg = await self._exec(
-                method, ref, pages[page], reply_markup=reply_markup(page, len(pages))
+                method,
+                ref,
+                pages[page],
+                reply_markup=reply_markup(page, len(pages)),
+                **disable_web_page_preview,
             )
         cache = self.edit_cache.get(msg.id)
         if not cache:
@@ -201,6 +214,7 @@ class TelegramBot(Bot):
                     message.chat.id,
                     message.id,
                     reply_markup=reply_markup(new_index, len(cache["pages"])),
+                    **disable_web_page_preview,
                 )
 
     async def pin(self, message: Message) -> bool:
