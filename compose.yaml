@@ -22,6 +22,7 @@ services:
       - .env
     volumes:
       - agent_data:/data
+      - ${CONFIG_DIR}:/app/config
     <<: [ *default-logging, *default-networks ]
 
 networks:
