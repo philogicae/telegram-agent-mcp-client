@@ -7,6 +7,9 @@ from .config import get_config
 
 async def get_tools(display: bool = True) -> list[BaseTool]:
     config, edit_config = get_config()
+    if not config:
+        return []
+
     client = MultiServerMCPClient(config)
     raw_tools = await client.get_tools()
 
