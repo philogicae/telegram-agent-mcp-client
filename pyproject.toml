@@ -1,6 +1,6 @@
 [project]
 name = "telegram-agent-mcp-client"
-version = "0.7.0"
+version = "0.8.0"
 description = "Telegram Agent MCP Client"
 authors = [{ name = "philogicae" }]
 requires-python = ">=3.11,<4.0"
