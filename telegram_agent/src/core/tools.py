@@ -11,8 +11,6 @@ async def get_tools(display: bool = True) -> list[BaseTool]:
         return []
 
     client = MultiServerMCPClient(config)
-    raw_tools = await client.get_tools()
-
     # Set higher timeout and disable logging callback
     for c in client.connections:
         if client.connections[c]["transport"] in [
@@ -23,6 +21,12 @@ async def get_tools(display: bool = True) -> list[BaseTool]:
         client.connections[c]["session_kwargs"] = {
             "logging_callback": lambda *args: None
         }
+
+    try:
+        raw_tools = await client.get_tools()
+    except Exception:
+        Console().print_exception()
+        exit()
 
     # Override tools
     tools: list[BaseTool] = []
