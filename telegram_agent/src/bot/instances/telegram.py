@@ -167,7 +167,12 @@ class TelegramBot(Bot):
         text: str,
         page: int = 0,
     ) -> Any:
-        pages = smart_split(text, self.max_msg_length)
+        length = (
+            self.max_msg_length
+            if len(text) % self.max_msg_length > len(text) % (self.max_msg_length + 500)
+            else self.max_msg_length + 500
+        )
+        pages = smart_split(text, length)
         msg: Any = None
         if isinstance(ref, tuple):  # Edit
             msg = await self._exec(
