@@ -53,7 +53,6 @@ def get_llm() -> LanguageModelLike:
 
     model = getenv("OPENAI_API_MODEL")
     return ChatOpenAI(
-        base_url=getenv("OPENAI_API_BASE"),
         api_key=getenv("OPENAI_API_KEY"),  # type: ignore
         model=model,  # type: ignore
         disable_streaming="tool_calling",
