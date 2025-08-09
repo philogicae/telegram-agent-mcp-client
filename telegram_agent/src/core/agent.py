@@ -4,13 +4,10 @@ from re import sub
 from typing import Any, AsyncGenerator, Callable, Sequence
 
 from aiosqlite import connect
-from langchain_core.messages import HumanMessage  # , RemoveMessage
+from langchain_core.messages import HumanMessage
 from langchain_core.messages.utils import count_tokens_approximately, trim_messages
 from langchain_core.tools import BaseTool
-from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-
-# from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import create_react_agent
 from langgraph.prebuilt.tool_node import ToolNode
@@ -30,14 +27,12 @@ def pre_model_hook(state: dict[str, Any]) -> dict[str, Any]:
     trimmed_messages = trim_messages(
         state["messages"],
         strategy="last",
-        include_system=True,
         token_counter=count_tokens_approximately,
         max_tokens=10000,
         start_on="human",
         end_on=("human", "tool"),
         allow_partial=True,
     )
-    # return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES), *trimmed_messages]}
     return {"llm_input_messages": trimmed_messages}
 
 
@@ -70,8 +65,8 @@ class Agent:
             model=get_llm(),
             tools=tools if tools else [],
             prompt=SYSTEM_PROMPT,
-            # pre_model_hook=pre_model_hook,
-            checkpointer=InMemorySaver(),  # checkpointer(dev),
+            pre_model_hook=pre_model_hook,
+            checkpointer=checkpointer(dev),
             # store=store(),
             debug=debug,
         )
@@ -110,7 +105,11 @@ class Agent:
         if not content:
             yield "...", True, {}  # Avoid empty reply
         else:
-            config = {"configurable": {"thread_id": thread_id}}
+            config = {
+                "configurable": {"thread_id": thread_id},
+                "max_concurrency": 1,
+                "recursion_limit": 100,
+            }
             total_calls, total_tokens = 0, 0
             total_agent_calls, total_tool_calls = 0, 0
             calls_by_tool: dict[str, int] = {}
@@ -123,6 +122,8 @@ class Agent:
                 {"messages": [HumanMessage(content)]},
                 config,  # type: ignore
             ):
+                if "pre_model_hook" in chunk:
+                    continue
                 total_calls += 1
                 msg_type = "agent"
                 if "tools" in chunk:
@@ -259,11 +260,7 @@ class Agent:
 
 async def run_agent(dev: bool = False) -> None:
     content = ""
-    # content = "Find magnet link of the last adaptation of Berserk"
-    # content = "Check torrent list and get statuses"
-    # content = "trouve le premier film gladiator"
-
-    with await Agent.init_with_tools(dev) as agent:
+    with await Agent.init_with_tools(dev=True) as agent:
         if content:
             print(f"> {content}")
         while True:
