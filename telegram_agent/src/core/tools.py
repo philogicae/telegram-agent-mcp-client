@@ -17,7 +17,7 @@ async def get_tools(display: bool = True) -> list[BaseTool]:
             "sse",
             "streamable_http",
         ]:
-            client.connections[c]["timeout"] = 10.0  # type: ignore
+            client.connections[c]["timeout"] = 30.0
         client.connections[c]["session_kwargs"] = {
             "logging_callback": lambda *args: None
         }
