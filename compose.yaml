@@ -7,10 +7,6 @@ x-logging: &default-logging
       max-size: "10m"
       max-file: "3"
 
-x-networks: &default-networks
-  networks:
-    - ai-agent
-
 services:
   telegram-agent:
     container_name: telegram-agent
@@ -23,12 +19,8 @@ services:
     volumes:
       - agent_data:/data
       - ${CONFIG_DIR}:/app/config
-    <<: [ *default-logging, *default-networks ]
-
-networks:
-  ai-agent:
-    name: ai-agent
-    driver: bridge
+    <<: [ *default-logging ]
+    network_mode: host
 
 volumes:
   agent_data:
