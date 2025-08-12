@@ -188,8 +188,9 @@ class Agent:
                     if msg_type == "tools":
                         if called_tool and called_tool != "think":
                             step = "✅"
+                            sample = text.lower()[:50]
                             for flag in Flag:
-                                if flag.value in text.lower():
+                                if flag.value in sample:
                                     step = "❌"
                                     break
                             extra = {"tool": called_tool, "output": text}
