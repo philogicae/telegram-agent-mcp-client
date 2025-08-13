@@ -58,6 +58,6 @@ def get_llm() -> LanguageModelLike:
         disable_streaming="tool_calling",
         disabled_params={"parallel_tool_calls": False},
         temperature=0.5 if not str(model).startswith("gpt-5") else None,
-        reasoning_effort="low" if not str(model).startswith("gpt-5") else None,
+        reasoning_effort="high" if not str(model).startswith("gpt-5") else None,
         output_version="responses/v1",
     )
