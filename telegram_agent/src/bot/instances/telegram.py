@@ -4,6 +4,7 @@ from typing import Any, Awaitable, Callable
 from telebot.async_telebot import AsyncTeleBot
 from telebot.types import CallbackQuery, LinkPreviewOptions, Message
 from telebot.util import smart_split
+from telegramify_markdown import markdownify
 
 from ..abstract import Bot
 from ..utils import reply_markup
@@ -11,6 +12,10 @@ from ..utils import reply_markup
 disable_web_page_preview = {
     "link_preview_options": LinkPreviewOptions(is_disabled=True)
 }
+
+
+def fixed(text: str) -> str:
+    return markdownify(text, normalize_whitespace=True)
 
 
 class TelegramBot(Bot):
@@ -31,7 +36,7 @@ class TelegramBot(Bot):
         super().__init__(delay, group_msg_trigger, waiting, retries)
         if max_msg_length:
             self.max_msg_length = max_msg_length
-        self.bot = AsyncTeleBot(token=telegram_id)
+        self.bot = AsyncTeleBot(token=telegram_id, parse_mode="MarkdownV2")
         self.edit_cache: dict[int, Any] = {}
 
     async def initialize(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
@@ -89,13 +94,13 @@ class TelegramBot(Bot):
         )
         if text and len(text) > self.max_msg_length:
             paginated_msg: Message = await self.paginated(
-                self.bot.send_message, ref, text
+                self.bot.send_message, ref, fixed(text)
             )
             return paginated_msg
         msg: Message = await self._exec(
             self.bot.send_message,
             ref,
-            text or self.waiting,
+            fixed(text or self.waiting),
             **disable_web_page_preview,
         )
         if not text:
@@ -105,13 +110,13 @@ class TelegramBot(Bot):
     async def reply(self, to_message: Message, text: str | None = None) -> Message:
         if text and len(text) > self.max_msg_length:
             paginated_msg: Message = await self.paginated(
-                self.bot.reply_to, to_message, text
+                self.bot.reply_to, to_message, fixed(text)
             )
             return paginated_msg
         msg: Message = await self._exec(
             self.bot.reply_to,
             to_message,
-            text or self.waiting,
+            fixed(text or self.waiting),
             **disable_web_page_preview,
         )
         if not text:
@@ -145,13 +150,13 @@ class TelegramBot(Bot):
                 msg = await self.paginated(
                     self.bot.edit_message_text,
                     (message.chat.id, message.id),
-                    edited,
+                    fixed(edited),
                     cache.get("current"),
                 )
             else:  # Single message
                 msg = await self._exec(
                     self.bot.edit_message_text,
-                    edited,
+                    fixed(edited),
                     message.chat.id,
                     message.id,
                     **disable_web_page_preview,
@@ -215,7 +220,7 @@ class TelegramBot(Bot):
                 cache["current"] = new_index
                 await self._exec(
                     self.bot.edit_message_text,
-                    cache["pages"][new_index],
+                    fixed(cache["pages"][new_index]),
                     message.chat.id,
                     message.id,
                     reply_markup=reply_markup(new_index, len(cache["pages"])),

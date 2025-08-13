@@ -202,7 +202,7 @@ class Agent:
                         Panel(escape(tool_calls), title="Tools", border_style="red")
                     )
                     if called_tool and called_tool != "think":
-                        step = f"🛠️  {sub('_|-', ' ', str(called_tool)).title()}..."
+                        step = f"🛠️  **{sub('_|-', ' ', str(called_tool)).title()}**..."
 
                 # Usage
                 if hasattr(msg, "usage_metadata") and msg.usage_metadata:

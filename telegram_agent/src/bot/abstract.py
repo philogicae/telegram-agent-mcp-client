@@ -55,7 +55,7 @@ class Bot(ABC):
     last_call: float = 0
     delay: float = 0.2
     group_msg_trigger: str = "!"
-    waiting: str = "💭  I'm thinking..."
+    waiting: str = "💭  _I'm thinking..._"
     retries: int = 5
 
     def __init__(

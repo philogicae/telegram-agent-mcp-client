@@ -29,19 +29,6 @@ def escape_single_char(text: str, chars: list[str]) -> str:
     return text
 
 
-def fixed_markdown(text: str) -> str:
-    replacements = {
-        "\n* ": "\n- ",
-        "**": "*",
-        "*`": "`",
-        "`*": "`",
-    }
-    for k, v in replacements.items():
-        text = text.replace(k, v)
-    escaped = ["*", "~"]
-    return escape_single_char(text, escaped).strip()
-
-
 def unpack_user(msg: Message) -> tuple[str, str]:
     if msg.from_user:
         return (
