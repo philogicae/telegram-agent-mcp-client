@@ -7,6 +7,8 @@ from aiosqlite import connect
 from langchain_core.messages import HumanMessage
 from langchain_core.messages.utils import count_tokens_approximately, trim_messages
 from langchain_core.tools import BaseTool
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import create_react_agent
@@ -35,8 +37,10 @@ def pre_model_hook(state: dict[str, Any]) -> dict[str, Any]:
     return {"llm_input_messages": trimmed_messages}
 
 
-def checkpointer(dev: bool = False) -> AsyncSqliteSaver:
-    data_folder = "data/dev" if dev else "data/prod"
+def checkpointer(dev: bool = False) -> BaseCheckpointSaver:
+    if dev:
+        return InMemorySaver()
+    data_folder = "/app/data"
     makedirs(data_folder, exist_ok=True)
     return AsyncSqliteSaver(connect(f"{data_folder}/checkpointer.sqlite"))
 
@@ -59,7 +63,7 @@ class Agent:
         dev: bool = False,
         debug: bool = False,
     ) -> None:
-        self.agent = create_react_agent(  # TODO: Swarm agents
+        self.agent = create_react_agent(
             name="Root Agent",
             model=get_llm(),
             tools=tools if tools else [],
