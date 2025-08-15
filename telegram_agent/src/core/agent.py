@@ -37,7 +37,7 @@ def pre_model_hook(state: dict[str, Any]) -> dict[str, Any]:
     return {"llm_input_messages": trimmed_messages}
 
 
-def checkpointer(dev: bool = False) -> BaseCheckpointSaver:
+def checkpointer(dev: bool = False) -> BaseCheckpointSaver:  # type: ignore
     if dev:
         return InMemorySaver()
     data_folder = "/app/data"
