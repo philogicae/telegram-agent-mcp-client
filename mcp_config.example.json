@@ -2,6 +2,7 @@
   "mcpServers": {
     "sequential-thinking": {
       "command": "uvx sequential-thinking-mcp",
+      // "serverUrl": "http://localhost:8007/sse",
       "disabled": false
     },
     "web-search": {
