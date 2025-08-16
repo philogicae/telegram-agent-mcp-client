@@ -21,7 +21,16 @@ def fixed(text: str) -> str:
 class TelegramBot(Bot):
     bot: AsyncTeleBot
     max_msg_length: int = 1000
+    extra_msg_length: int = 500
     pagination_action: list[str] = ["first", "prev", "next", "last"]
+
+    def _dynamic_length(self, text: str) -> int:
+        return (
+            self.max_msg_length
+            if len(text) % self.max_msg_length
+            > len(text) % (self.max_msg_length + self.extra_msg_length)
+            else self.max_msg_length + self.extra_msg_length
+        )
 
     def __init__(
         self,
@@ -92,7 +101,7 @@ class TelegramBot(Bot):
             if isinstance(message_or_chat_id, Message)
             else message_or_chat_id
         )
-        if text and len(text) > self.max_msg_length:
+        if text and len(text) > self._dynamic_length(text):
             paginated_msg: Message = await self.paginated(
                 self.bot.send_message, ref, fixed(text)
             )
@@ -108,7 +117,7 @@ class TelegramBot(Bot):
         return msg
 
     async def reply(self, to_message: Message, text: str | None = None) -> Message:
-        if text and len(text) > self.max_msg_length:
+        if text and len(text) > self._dynamic_length(text):
             paginated_msg: Message = await self.paginated(
                 self.bot.reply_to, to_message, fixed(text)
             )
@@ -146,7 +155,7 @@ class TelegramBot(Bot):
                 edited = "\n".join(content)
         msg: Message | bool = False
         if edited != orig:
-            if edited and len(edited) > self.max_msg_length:  # Paginated
+            if edited and len(edited) > self._dynamic_length(edited):  # Paginated
                 msg = await self.paginated(
                     self.bot.edit_message_text,
                     (message.chat.id, message.id),
@@ -172,12 +181,7 @@ class TelegramBot(Bot):
         text: str,
         page: int = 0,
     ) -> Any:
-        length = (
-            self.max_msg_length
-            if len(text) % self.max_msg_length > len(text) % (self.max_msg_length + 500)
-            else self.max_msg_length + 500
-        )
-        pages = smart_split(text, length)
+        pages = smart_split(text, self._dynamic_length(text))
         msg: Any = None
         if isinstance(ref, tuple):  # Edit
             msg = await self._exec(
