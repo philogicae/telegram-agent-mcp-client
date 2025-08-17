@@ -9,17 +9,11 @@ from pyjson5 import load  # pylint: disable=no-name-in-module
 load_dotenv()
 
 
-class ThinkTag:
-    start = getenv("THINK_TAG_START")
-    end = getenv("THINK_TAG_END")
-
-
 class Flag(Enum):
     _ERROR = " error"
     ERROR_ = "error "
     _FAILED = " failed"
     FAILED_ = "failed "
-    ERREUR = "erreur"
 
 
 def get_config() -> tuple[dict[str, Any], dict[str, Any]]:

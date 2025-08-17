@@ -20,10 +20,11 @@ from rich.markup import escape
 from rich.panel import Panel
 from telebot.types import Message as TelegramMessage
 
-from .config import Flag  # , ThinkTag
+from .config import Flag
 from .llm import get_llm
 from .prompts import BOT_NAME, SYSTEM_PROMPT
 from .tools import get_tools
+from .utils import Usage
 
 
 def pre_model_hook(state: dict[str, Any]) -> dict[str, Any]:
@@ -136,42 +137,33 @@ class Agent:
                 "max_concurrency": 1,
                 "recursion_limit": 100,
             }
-            total_calls, total_tokens = 0, 0
             total_agent_calls, total_tool_calls = 0, 0
             calls_by_tool: dict[str, int] = {}
             called_tool: str | None = None
-            start_time, end_time = (
-                datetime.now().timestamp(),
-                datetime.now().timestamp(),
-            )
-            async for namespace, chunk in self.agent.astream(
+            start_time = end_time = datetime.now().timestamp()
+            usage: Usage = Usage()
+            async for _, chunk in self.agent.astream(
                 {"messages": [HumanMessage(content)]},
                 config,  # type: ignore
                 subgraphs=True,
             ):
-                total_calls += 1
                 msg_type = "agent"
+                msg: Any = None
+                agent_name: Any = None
                 if "agent" in chunk:
-                    total_agent_calls += 1
+                    msg = chunk[msg_type]["messages"][0]  # type: ignore
+                    agent_name = msg.name.title()
+                    if not msg.tool_calls:
+                        total_agent_calls += 1
                     called_tool = None
                 elif "tools" in chunk:
                     msg_type = "tools"
-                    total_tool_calls += 1
+                    msg = chunk[msg_type]["messages"][0]  # type: ignore
                 else:
                     continue
-                msg = chunk[msg_type]["messages"][0]
 
-                # Think and Text
+                # Content
                 text = None
-                # think = None
-                """ if ThinkTag.start and ThinkTag.end and ThinkTag.start in msg.content:
-                    splitted = msg.content.split(ThinkTag.start, 1)[1].split(
-                        ThinkTag.end, 1
-                    )
-                    think, text = (
-                        splitted[0].strip(),
-                        splitted[1].strip() if len(splitted) > 1 else None,
-                    ) """
                 if isinstance(msg.content, list):
                     for item in msg.content:
                         if isinstance(item, str):
@@ -182,10 +174,11 @@ class Agent:
                     text = msg.content.strip()
 
                 # Tools
-                tool_calls: str | None = None
+                tool_calls: Any = None
                 if hasattr(msg, "tool_calls") and msg.tool_calls:
                     listed = []
                     for tool in msg.tool_calls:
+                        total_tool_calls += 1
                         called_tool = tool.get("name")
                         calls_by_tool[called_tool] = (
                             calls_by_tool.get(called_tool, 0) + 1
@@ -200,16 +193,11 @@ class Agent:
                 done: bool = False
                 extra: dict[str, str] = {}
 
-                """ if think:
-                    console.print(
-                        Panel(escape(think), title="Think", border_style="blue3")
-                    ) """
-
                 if text:
                     console.print(
                         Panel(
                             escape(text),
-                            title="Result" if msg_type == "tools" else msg_type.title(),
+                            title="Result" if msg_type == "tools" else agent_name,
                             border_style=(
                                 "green3" if msg_type == "tools" else "bright_cyan"
                             ),
@@ -228,17 +216,29 @@ class Agent:
                         step, done = text, True
 
                 if tool_calls:
-                    console.print(
-                        Panel(escape(tool_calls), title="Tools", border_style="red")
-                    )
-                    if called_tool and called_tool != "think":
-                        step = f"🛠️  **{sub('_|-', ' ', str(called_tool)).title()}**..."
+                    if str(called_tool).startswith("transfer_to_"):
+                        console.print(
+                            Panel(
+                                escape(tool_calls),
+                                title="Transfer",
+                                border_style="purple",
+                            )
+                        )
+                        step = f"🔁  **{sub('_|-', ' ', str(called_tool)).title()}**"
+                    else:
+                        console.print(
+                            Panel(escape(tool_calls), title="Tools", border_style="red")
+                        )
+                        if called_tool and called_tool != "think":
+                            step = (
+                                f"🛠️  **{sub('_|-', ' ', str(called_tool)).title()}**..."
+                            )
 
                 # Usage
                 if hasattr(msg, "usage_metadata") and msg.usage_metadata:
                     timer = datetime.now().timestamp() - end_time
                     end_time += timer
-                    total_tokens += msg.usage_metadata.get("total_tokens", 0)
+                    usage.add_usage(msg.usage_metadata)
                     console.print(
                         Panel(
                             escape(
@@ -248,7 +248,7 @@ class Agent:
                                 )
                             ),
                             title="Usage",
-                            border_style="purple",
+                            border_style="yellow",
                         )
                     )
 
@@ -265,10 +265,10 @@ class Agent:
             console.print(
                 Panel(
                     escape(
-                        f"total_calls: {total_calls} | agent_calls: {total_agent_calls} | tool_calls: {total_tool_calls}{(' (' + ', '.join([k + ': ' + str(v) for k, v in calls_by_tool.items()]) + ')') if calls_by_tool else ''} | total_tokens: {total_tokens} | took: {end_time - start_time:.2f} sec."
+                        f"{usage}\ntotal_calls: {total_agent_calls + total_tool_calls} | agent_calls: {total_agent_calls} | tool_calls: {total_tool_calls}{(' (' + ', '.join([k + ': ' + str(v) for k, v in calls_by_tool.items()]) + ')') if calls_by_tool else ''} | took: {end_time - start_time:.2f} sec."
                     ),
                     title="Usage Summary",
-                    border_style="yellow",
+                    border_style="bright_yellow",
                 )
             )
 
