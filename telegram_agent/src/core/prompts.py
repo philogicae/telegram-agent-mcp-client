@@ -3,11 +3,11 @@ from os import getenv
 from dotenv import load_dotenv
 
 load_dotenv()
-BOT_NAME = getenv("BOT_NAME")
+BOT_NAME = getenv("BOT_NAME", "Agent")
 
 DEFAULT = "You are an ultra smart helpful agent. You are empowered with a set of useful tools, but you can only call one at a time."
 
-SMART_TOOLING = f"""You are a smart, helpful, rational, and methodical assistant{" called " + BOT_NAME if BOT_NAME else ""}.
+SMART_TOOLING = f"""You are a smart, helpful, rational, and methodical assistant called {BOT_NAME}.
 # Mandatory guidelines:
 - Always reply in the user's language and in markdown format.
 - Don't discuss or reject user's orders (e.g. when user asks to try again after a failure).

@@ -14,14 +14,15 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import create_react_agent
 from langgraph.prebuilt.tool_node import ToolNode
 from langgraph.store.memory import InMemoryStore
+from langgraph_swarm import create_handoff_tool, create_swarm
 from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
 from telebot.types import Message as TelegramMessage
 
-from .config import Flag, ThinkTag
+from .config import Flag  # , ThinkTag
 from .llm import get_llm
-from .prompts import SYSTEM_PROMPT
+from .prompts import BOT_NAME, SYSTEM_PROMPT
 from .tools import get_tools
 
 
@@ -63,16 +64,38 @@ class Agent:
         dev: bool = False,
         debug: bool = False,
     ) -> None:
-        self.agent = create_react_agent(
-            name="Root Agent",
+        jesus = create_react_agent(
+            name="Jesus",
             model=get_llm(),
-            tools=tools if tools else [],
+            tools=[
+                create_handoff_tool(
+                    agent_name=BOT_NAME,
+                    description=f"Transfer to {BOT_NAME} for any request not related to religion.",
+                )
+            ],
+            prompt="You are Jesus Christ, the Savior of the world. You can only answer questions related to religion.",
+            pre_model_hook=pre_model_hook,
+        )
+        handoff = create_handoff_tool(
+            agent_name="Jesus",
+            description="Transfer to Jesus for any request related to religion.",
+        )
+        agent_tools: list[Any] = [handoff]
+        if tools:
+            if isinstance(tools, list):
+                agent_tools.extend(tools)
+            else:
+                agent_tools.append(tools)
+        agent = create_react_agent(
+            name=BOT_NAME,
+            model=get_llm(),
+            tools=agent_tools,
             prompt=SYSTEM_PROMPT,
             pre_model_hook=pre_model_hook,
-            checkpointer=checkpointer(dev),
-            # store=store(),
-            debug=debug,
         )
+        self.agent = create_swarm(
+            [agent, jesus], default_active_agent=BOT_NAME
+        ).compile(checkpointer=checkpointer(dev), debug=debug)
         self.tools = tools
         self.dev = dev
         self.debug = debug
@@ -121,40 +144,42 @@ class Agent:
                 datetime.now().timestamp(),
                 datetime.now().timestamp(),
             )
-            async for chunk in self.agent.astream(
+            async for namespace, chunk in self.agent.astream(
                 {"messages": [HumanMessage(content)]},
                 config,  # type: ignore
+                subgraphs=True,
             ):
-                if "pre_model_hook" in chunk:
-                    continue
                 total_calls += 1
                 msg_type = "agent"
-                if "tools" in chunk:
+                if "agent" in chunk:
+                    total_agent_calls += 1
+                    called_tool = None
+                elif "tools" in chunk:
                     msg_type = "tools"
                     total_tool_calls += 1
                 else:
-                    total_agent_calls += 1
-                    called_tool = None
+                    continue
                 msg = chunk[msg_type]["messages"][0]
 
                 # Think and Text
-                think, text = None, None
-                if ThinkTag.start and ThinkTag.end and ThinkTag.start in msg.content:
+                text = None
+                # think = None
+                """ if ThinkTag.start and ThinkTag.end and ThinkTag.start in msg.content:
                     splitted = msg.content.split(ThinkTag.start, 1)[1].split(
                         ThinkTag.end, 1
                     )
                     think, text = (
                         splitted[0].strip(),
                         splitted[1].strip() if len(splitted) > 1 else None,
-                    )
-                elif isinstance(msg.content, str):
-                    text = msg.content.strip()
-                elif isinstance(msg.content, list):
+                    ) """
+                if isinstance(msg.content, list):
                     for item in msg.content:
                         if isinstance(item, str):
                             text = item.strip()
                         elif isinstance(item, dict) and "text" in item:
                             text = item["text"].strip()
+                elif isinstance(msg.content, str):
+                    text = msg.content.strip()
 
                 # Tools
                 tool_calls: str | None = None
@@ -165,7 +190,9 @@ class Agent:
                         calls_by_tool[called_tool] = (
                             calls_by_tool.get(called_tool, 0) + 1
                         )
-                        listed.append(f"-> {called_tool}: {tool.get('args')}")
+                        tool_args = tool.get("args")
+                        tool_details = f": {tool_args}" if tool_args else ""
+                        listed.append(f"-> {called_tool}{tool_details}")
                     tool_calls = "\n".join(listed)
 
                 # Logging
@@ -173,16 +200,16 @@ class Agent:
                 done: bool = False
                 extra: dict[str, str] = {}
 
-                if think:
+                """ if think:
                     console.print(
                         Panel(escape(think), title="Think", border_style="blue3")
-                    )
+                    ) """
 
                 if text:
                     console.print(
                         Panel(
                             escape(text),
-                            title="Result" if msg_type == "tools" else "Agent",
+                            title="Result" if msg_type == "tools" else msg_type.title(),
                             border_style=(
                                 "green3" if msg_type == "tools" else "bright_cyan"
                             ),

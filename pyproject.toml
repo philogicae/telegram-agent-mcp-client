@@ -27,6 +27,7 @@ dependencies = [
     "nest-asyncio",
     "rqbit-mcp",
     "telegramify-markdown[mermaid]",
+    "langgraph-swarm",
 ]
 
 [project.urls]
