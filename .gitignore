@@ -18,7 +18,7 @@ wheels/
 .env
 **/*.env
 .venv
-mcp_config.json
+*_config.json
 docker-envs/*.txt
 data
 scripts/.*

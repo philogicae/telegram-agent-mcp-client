@@ -5,38 +5,21 @@ from typing import Any, AsyncGenerator, Callable, Sequence
 
 from aiosqlite import connect
 from langchain_core.messages import HumanMessage
-from langchain_core.messages.utils import count_tokens_approximately, trim_messages
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.prebuilt import create_react_agent
 from langgraph.prebuilt.tool_node import ToolNode
-from langgraph.store.memory import InMemoryStore
-from langgraph_swarm import create_handoff_tool, create_swarm
+from langgraph_swarm import create_swarm
 from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
 from telebot.types import Message as TelegramMessage
 
-from .config import Flag
-from .llm import get_llm
-from .prompts import BOT_NAME, SYSTEM_PROMPT
+from .config import AgentConfig, Flag, get_agent_config
 from .tools import get_tools
 from .utils import Usage
-
-
-def pre_model_hook(state: dict[str, Any]) -> dict[str, Any]:
-    trimmed_messages = trim_messages(
-        state["messages"],
-        strategy="last",
-        token_counter=count_tokens_approximately,
-        max_tokens=10000,
-        start_on="human",
-        end_on=("human", "tool"),
-    )
-    return {"llm_input_messages": trimmed_messages}
 
 
 def checkpointer(dev: bool = False) -> BaseCheckpointSaver:  # type: ignore
@@ -47,15 +30,13 @@ def checkpointer(dev: bool = False) -> BaseCheckpointSaver:  # type: ignore
     return AsyncSqliteSaver(connect(f"{data_folder}/checkpointer.sqlite"))
 
 
-def store() -> InMemoryStore:
-    return InMemoryStore()
-
-
 class Agent:
+    agent_config: AgentConfig
     agent: CompiledStateGraph[Any]
+    tools: Sequence[BaseTool | Callable[..., Any] | dict[str, Any]] | ToolNode | None
+    console: Console
     dev: bool
     debug: bool
-    tools: Sequence[BaseTool | Callable[..., Any] | dict[str, Any]] | ToolNode | None
 
     def __init__(
         self,
@@ -65,41 +46,21 @@ class Agent:
         dev: bool = False,
         debug: bool = False,
     ) -> None:
-        jesus = create_react_agent(
-            name="Jesus",
-            model=get_llm(),
-            tools=[
-                create_handoff_tool(
-                    agent_name=BOT_NAME,
-                    description=f"Transfer to {BOT_NAME} for any request not related to religion.",
-                )
-            ],
-            prompt="You are Jesus Christ, the Savior of the world. You can only answer questions related to religion.",
-            pre_model_hook=pre_model_hook,
-        )
-        handoff = create_handoff_tool(
-            agent_name="Jesus",
-            description="Transfer to Jesus for any request related to religion.",
-        )
-        agent_tools: list[Any] = [handoff]
+        all_tools: list[Any] = []
         if tools:
             if isinstance(tools, list):
-                agent_tools.extend(tools)
+                all_tools.extend(tools)
             else:
-                agent_tools.append(tools)
-        agent = create_react_agent(
-            name=BOT_NAME,
-            model=get_llm(),
-            tools=agent_tools,
-            prompt=SYSTEM_PROMPT,
-            pre_model_hook=pre_model_hook,
-        )
-        self.agent = create_swarm(
-            [agent, jesus], default_active_agent=BOT_NAME
-        ).compile(checkpointer=checkpointer(dev), debug=debug)
-        self.tools = tools
+                all_tools.append(tools)
+        self.tools = all_tools
+        self.console = Console()
         self.dev = dev
         self.debug = debug
+        self.agent_config = get_agent_config(all_tools)
+        self.agent = create_swarm(
+            agents=self.agent_config.agents,
+            default_active_agent=self.agent_config.active,
+        ).compile(checkpointer=checkpointer(dev), debug=debug)
 
     def __enter__(self) -> "Agent":
         return self
@@ -119,7 +80,7 @@ class Agent:
     async def chat(
         self, content: str | TelegramMessage | Any
     ) -> AsyncGenerator[tuple[str, bool, dict[str, str]], None]:
-        console, thread_id, user = Console(), "test", None
+        thread_id, user = "test", None
         if isinstance(content, str):
             content = content.strip()
         elif isinstance(content, TelegramMessage):
@@ -127,7 +88,9 @@ class Agent:
             user = content.from_user.first_name if content.from_user else "User"
             date = datetime.fromtimestamp(content.date).strftime("%Y-%m-%d %H:%M:%S")
             content = f"[{date}] {user}: {content.text}".strip()
-            console.print(Panel(escape(content), title="User", border_style="white"))
+            self.console.print(
+                Panel(escape(content), title="User", border_style="white")
+            )
 
         if not content:
             yield "...", True, {}  # Avoid empty reply
@@ -194,7 +157,7 @@ class Agent:
                 extra: dict[str, str] = {}
 
                 if text:
-                    console.print(
+                    self.console.print(
                         Panel(
                             escape(text),
                             title="Result" if msg_type == "tools" else agent_name,
@@ -217,7 +180,7 @@ class Agent:
 
                 if tool_calls:
                     if str(called_tool).startswith("transfer_to_"):
-                        console.print(
+                        self.console.print(
                             Panel(
                                 escape(tool_calls),
                                 title="Transfer",
@@ -226,7 +189,7 @@ class Agent:
                         )
                         step = f"🔁  **{sub('_|-', ' ', str(called_tool)).title()}**"
                     else:
-                        console.print(
+                        self.console.print(
                             Panel(escape(tool_calls), title="Tools", border_style="red")
                         )
                         if called_tool and called_tool != "think":
@@ -239,7 +202,7 @@ class Agent:
                     timer = datetime.now().timestamp() - end_time
                     end_time += timer
                     usage.add_usage(msg.usage_metadata)
-                    console.print(
+                    self.console.print(
                         Panel(
                             escape(
                                 " | ".join(
@@ -258,11 +221,11 @@ class Agent:
                         intermediate_step = f"-> YIELD: {step}"
                         if extra:
                             intermediate_step += f" {extra['tool']}"
-                        console.print(intermediate_step)
+                        self.console.print(intermediate_step)
                     yield step, False, extra
 
             # Usage Summary
-            console.print(
+            self.console.print(
                 Panel(
                     escape(
                         f"{usage}\ntotal_calls: {total_agent_calls + total_tool_calls} | agent_calls: {total_agent_calls} | tool_calls: {total_tool_calls}{(' (' + ', '.join([k + ': ' + str(v) for k, v in calls_by_tool.items()]) + ')') if calls_by_tool else ''} | took: {end_time - start_time:.2f} sec."
@@ -278,7 +241,7 @@ class Agent:
             elif step in "✅❌" and text:
                 step = str(text)
             if self.dev:
-                console.print(
+                self.console.print(
                     "-> FINAL: "
                     + (
                         f"{step[:21]}...{step[-21:]}"

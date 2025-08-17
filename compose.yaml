@@ -18,7 +18,7 @@ services:
       - .env
     volumes:
       - agent_data:/app/data
-      - ${CONFIG_DIR}:/app/config
+      - ${CONFIG_DIR:-./config}:/app/config
     <<: [ *default-logging ]
     network_mode: host
 

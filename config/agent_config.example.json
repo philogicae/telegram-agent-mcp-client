@@ -1,0 +1,9 @@
+{
+  "agents": {
+    "Agent": {
+      "prompt": "You are an ultra smart helpful agent. You are empowered with a set of useful tools, but you can only call one at a time.",
+      "tools": ["think"],
+      "handoff": "Transfer to Agent for any other request."
+    }
+  }
+}

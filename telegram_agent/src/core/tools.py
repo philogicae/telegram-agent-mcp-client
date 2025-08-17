@@ -2,11 +2,11 @@ from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from rich.console import Console
 
-from .config import get_config
+from .config import get_tool_config
 
 
 async def get_tools(display: bool = True) -> list[BaseTool]:
-    config, edit_config = get_config()
+    config, edit_config = get_tool_config()
     if not config:
         return []
 
@@ -43,9 +43,7 @@ async def get_tools(display: bool = True) -> list[BaseTool]:
         console = Console()
         console.print(f"\nAvailable tools: {len(tools)}")
         if tools:
-            console.print(
-                ", ".join(tool.name for tool in tools), "\n", style="bold green"
-            )
+            console.print(", ".join(tool.name for tool in tools), style="bold green")
     return tools
 
 
