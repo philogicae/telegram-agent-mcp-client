@@ -8,9 +8,10 @@ from .src import (
     TelegramBot,
     TelegramLogger,
     handler,
+    print_agents,
+    print_tools,
     run_agent,
     run_telegram_bot,
-    run_tools,
     telegram_chat,
     telegram_report_issue,
 )
@@ -29,5 +30,6 @@ __all__ = [
     "telegram_report_issue",
     "run_agent",
     "run_telegram_bot",
-    "run_tools",
+    "print_tools",
+    "print_agents",
 ]

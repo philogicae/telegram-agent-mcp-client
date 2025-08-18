@@ -1,6 +1,5 @@
-from enum import Enum
-from json import dump
 from os import getenv, path
+from shutil import copyfile
 from typing import Any
 
 from dotenv import load_dotenv
@@ -13,60 +12,14 @@ from pyjson5 import load  # pylint: disable=no-name-in-module
 from rich.console import Console
 
 from .llm import get_llm
+from .tools import get_tools
 
 load_dotenv()
 
 
-class Flag(Enum):
-    _ERROR = " error"
-    ERROR_ = "error "
-    _FAILED = " failed"
-    FAILED_ = "failed "
-
-
-def get_tool_config() -> tuple[dict[str, Any], dict[str, Any]]:
-    config_file = getenv("MCP_CONFIG", "./config") + "/mcp_config.json"
-    if not path.exists(config_file):
-        print("mcp_config.json file not found: creating a empty one")
-        with open(config_file, "w", encoding="utf-8") as f:
-            dump({"mcpServers": {}}, f, indent=2)
-
-    config = load(open(config_file, "r", encoding="utf-8"))
-    mcp_servers = config.get("mcpServers", {})
-    langchain_config, edit_config = {}, {}
-    for server in mcp_servers:
-        settings = mcp_servers[server]
-
-        # Ignore disabled servers
-        if settings.get("disabled"):
-            continue
-        del settings["disabled"]
-
-        # stdio
-        if settings.get("command"):
-            command = settings.get("command").split(" ")
-            if len(command) > 1 and not settings.get("args"):
-                settings["command"], settings["args"] = command[0], command[1:]
-            settings["transport"] = "stdio"
-
-        # sse or streamable_http
-        elif settings.get("serverUrl"):
-            settings["url"] = settings["serverUrl"]
-            del settings["serverUrl"]
-            if settings.get("url").endswith("/"):
-                settings["url"] = settings["url"][:-1]
-            if settings["url"].endswith("/sse"):
-                settings["transport"] = "sse"
-            elif settings["url"].endswith("/mcp"):
-                settings["transport"] = "streamable_http"
-
-        # To rename or disable a tool
-        if settings.get("edit"):
-            edit_config.update(settings.get("edit"))
-            del settings["edit"]
-        langchain_config[server] = settings
-
-    return langchain_config, edit_config
+class AgentConfig(BaseModel):
+    agents: list[Any]
+    active: str
 
 
 def pre_model_hook(state: dict[str, Any]) -> dict[str, Any]:
@@ -81,34 +34,37 @@ def pre_model_hook(state: dict[str, Any]) -> dict[str, Any]:
     return {"llm_input_messages": trimmed_messages}
 
 
-class AgentConfig(BaseModel):
-    agents: list[Any]
-    active: str
-
-
-def get_agent_config(tools: list[BaseTool], display: bool = True) -> AgentConfig:
+def get_agent_config(
+    tools: list[BaseTool], display: bool = True, verbose: bool = False
+) -> AgentConfig:
     config_file = getenv("MCP_CONFIG", "./config") + "/agent_config.json"
     if not path.exists(config_file):
-        print("agent_config.json file not found: creating a empty one")
-        with open(config_file, "w", encoding="utf-8") as f:
-            dump(
-                {
-                    "agents": {
-                        "Agent": {
-                            "prompt": "You are an ultra smart helpful agent. You are empowered with a set of useful tools, but you can only call one at a time.",
-                            "tools": ["think"],
-                        }
-                    }
-                },
-                f,
-                indent=2,
-            )
+        print("agent_config.json file not found: creating from example")
+        copyfile("agent_config.example.json", config_file)
 
-    agent_config: dict[str, Any] = load(open(config_file, "r", encoding="utf-8")).get(
-        "agents"
-    )
+    configuration: dict[str, Any] = load(open(config_file, "r", encoding="utf-8"))
+    agent_config: dict[str, Any] = configuration.get("agents", {})
     if len(agent_config) < 1:
         raise ValueError("No agents found in agent_config.json")
+
+    common: dict[str, Any] = configuration.get("common", {})
+    guidelines: Any = common.get("guidelines", "")
+    routine_guidelines: Any = ""
+    default_routines: Any = {}
+    if isinstance(guidelines, list) and guidelines:
+        guidelines = "# Mandatory guidelines:\n- " + "\n- ".join(guidelines)
+        routines: Any = common.get("routines", "")
+        if isinstance(routines, dict) and routines:
+            routine_guidelines = routines.get("guidelines", "")
+            if isinstance(routine_guidelines, list) and routine_guidelines:
+                routine_guidelines = "\n- " + "\n- ".join(routine_guidelines)
+            else:
+                routine_guidelines = ""
+            default_routines = routines.get("default", {})
+            if not isinstance(default_routines, dict):
+                default_routines = {}
+    else:
+        guidelines = ""
 
     available_tools: dict[str, BaseTool] = {tool.name: tool for tool in tools}
     handoff_tools: list[tuple[str, BaseTool]] = []
@@ -126,7 +82,7 @@ def get_agent_config(tools: list[BaseTool], display: bool = True) -> AgentConfig
             )
 
     console = Console()
-    if display:
+    if display or verbose:
         console.print(f"\nAvailable agents: {len(agent_config)}")
     model = get_llm()
     agents: list[Any] = []
@@ -136,8 +92,8 @@ def get_agent_config(tools: list[BaseTool], display: bool = True) -> AgentConfig
             agent_tools.extend(
                 [
                     handoff_tool
-                    for _, handoff_tool in handoff_tools
-                    if handoff_tool.name != name
+                    for tool_name, handoff_tool in handoff_tools
+                    if tool_name != name
                 ]
             )
         if tools:
@@ -147,22 +103,62 @@ def get_agent_config(tools: list[BaseTool], display: bool = True) -> AgentConfig
                     [available_tools.get(tool) for tool in config.get("tools", [])],
                 )
             )
+        prompt = config.get("prompt", "")
+        if prompt:
+            prompt = f"{prompt}\n{guidelines}"
+            found_routines: dict[str, Any] = {}
+            if default_routines:
+                found_routines.update(default_routines)
+            agent_routines: Any = config.get("routines", "")
+            if isinstance(agent_routines, dict) and agent_routines:
+                found_routines.update(agent_routines)
+            if found_routines:
+                prompt += routine_guidelines + "\n# Routines:"
+                for routine, specs in found_routines.items():
+                    trigger = specs.get("trigger")
+                    if isinstance(trigger, str) and trigger:
+                        title = f"\n## {routine} ({trigger}):\n"
+                        steps = specs.get("steps", "")
+                        if isinstance(steps, list) and steps:
+                            prompt += title + "\n".join(
+                                [f"{i + 1}) {step}" for i, step in enumerate(steps)]
+                            )
+
         agent = create_react_agent(
             model=model,
             pre_model_hook=pre_model_hook,
             name=name,
-            prompt=config.get(
-                "prompt", f"Missing system prompt for {name}. Signal it to the user."
-            ),
+            prompt=prompt
+            or f"Missing system prompt for {name}. Signal it to the user.",
             tools=agent_tools,
         )
-        if display:
+        if verbose:
+            all_tools = ", ".join(tool.name for tool in agent_tools)
+            splitted_prompt = prompt.split("\n# Routines:\n")
+            prompt = splitted_prompt[0]
+            routines = (
+                f"\n# Routines:\n[orange3]{splitted_prompt[1]}[/orange3]"
+                if len(splitted_prompt) > 1
+                else ""
+            )
             console.print(
-                f"- [bright_cyan][bold]{name}[/bold][/bright_cyan]: [orange3]{', '.join(tool.name for tool in agent_tools)}[/orange3]"
+                f"* [bright_cyan][bold]{name}[/bold][/bright_cyan]:\n# Tools: [bright_yellow]{all_tools if all_tools else 'None'}[/bright_yellow]\n# Handoff: [purple]{config.get('handoff', 'None')}[/purple]\n# Prompt:\n[orange3]{prompt}[/orange3]{routines}"
+            )
+        elif display:
+            all_tools = ", ".join(tool.name for tool in agent_tools)
+            console.print(
+                f"* [bright_cyan][bold]{name}[/bold][/bright_cyan]:\n[orange3]{all_tools if all_tools else 'None'}[/orange3]"
             )
         agents.append(agent)
 
     active: str = str(list(agent_config.keys())[0])
     if display:
-        console.print(f"Active agent: {active}")
+        console.print(
+            f"[bold][red]Active agent:[/red] [bright_cyan]{active}[/bright_cyan][/bold]"
+        )
     return AgentConfig(agents=agents, active=active)
+
+
+async def print_agents() -> None:
+    tools = await get_tools(display=False)
+    get_agent_config(tools, verbose=True)

@@ -147,10 +147,11 @@ class TelegramBot(Bot):
             if final:
                 edited = ("\n".join(content[:-1]) + f"\n\n{text}").strip()
             else:
-                if text not in "✅❌":  # Tool call
-                    content[-1] = text
-                else:  # Tool result
+                if text in "✅❌":  # Tool result edit
                     content[-1] = f"{text}{content[-1][1:-3]}"
+                else:  # Tool call init or logs
+                    content[-1] = text
+                if not content[-1].endswith("..."):
                     content.append(self.waiting)
                 edited = "\n".join(content)
         msg: Message | bool = False

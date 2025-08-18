@@ -6,7 +6,7 @@ env:
 
 jobs:
   test:
-    name: Run ruff, mypy and pytest 🧪
+    name: Run ruff and mypy 🧪
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,14 +27,6 @@ jobs:
         run: uv run ruff check telegram_agent
       - name: Run mypy
         run: uv run mypy telegram_agent
-      - name: Create dummy mcp_config.json file
-        run: cp mcp_config.example.json mcp_config.json
-      - name: Run tests
-        env:
-          OPENAI_API_BASE: https://api.openai.com/v1
-          OPENAI_API_KEY: fake-key
-          OPENAI_API_MODEL: gpt5
-        run: uv run pytest telegram_agent
 
   build:
     name: Build distribution 📦

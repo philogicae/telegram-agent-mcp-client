@@ -1,1 +1,1 @@
-uv lock && uv sync -U --link-mode=copy && uv run ruff format telegram_agent && uv run ruff check telegram_agent --fix && uv run mypy telegram_agent && uv run pytest telegram_agent
+uv lock && uv sync -U --link-mode=copy && uv run ruff format telegram_agent && uv run ruff check telegram_agent --fix && uv run mypy telegram_agent

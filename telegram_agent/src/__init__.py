@@ -11,7 +11,7 @@ from .bot import (
     telegram_chat,
     telegram_report_issue,
 )
-from .core import Agent, run_agent, run_tools
+from .core import Agent, print_agents, print_tools, run_agent
 
 __all__ = [
     "AgenticBot",
@@ -27,5 +27,6 @@ __all__ = [
     "telegram_report_issue",
     "run_agent",
     "run_telegram_bot",
-    "run_tools",
+    "print_tools",
+    "print_agents",
 ]

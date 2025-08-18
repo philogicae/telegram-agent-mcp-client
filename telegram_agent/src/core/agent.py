@@ -1,9 +1,10 @@
 from datetime import datetime
-from os import makedirs
+from os import getenv, makedirs
 from re import sub
 from typing import Any, AsyncGenerator, Callable, Sequence
 
 from aiosqlite import connect
+from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -17,9 +18,11 @@ from rich.markup import escape
 from rich.panel import Panel
 from telebot.types import Message as TelegramMessage
 
-from .config import AgentConfig, Flag, get_agent_config
+from .config import AgentConfig, get_agent_config
 from .tools import get_tools
-from .utils import Usage
+from .utils import Flag, Usage
+
+load_dotenv()
 
 
 def checkpointer(dev: bool = False) -> BaseCheckpointSaver:  # type: ignore
@@ -45,6 +48,7 @@ class Agent:
         ) = None,
         dev: bool = False,
         debug: bool = False,
+        generate_png: bool = False,
     ) -> None:
         all_tools: list[Any] = []
         if tools:
@@ -61,6 +65,11 @@ class Agent:
             agents=self.agent_config.agents,
             default_active_agent=self.agent_config.active,
         ).compile(checkpointer=checkpointer(dev), debug=debug)
+        if generate_png:
+            graph_file = getenv("MCP_CONFIG", "./config") + "/graph.png"
+            self.agent.get_graph().draw_mermaid_png(output_file_path=graph_file)
+            print(f"Graph saved to {graph_file}")
+            exit()
 
     def __enter__(self) -> "Agent":
         return self
@@ -73,9 +82,11 @@ class Agent:
         return await get_tools()
 
     @staticmethod
-    async def init_with_tools(dev: bool = False, debug: bool = False) -> "Agent":
+    async def init_with_tools(
+        dev: bool = False, debug: bool = False, generate_png: bool = False
+    ) -> "Agent":
         tools = await Agent.load_tools()
-        return Agent(tools, dev, debug)
+        return Agent(tools, dev, debug, generate_png)
 
     async def chat(
         self, content: str | TelegramMessage | Any
@@ -252,9 +263,9 @@ class Agent:
             yield step, True, extra
 
 
-async def run_agent(dev: bool = False) -> None:
+async def run_agent(dev: bool = False, generate_png: bool = False) -> None:
     content = ""
-    with await Agent.init_with_tools(dev=True) as agent:
+    with await Agent.init_with_tools(dev=True, generate_png=generate_png) as agent:
         if content:
             print(f"> {content}")
         while True:

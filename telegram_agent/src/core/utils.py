@@ -1,4 +1,12 @@
+from enum import Enum
 from typing import Any
+
+
+class Flag(Enum):
+    _ERROR = " error"
+    ERROR_ = "error "
+    _FAILED = " failed"
+    FAILED_ = "failed "
 
 
 class Usage:
