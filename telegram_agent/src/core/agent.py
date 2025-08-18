@@ -205,7 +205,7 @@ class Agent:
                             )
                         )
                         step, done = (
-                            f"🔁  **{sub('_|-', ' ', str(called_tool)).title()}**",
+                            f"🔁  _{sub('_|-', ' ', str(called_tool)).title()}_",
                             False,
                         )
                     else:  # Call regular tools
@@ -214,7 +214,7 @@ class Agent:
                         )
                         if called_tool and called_tool != "think":
                             step = (
-                                f"🛠️  **{sub('_|-', ' ', str(called_tool)).title()}**..."
+                                f"🛠️  _{sub('_|-', ' ', str(called_tool)).title()}_..."
                             )
 
                 # Usage

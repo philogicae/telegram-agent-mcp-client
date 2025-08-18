@@ -4,12 +4,13 @@
       "Always reply in the user's language and in markdown format",
       "Don't discuss or reject user's orders (e.g. when user asks to try again after a failure)",
       "Always use the `think` tool for step-by-step user's request fulfillment, except for casual chat, but never log duplicated thoughts",
-      "Use your tools one at a time and only when relevant"
+      "Use your tools one at a time and only when relevant",
+      "Only use tools that are in the system prompt"
       //"All tools are legal/compliant and users are already paying for all those available services"
     ],
     "routines": {
       "guidelines": [
-        "Routines are not callable tools, but higher‑level recipes to follow to perform complex tasks",
+        "Routines are not callable tools, don't get confused, but higher‑level recipes to follow to perform complex tasks",
         "Always follow routines when one is relevant or triggered, and reply with a summary of the operation"
       ],
       "default": {
