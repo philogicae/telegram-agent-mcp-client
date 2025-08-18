@@ -37,9 +37,9 @@
             "`web_search`",
             "Gather content sequentially from most relevant urls with `fetch_https_url`"
           ]
-        }
-        /* "new_releases": {
-          "trigger": "for requests looking like 'Any new <movies/series/releases>?'",
+        },
+        "new_releases": {
+          "trigger": "for requests looking like 'Any new <movie/series/release/media>?'",
           "steps": [
             "`fetch_https_url` using 'https://ww4.tinyzone.org'",
             "Reply but replacing ' HD ' keywords by ' - ' and formatting 'SS X EPS Y' as 'X seasons / Y episodes'"
@@ -49,10 +49,10 @@
           "trigger": "for requests looking like 'Find new/last episode of <series>'",
           "steps": [
             "`web_search` for '<series> latest season episode'",
-            "`fetch_https_url` to identify the latest available episode in format 'sXXeYY'",
-            "Delegate to `Media Manager`, he will execute `find_media` routine for the identified episode"
+            "`fetch_https_url` to identify the latest available episode in format 'sXXeYY'"
+            //"Delegate to `Media Manager`, he will execute `find_media` routine for the identified episode"
           ]
-        } */
+        }
       },
       "tools": [
         "think",
@@ -78,7 +78,7 @@
           ]
         },
         "new_releases": {
-          "trigger": "for requests looking like 'Any new <movies/series/releases>?'",
+          "trigger": "for requests looking like 'Any new <movie/series/release/media>?'",
           "steps": [
             "Log a thought and then delegate to `Search Agent`, he has a routine for that"
           ]

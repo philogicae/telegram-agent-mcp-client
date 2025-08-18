@@ -177,8 +177,12 @@ class Agent:
                             ),
                         )
                     )
-                    if msg_type == "tools":
-                        if called_tool and called_tool != "think":
+                    if msg_type == "tools":  # Yield Tool result
+                        if (
+                            called_tool
+                            and called_tool != "think"
+                            and not str(called_tool).startswith("transfer_to_")
+                        ):
                             step = "✅"
                             sample = text.lower()[:50]
                             for flag in Flag:
@@ -190,7 +194,9 @@ class Agent:
                         step, done = text, True
 
                 if tool_calls:
-                    if str(called_tool).startswith("transfer_to_"):
+                    if str(called_tool).startswith(
+                        "transfer_to_"
+                    ):  # Call transfer tools
                         self.console.print(
                             Panel(
                                 escape(tool_calls),
@@ -198,8 +204,11 @@ class Agent:
                                 border_style="purple",
                             )
                         )
-                        step = f"🔁  **{sub('_|-', ' ', str(called_tool)).title()}**"
-                    else:
+                        step, done = (
+                            f"🔁  **{sub('_|-', ' ', str(called_tool)).title()}**",
+                            False,
+                        )
+                    else:  # Call regular tools
                         self.console.print(
                             Panel(escape(tool_calls), title="Tools", border_style="red")
                         )

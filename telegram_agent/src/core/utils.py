@@ -3,6 +3,7 @@ from typing import Any
 
 
 class Flag(Enum):
+    ERROR = "error:"
     _ERROR = " error"
     ERROR_ = "error "
     _FAILED = " failed"
