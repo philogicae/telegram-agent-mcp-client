@@ -147,7 +147,7 @@ class TelegramBot(Bot):
             if final:
                 edited = ("\n".join(content[:-1]) + f"\n\n{text}").strip()
             else:
-                if text in "✅❌":  # Tool result edit
+                if "🛠️" in content[-1] and text in "✅❌":  # Tool result edit
                     content[-1] = f"{text}{content[-1][1:-3]}"
                 else:  # Tool call init or logs
                     content[-1] = text
