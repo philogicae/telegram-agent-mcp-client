@@ -37,6 +37,7 @@ class Agent:
     agent_config: AgentConfig
     agent: CompiledStateGraph[Any]
     tools: Sequence[BaseTool | Callable[..., Any] | dict[str, Any]] | ToolNode | None
+    tools_by_agent: dict[str, list[str]]
     console: Console
     dev: bool
     debug: bool
@@ -61,6 +62,7 @@ class Agent:
         self.dev = dev
         self.debug = debug
         self.agent_config = get_agent_config(all_tools)
+        self.tools_by_agent = self.agent_config.tools_by_agent
         self.agent = create_swarm(
             agents=self.agent_config.agents,
             default_active_agent=self.agent_config.active,
@@ -111,9 +113,11 @@ class Agent:
                 "max_concurrency": 1,
                 "recursion_limit": 100,
             }
+            current_agent: Any = None
             total_agent_calls, total_tool_calls = 0, 0
             calls_by_tool: dict[str, int] = {}
             called_tool: str | None = None
+            ignore_tool_result: bool = False
             start_time = end_time = datetime.now().timestamp()
             usage: Usage = Usage()
             async for _, chunk in self.agent.astream(
@@ -123,10 +127,9 @@ class Agent:
             ):
                 msg_type = "agent"
                 msg: Any = None
-                agent_name: Any = None
                 if "agent" in chunk:
                     msg = chunk[msg_type]["messages"][0]  # type: ignore
-                    agent_name = msg.name.title()
+                    current_agent = msg.name.title()
                     if not msg.tool_calls:
                         total_agent_calls += 1
                     called_tool = None
@@ -162,6 +165,16 @@ class Agent:
                         listed.append(f"-> {called_tool}{tool_details}")
                     tool_calls = "\n".join(listed)
 
+                # Ignore invalid tools
+                if ignore_tool_result:
+                    ignore_tool_result = False
+                    continue
+                elif called_tool and called_tool not in self.tools_by_agent.get(
+                    current_agent, []
+                ):
+                    ignore_tool_result = True
+                    continue
+
                 # Logging
                 step: str = ""
                 done: bool = False
@@ -171,7 +184,7 @@ class Agent:
                     self.console.print(
                         Panel(
                             escape(text),
-                            title="Result" if msg_type == "tools" else agent_name,
+                            title="Result" if msg_type == "tools" else current_agent,
                             border_style=(
                                 "green3" if msg_type == "tools" else "bright_cyan"
                             ),

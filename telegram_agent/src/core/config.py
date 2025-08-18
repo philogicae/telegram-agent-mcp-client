@@ -20,6 +20,7 @@ load_dotenv()
 class AgentConfig(BaseModel):
     agents: list[Any]
     active: str
+    tools_by_agent: dict[str, list[str]]
 
 
 def pre_model_hook(state: dict[str, Any]) -> dict[str, Any]:
@@ -27,9 +28,9 @@ def pre_model_hook(state: dict[str, Any]) -> dict[str, Any]:
         state["messages"],
         strategy="last",
         token_counter=count_tokens_approximately,
-        max_tokens=10000,
+        max_tokens=5000,
         start_on="human",
-        end_on=("human", "tool"),
+        # end_on=("human", "tool"),
     )
     return {"llm_input_messages": trimmed_messages}
 
@@ -86,6 +87,7 @@ def get_agent_config(
         console.print(f"\nAvailable agents: {len(agent_config)}")
     model = get_llm()
     agents: list[Any] = []
+    tools_by_agent: dict[str, list[str]] = {}
     for name, config in agent_config.items():
         agent_tools: list[BaseTool] = []
         if len(agent_config) > 1:
@@ -132,8 +134,10 @@ def get_agent_config(
             or f"Missing system prompt for {name}. Signal it to the user.",
             tools=agent_tools,
         )
+        tools_for_agent: list[str] = [tool.name for tool in agent_tools]
+        tools_by_agent[name] = tools_for_agent
         if verbose:
-            all_tools = ", ".join(tool.name for tool in agent_tools)
+            all_tools = ", ".join(tools_for_agent)
             splitted_prompt = prompt.split("\n# Routines:\n")
             prompt = splitted_prompt[0]
             routines = (
@@ -145,7 +149,7 @@ def get_agent_config(
                 f"* [bright_cyan][bold]{name}[/bold][/bright_cyan]:\n# Tools: [bright_yellow]{all_tools if all_tools else 'None'}[/bright_yellow]\n# Handoff: [purple]{config.get('handoff', 'None')}[/purple]\n# Prompt:\n[orange3]{prompt}[/orange3]{routines}"
             )
         elif display:
-            all_tools = ", ".join(tool.name for tool in agent_tools)
+            all_tools = ", ".join(tools_for_agent)
             console.print(
                 f"* [bright_cyan][bold]{name}[/bold][/bright_cyan]:\n[orange3]{all_tools if all_tools else 'None'}[/orange3]"
             )
@@ -156,7 +160,7 @@ def get_agent_config(
         console.print(
             f"[bold][red]Active agent:[/red] [bright_cyan]{active}[/bright_cyan][/bold]"
         )
-    return AgentConfig(agents=agents, active=active)
+    return AgentConfig(agents=agents, active=active, tools_by_agent=tools_by_agent)
 
 
 async def print_agents() -> None:
