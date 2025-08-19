@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from telebot.types import Message
 
 from .abstract import AgenticBot, handler
-from .utils import unpack_user
+from .utils import logify, unpack_user
 
 load_dotenv()
 TELEGRAM_CHAT_DEV = getenv("TELEGRAM_CHAT_DEV")
@@ -24,11 +24,17 @@ async def telegram_report_issue(
     if TELEGRAM_CHAT_DEV and TELEGRAM_CHAT_DEV != str(orig_msg.chat.id):
         await instance.bot.send(
             TELEGRAM_CHAT_DEV,
-            f"⚠️ {cause} issue detected on chat:\n- *{orig_msg.chat.id}* | {orig_msg.chat.title or 'Private'}\n- @{user}: {name}{error}",
+            logify(
+                "Error",
+                f"⚠️ {cause} issue detected on chat:\n- *{orig_msg.chat.id}* | {orig_msg.chat.title or 'Private'}\n- @{user}: {name}{error}",
+            ),
         )
     await instance.bot.reply(
         reply_msg,
-        f"⚠️ Something went wrong with {cause}...\n🚒 Reported automatically to admin",
+        logify(
+            "Error",
+            f"⚠️ Something went wrong with {cause}...\n🚒 Reported automatically to admin",
+        ),
     )
 
 
@@ -42,9 +48,9 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
     init = instance.bot.reply if msg.chat.type != "private" else instance.bot.send
     reply, prev = await init(msg), ""
     try:
-        async for step, done, extra in instance.agent.chat(msg):
+        async for agent, step, done, extra in instance.agent.chat(msg):
             if step != prev:
-                await instance.bot.edit(reply, step, final=done)
+                await instance.bot.edit(reply, step, final=done, agent=agent)
                 prev = step
                 if step == "✅":
                     tool = extra.get("tool")
@@ -54,12 +60,17 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
                         )
                 elif step == "❌":
                     await telegram_report_issue(
-                        instance, msg, reply, f"Tool error = {extra.get('tool')}"
+                        instance,
+                        msg,
+                        reply,
+                        f"{agent} -> Tool error = {extra.get('tool')}",
                     )
             if not done:
                 await sleep(0.5)  # No need to spam
     except Exception as e:
-        await telegram_report_issue(instance, msg, reply, e)
+        await telegram_report_issue(
+            instance, msg, reply, f"{instance.agent.current_agent} -> {e}"
+        )
     instance.log.sent(msg, timer)
 
 

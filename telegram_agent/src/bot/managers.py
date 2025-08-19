@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from rqbit_client import RqbitClient
 
 from .abstract import AgenticBot, Manager
-from .utils import progress_bar
+from .utils import logify, progress_bar
 
 load_dotenv()
 MEDIA_LIB_REFRESH = getenv("MEDIA_LIB_REFRESH")
@@ -35,6 +35,7 @@ class DownloadManager(Manager):
     delay: float = 4
 
     def __init__(self, instance: AgenticBot, delay: float | None = None):
+        self.name = "Torrent Manager"
         self.instance = instance
         self.client = RqbitClient()
         self.torrents = {}
@@ -100,14 +101,20 @@ class DownloadManager(Manager):
             if active:
                 text = self.create_message(active)
                 if not message.obj:
-                    message.obj = await self.instance.bot.send(chat_id, text)
+                    message.obj = await self.instance.bot.send(
+                        chat_id, logify(self.name, text)
+                    )
                     await self.instance.bot.pin(message.obj)
                 elif message.prev != text:
-                    await self.instance.bot.edit(message.obj, text, replace=True)
+                    await self.instance.bot.edit(
+                        message.obj, logify(self.name, text), replace=True
+                    )
                 message.prev = text
             if finished:
                 for torrent_id, torrent in finished:
-                    await self.instance.bot.send(chat_id, f"✅  {torrent.name}")
+                    await self.instance.bot.send(
+                        chat_id, logify(self.name, f"✅ {torrent.name}")
+                    )
                     message.torrent_ids.remove(torrent_id)
                     await self.client.forget_torrent(torrent_id)
                     del self.torrents[torrent_id]
@@ -140,7 +147,7 @@ class DownloadManager(Manager):
                 "human_readable", "♾"
             )
             details = (
-                f"👤 {live}/{seen} 📊 {download_speed.ljust(12)} ⏰ {time_remaining}\n"
+                f"👤 {live}/{seen} 📊 {download_speed} ⏰ {time_remaining}\n"
                 if live
                 else ""
             )
@@ -149,6 +156,8 @@ class DownloadManager(Manager):
             )
             current += current_bytes
             total += total_bytes
-        header = f"⬇️ [{len(torrents)}] {progress_bar(current, total, size=11)} ⬇️\n{SEPARATOR}"
+        header = (
+            f"🌊 [{len(torrents)}] {progress_bar(current, total, size=11)}\n{SEPARATOR}"
+        )
         content = f"\n{SEPARATOR}\n".join(files)
         return f"{header}\n{content}"

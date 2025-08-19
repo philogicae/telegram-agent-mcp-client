@@ -1,6 +1,5 @@
 from datetime import datetime
 from os import getenv, makedirs
-from re import sub
 from typing import Any, AsyncGenerator, Callable, Sequence
 
 from aiosqlite import connect
@@ -20,7 +19,7 @@ from telebot.types import Message as TelegramMessage
 
 from .config import AgentConfig, get_agent_config
 from .tools import get_tools
-from .utils import Flag, Usage
+from .utils import Flag, Usage, format_called_tool
 
 load_dotenv()
 
@@ -38,6 +37,7 @@ class Agent:
     agent: CompiledStateGraph[Any]
     tools: Sequence[BaseTool | Callable[..., Any] | dict[str, Any]] | ToolNode | None
     tools_by_agent: dict[str, list[str]]
+    current_agent: str
     console: Console
     dev: bool
     debug: bool
@@ -63,9 +63,10 @@ class Agent:
         self.debug = debug
         self.agent_config = get_agent_config(all_tools)
         self.tools_by_agent = self.agent_config.tools_by_agent
+        self.current_agent = self.agent_config.active
         self.agent = create_swarm(
             agents=self.agent_config.agents,
-            default_active_agent=self.agent_config.active,
+            default_active_agent=self.current_agent,
         ).compile(checkpointer=checkpointer(dev), debug=debug)
         if generate_png:
             graph_file = getenv("MCP_CONFIG", "./config") + "/graph.png"
@@ -92,7 +93,7 @@ class Agent:
 
     async def chat(
         self, content: str | TelegramMessage | Any
-    ) -> AsyncGenerator[tuple[str, bool, dict[str, str]], None]:
+    ) -> AsyncGenerator[tuple[str, str, bool, dict[str, str]], None]:
         thread_id, user = "test", None
         if isinstance(content, str):
             content = content.strip()
@@ -106,14 +107,13 @@ class Agent:
             )
 
         if not content:
-            yield "...", True, {}  # Avoid empty reply
+            yield self.current_agent, "...", True, {}  # Avoid empty reply
         else:
             config = {
                 "configurable": {"thread_id": thread_id},
                 "max_concurrency": 1,
                 "recursion_limit": 100,
             }
-            current_agent: Any = None
             total_agent_calls, total_tool_calls = 0, 0
             calls_by_tool: dict[str, int] = {}
             called_tool: str | None = None
@@ -129,7 +129,8 @@ class Agent:
                 msg: Any = None
                 if "agent" in chunk:
                     msg = chunk[msg_type]["messages"][0]  # type: ignore
-                    current_agent = msg.name.title() if msg.name else "Agent"
+                    if msg.name:
+                        self.current_agent = msg.name.title()
                     if not msg.tool_calls:
                         total_agent_calls += 1
                     called_tool = None
@@ -170,7 +171,7 @@ class Agent:
                     ignore_tool_result = False
                     continue
                 elif called_tool and called_tool not in self.tools_by_agent.get(
-                    current_agent, []
+                    self.current_agent, []
                 ):
                     ignore_tool_result = True
                     continue
@@ -184,7 +185,9 @@ class Agent:
                     self.console.print(
                         Panel(
                             escape(text),
-                            title="Result" if msg_type == "tools" else current_agent,
+                            title=(
+                                "Result" if msg_type == "tools" else self.current_agent
+                            ),
                             border_style=(
                                 "green3" if msg_type == "tools" else "bright_cyan"
                             ),
@@ -218,7 +221,7 @@ class Agent:
                             )
                         )
                         step, done = (
-                            f"🔁  _{sub('_|-', ' ', str(called_tool)).title()}_",
+                            f"🔁 {format_called_tool(called_tool)}",
                             False,
                         )
                     else:  # Call regular tools
@@ -226,9 +229,7 @@ class Agent:
                             Panel(escape(tool_calls), title="Tools", border_style="red")
                         )
                         if called_tool and called_tool != "think":
-                            step = (
-                                f"🛠️  _{sub('_|-', ' ', str(called_tool)).title()}_..."
-                            )
+                            step = f"🛠️ {format_called_tool(called_tool)}..."
 
                 # Usage
                 if hasattr(msg, "usage_metadata") and msg.usage_metadata:
@@ -251,11 +252,11 @@ class Agent:
                 # Intermediate step
                 if step and not done:
                     if self.dev:
-                        intermediate_step = f"-> YIELD: {step}"
+                        intermediate_step = f"{self.current_agent} -> YIELD: {step}"
                         if extra:
                             intermediate_step += f" {extra['tool']}"
                         self.console.print(intermediate_step)
-                    yield step, False, extra
+                    yield self.current_agent, step, False, extra
 
             # Usage Summary
             self.console.print(
@@ -275,14 +276,14 @@ class Agent:
                 step = str(text)
             if self.dev:
                 self.console.print(
-                    "-> FINAL: "
+                    f"{self.current_agent} -> FINAL: "
                     + (
                         f"{step[:21]}...{step[-21:]}"
                         if step and len(step) > 45
                         else step
                     )
                 )
-            yield step, True, extra
+            yield self.current_agent, step, True, extra
 
 
 async def run_agent(dev: bool = False, generate_png: bool = False) -> None:
@@ -295,7 +296,7 @@ async def run_agent(dev: bool = False, generate_png: bool = False) -> None:
                 content = (content or input("> ")).strip()
                 if not content:
                     break
-                async for step, done, _ in agent.chat(content):
+                async for _, step, done, _ in agent.chat(content):
                     if dev and step and not done:
                         input("Press enter to continue...")
                 content = ""

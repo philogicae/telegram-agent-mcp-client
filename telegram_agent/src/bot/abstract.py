@@ -55,7 +55,7 @@ class Bot(ABC):
     last_call: float = 0
     delay: float = 0.2
     group_msg_trigger: str = "!"
-    waiting: str = "💭  _I'm thinking..._"
+    waiting: str = "💭 I'm thinking..."
     retries: int = 5
 
     def __init__(
@@ -131,6 +131,8 @@ class Bot(ABC):
 
 
 class Manager(ABC):
+    name: str
+
     @abstractmethod
     async def start(self) -> None:
         pass

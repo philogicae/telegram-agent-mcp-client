@@ -4,18 +4,13 @@ from typing import Any, Awaitable, Callable
 from telebot.async_telebot import AsyncTeleBot
 from telebot.types import CallbackQuery, LinkPreviewOptions, Message
 from telebot.util import smart_split
-from telegramify_markdown import markdownify
 
 from ..abstract import Bot
-from ..utils import reply_markup
+from ..utils import fixed, logify, reply_markup
 
 disable_web_page_preview = {
     "link_preview_options": LinkPreviewOptions(is_disabled=True)
 }
-
-
-def fixed(text: str) -> str:
-    return markdownify(text, normalize_whitespace=True)
 
 
 class TelegramBot(Bot):
@@ -94,7 +89,9 @@ class TelegramBot(Bot):
         await self.bot.infinity_polling(skip_pending=True, timeout=300)
 
     async def send(
-        self, message_or_chat_id: Message | int | str, text: str | None = None
+        self,
+        message_or_chat_id: Message | int | str,
+        text: str | None = None,
     ) -> Message:
         ref: Message | int | str = (
             message_or_chat_id.chat.id
@@ -113,10 +110,14 @@ class TelegramBot(Bot):
             **disable_web_page_preview,
         )
         if not text:
-            self.edit_cache[msg.id] = {"current": 0, "content": [str(msg.text)]}
+            self.edit_cache[msg.id] = {"current": 0, "content": [self.waiting]}
         return msg
 
-    async def reply(self, to_message: Message, text: str | None = None) -> Message:
+    async def reply(
+        self,
+        to_message: Message,
+        text: str | None = None,
+    ) -> Message:
         if text and len(text) > self._dynamic_length(text):
             paginated_msg: Message = await self.paginated(
                 self.bot.reply_to, to_message, fixed(text)
@@ -129,11 +130,16 @@ class TelegramBot(Bot):
             **disable_web_page_preview,
         )
         if not text:
-            self.edit_cache[msg.id] = {"current": 0, "content": [str(msg.text)]}
+            self.edit_cache[msg.id] = {"current": 0, "content": [self.waiting]}
         return msg
 
     async def edit(
-        self, message: Message, text: str, replace: bool = False, final: bool = False
+        self,
+        message: Message,
+        text: str,
+        replace: bool = False,
+        final: bool = False,
+        agent: str | None = None,
     ) -> Message | bool:
         if not replace and message.id not in self.edit_cache:
             return False
@@ -143,9 +149,9 @@ class TelegramBot(Bot):
             content = cache.get("content")
             if not content:
                 return False
-            orig = "\n".join(content)
+            orig = logify(agent, content)
             if final:
-                edited = ("\n".join(content[:-1]) + f"\n\n{text}").strip()
+                edited = (logify(agent, content[:-1]) + f"\n{text}").strip()
             else:
                 if "🛠️" in content[-1] and text in "✅❌":  # Tool result edit
                     content[-1] = f"{text}{content[-1][1:-3]}"
@@ -153,7 +159,7 @@ class TelegramBot(Bot):
                     content[-1] = text
                 if not content[-1].endswith("..."):
                     content.append(self.waiting)
-                edited = "\n".join(content)
+                edited = logify(agent, content)
         msg: Message | bool = False
         if edited != orig:
             if edited and len(edited) > self._dynamic_length(edited):  # Paginated

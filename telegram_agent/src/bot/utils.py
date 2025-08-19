@@ -2,6 +2,7 @@ from time import time
 
 from telebot.types import InlineKeyboardMarkup, Message
 from telebot.util import quick_markup
+from telegramify_markdown import markdownify
 
 
 class Timer:
@@ -19,6 +20,23 @@ def unpack_user(msg: Message) -> tuple[str, str]:
             msg.from_user.first_name,
         )
     return "?", "Unknown"
+
+
+def fixed(text: str) -> str:
+    return markdownify(text, normalize_whitespace=True)
+
+
+def logify(agent: str | None = "Logs", content: list[str] | str = "") -> str:
+    logs = [content] if content and isinstance(content, str) else content
+    return (
+        (
+            f"```{agent.replace(' ', '-') if agent else 'Logs'}\n"
+            + "\n".join(logs)
+            + "\n```"
+        )
+        if logs
+        else ""
+    )
 
 
 def progress_bar(current: int | float, total: int | float, size: int = 15) -> str:

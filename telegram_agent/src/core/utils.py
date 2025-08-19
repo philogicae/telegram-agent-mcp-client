@@ -1,4 +1,5 @@
 from enum import Enum
+from re import sub
 from typing import Any
 
 
@@ -28,3 +29,7 @@ class Usage:
 
     def __str__(self) -> str:
         return " | ".join([f"{k}: {v}" for k, v in self.total.items()])
+
+
+def format_called_tool(tool: Any) -> str:
+    return sub("_|-", " ", str(tool)).title()

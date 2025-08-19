@@ -21,6 +21,7 @@ class AgentConfig(BaseModel):
     agents: list[Any]
     active: str
     tools_by_agent: dict[str, list[str]]
+    transfer_instructions: dict[str, str]
 
 
 def pre_model_hook(state: dict[str, Any]) -> dict[str, Any]:
@@ -48,6 +49,7 @@ def get_agent_config(
     if len(agent_config) < 1:
         raise ValueError("No agents found in agent_config.json")
 
+    # Parse common settings
     common: dict[str, Any] = configuration.get("common", {})
     guidelines: Any = common.get("guidelines", "")
     routine_guidelines: Any = ""
@@ -67,27 +69,37 @@ def get_agent_config(
     else:
         guidelines = ""
 
-    available_tools: dict[str, BaseTool] = {tool.name: tool for tool in tools}
+    # Create handoff tools
+    handoff: str = (
+        common.get("handoff", "Transfer to {agent} and continue current task") + ", "
+    )
     handoff_tools: list[tuple[str, BaseTool]] = []
+    transfer_instructions: dict[str, str] = {}
     for name, config in agent_config.items():
-        handoff = config.get("handoff")
-        if handoff:
+        transfer = config.get("transfer")
+        if transfer:
+            transfer_instruction: str = handoff.format(agent=name) + transfer
             handoff_tools.append(
                 (
                     name,
                     create_handoff_tool(
                         agent_name=name,
-                        description=handoff,
+                        description=transfer_instruction,
                     ),
                 )
             )
+            transfer_instructions[name] = transfer_instruction
+        else:
+            raise ValueError(f"Missing `transfer` instruction for agent {name}")
 
+    # Create agents
     console = Console()
     if display or verbose:
         console.print(f"\nAvailable agents: {len(agent_config)}")
     model = get_llm()
     agents: list[Any] = []
     tools_by_agent: dict[str, list[str]] = {}
+    available_tools: dict[str, BaseTool] = {tool.name: tool for tool in tools}
     for name, config in agent_config.items():
         agent_tools: list[BaseTool] = []
         if len(agent_config) > 1:
@@ -146,7 +158,7 @@ def get_agent_config(
                 else ""
             )
             console.print(
-                f"* [bright_cyan][bold]{name}[/bold][/bright_cyan]:\n# Tools: [bright_yellow]{all_tools if all_tools else 'None'}[/bright_yellow]\n# Handoff: [purple]{config.get('handoff', 'None')}[/purple]\n# Prompt:\n[orange3]{prompt}[/orange3]{routines}"
+                f"* [bright_cyan][bold]{name}[/bold][/bright_cyan]:\n# Tools: [bright_yellow]{all_tools if all_tools else 'None'}[/bright_yellow]\n# Transfer: [purple]{transfer_instructions.get(name)}[/purple]\n# Prompt:\n[orange3]{prompt}[/orange3]{routines}"
             )
         elif display:
             all_tools = ", ".join(tools_for_agent)
@@ -160,7 +172,12 @@ def get_agent_config(
         console.print(
             f"[bold][red]Active agent:[/red] [bright_cyan]{active}[/bright_cyan][/bold]"
         )
-    return AgentConfig(agents=agents, active=active, tools_by_agent=tools_by_agent)
+    return AgentConfig(
+        agents=agents,
+        active=active,
+        tools_by_agent=tools_by_agent,
+        transfer_instructions=transfer_instructions,
+    )
 
 
 async def print_agents() -> None:
