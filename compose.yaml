@@ -22,5 +22,21 @@ services:
     <<: [ *default-logging ]
     network_mode: host
 
+  neo4j-community:
+    container_name: neo4j-community
+    image: neo4j:5.26-community
+    restart: unless-stopped
+    #ports:
+    #  - "7474:7474"
+    #  - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD}
+      - NEO4J_PLUGINS=["apoc"]
+    volumes:
+      - neo4j_data:/data
+    <<: [ *default-logging ]
+    network_mode: host
+
 volumes:
   agent_data:
+  neo4j_data:
