@@ -129,7 +129,7 @@ class Agent:
                 msg: Any = None
                 if "agent" in chunk:
                     msg = chunk[msg_type]["messages"][0]  # type: ignore
-                    current_agent = msg.name.title()
+                    current_agent = msg.name.title() if msg.name else "Agent"
                     if not msg.tool_calls:
                         total_agent_calls += 1
                     called_tool = None
