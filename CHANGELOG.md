@@ -63,6 +63,7 @@ All notable changes to this project will be documented in this file.
 - Implement agent swarm 5
 - Implement agent swarm 6
 - Implement agent swarm 7
+- Add agent name to UI logs and improve message formatting
 
 ### 🐛 Bug Fixes
 
@@ -126,6 +127,7 @@ All notable changes to this project will be documented in this file.
 - Update changelog with Gemini support, Docker improvements and bug fixes
 - Update changelog with new features, bug fixes, and dependency updates
 - Update changelog with agent swarm features and performance improvements
+- Update changelog with agent name handling and dependency updates
 
 ### ⚡ Performance
 
