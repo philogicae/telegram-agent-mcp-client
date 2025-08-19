@@ -23,7 +23,7 @@ dependencies = [
     "langgraph-checkpoint-sqlite",
     "nest-asyncio",
     "rqbit-mcp",
-    "telegramify-markdown[mermaid]",
+    "telegramify-markdown",
     "langgraph-swarm",
 ]
 
