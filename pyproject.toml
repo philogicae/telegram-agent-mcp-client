@@ -25,6 +25,7 @@ dependencies = [
     "rqbit-mcp",
     "telegramify-markdown",
     "langgraph-swarm",
+    "graphiti-core[google-genai]",
 ]
 
 [project.urls]

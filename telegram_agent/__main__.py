@@ -1,7 +1,7 @@
 import argparse
 from asyncio import run
 
-from .src import print_agents, print_tools, run_agent, run_telegram_bot
+from .src import GraphRAG, print_agents, print_tools, run_agent, run_telegram_bot
 
 
 def cli() -> None:
@@ -27,9 +27,14 @@ def cli() -> None:
         help="Display agents. Default: False",
     )
     parser.add_argument(
-        "--graph",
+        "--png",
         action="store_true",
-        help="Generate graph.png. Default: False",
+        help="Generate png. Default: False",
+    )
+    parser.add_argument(
+        "--clear",
+        action="store_true",
+        help="Clear graph. Default: False",
     )
     args = parser.parse_args()
 
@@ -37,8 +42,10 @@ def cli() -> None:
         run(print_tools())
     elif args.agents:
         run(print_agents())
-    elif args.graph:
+    elif args.png:
         run(run_agent(generate_png=True))
+    elif args.clear:
+        run(GraphRAG().clear())
     elif args.telegram:
         run(run_telegram_bot(dev=args.dev))
     else:
