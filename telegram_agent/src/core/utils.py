@@ -33,3 +33,12 @@ class Usage:
 
 def format_called_tool(tool: Any) -> str:
     return sub("_|-", " ", str(tool)).title()
+
+
+class Singleton:
+    _instance: Any
+
+    def __new__(cls, *args, **kwargs) -> Any:  # type: ignore
+        if not hasattr(cls, "_instance"):
+            cls._instance = super().__new__(cls, *args, **kwargs)
+        return cls._instance

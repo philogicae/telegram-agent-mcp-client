@@ -45,7 +45,7 @@ def cli() -> None:
     elif args.png:
         run(run_agent(generate_png=True))
     elif args.clear:
-        run(GraphRAG().clear())
+        run(GraphRAG.init(clear=True))
     elif args.telegram:
         run(run_telegram_bot(dev=args.dev))
     else:
