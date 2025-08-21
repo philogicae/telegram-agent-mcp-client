@@ -1,16 +1,6 @@
-from time import time
-
 from telebot.types import InlineKeyboardMarkup, Message
 from telebot.util import quick_markup
 from telegramify_markdown import markdownify
-
-
-class Timer:
-    def __init__(self) -> None:
-        self.start = time()
-
-    def done(self) -> str:
-        return f"{time() - self.start:.2f}s"
 
 
 def unpack_user(msg: Message) -> tuple[str, str]:

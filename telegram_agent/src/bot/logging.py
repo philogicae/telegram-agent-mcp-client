@@ -1,7 +1,8 @@
 from telebot.types import Message
 
+from ..core.utils import Timer
 from .abstract import Logger
-from .utils import Timer, unpack_user
+from .utils import unpack_user
 
 
 class TelegramLogger(Logger):

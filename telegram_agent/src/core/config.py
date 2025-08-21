@@ -31,6 +31,7 @@ def pre_model_hook(state: dict[str, Any]) -> dict[str, Any]:
         token_counter=count_tokens_approximately,
         max_tokens=5000,
         start_on="human",
+        allow_partial=True,
         # end_on=("human", "tool"),
     )
     return {"llm_input_messages": trimmed_messages}

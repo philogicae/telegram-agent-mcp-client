@@ -1,5 +1,6 @@
 from enum import Enum
 from re import sub
+from time import time
 from typing import Any
 
 
@@ -33,3 +34,20 @@ class Usage:
 
 def format_called_tool(tool: Any) -> str:
     return sub("_|-", " ", str(tool)).title()
+
+
+class Singleton:
+    _instance: Any
+
+    def __new__(cls, *args, **kwargs) -> Any:  # type: ignore
+        if not hasattr(cls, "_instance"):
+            cls._instance = super().__new__(cls, *args, **kwargs)
+        return cls._instance
+
+
+class Timer:
+    def __init__(self) -> None:
+        self.start = time()
+
+    def done(self) -> str:
+        return f"{time() - self.start:.2f}s"
