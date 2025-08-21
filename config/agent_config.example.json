@@ -21,7 +21,7 @@
         }
       }
     },
-    "handoff": "Transfer to {agent} and immediately continue current task"
+    "handoff": "Continue current task with {agent}"
   },
   "agents": {
     "Friendly Agent": {
