@@ -4,7 +4,7 @@ from typing import Any, AsyncGenerator, Callable, Sequence
 
 from aiosqlite import connect
 from dotenv import load_dotenv
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
@@ -18,8 +18,9 @@ from rich.panel import Panel
 from telebot.types import Message as TelegramMessage
 
 from .config import AgentConfig, get_agent_config
+from .graphiti import GraphRAG
 from .tools import get_tools
-from .utils import Flag, Usage, format_called_tool
+from .utils import Flag, Timer, Usage, format_called_tool
 
 load_dotenv()
 
@@ -38,6 +39,7 @@ class Agent:
     tools: Sequence[BaseTool | Callable[..., Any] | dict[str, Any]] | ToolNode | None
     tools_by_agent: dict[str, list[str]]
     current_agent: str
+    graph: GraphRAG | Any
     console: Console
     dev: bool
     debug: bool
@@ -47,6 +49,7 @@ class Agent:
         tools: (
             Sequence[BaseTool | Callable[..., Any] | dict[str, Any]] | ToolNode | None
         ) = None,
+        graph: GraphRAG | None = None,
         dev: bool = False,
         debug: bool = False,
         generate_png: bool = False,
@@ -58,6 +61,7 @@ class Agent:
             else:
                 all_tools.append(tools)
         self.tools = all_tools
+        self.graph = graph
         self.console = Console()
         self.dev = dev
         self.debug = debug
@@ -81,27 +85,37 @@ class Agent:
         pass
 
     @staticmethod
+    async def load_graph() -> GraphRAG:
+        return await GraphRAG().init()
+
+    @staticmethod
     async def load_tools() -> list[BaseTool]:
         return await get_tools()
 
     @staticmethod
-    async def init_with_tools(
-        dev: bool = False, debug: bool = False, generate_png: bool = False
+    async def init(
+        dev: bool = False,
+        enable_graph: bool = True,
+        enable_tools: bool = True,
+        debug: bool = False,
+        generate_png: bool = False,
     ) -> "Agent":
-        tools = await Agent.load_tools()
-        return Agent(tools, dev, debug, generate_png)
+        graph = (await Agent.load_graph()) if enable_graph else None
+        tools = (await Agent.load_tools()) if enable_tools else None
+        return Agent(tools, graph, dev, debug, generate_png)
 
     async def chat(
         self, content: str | TelegramMessage | Any
     ) -> AsyncGenerator[tuple[str, str, bool, dict[str, str]], None]:
-        thread_id, user = "test", None
+        thread_id, user = "test", "User"
+        date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if isinstance(content, str):
             content = content.strip()
         elif isinstance(content, TelegramMessage):
             thread_id = str(content.chat.id)
-            user = content.from_user.first_name if content.from_user else "User"
-            date = datetime.fromtimestamp(content.date).strftime("%Y-%m-%d %H:%M:%S")
-            content = f"[{date}] {user}: {content.text}".strip()
+            if content.from_user:
+                user = content.from_user.first_name
+            content = (content.text or "").strip()
             self.console.print(
                 Panel(escape(content), title="User", border_style="white")
             )
@@ -109,6 +123,20 @@ class Agent:
         if not content:
             yield self.current_agent, "...", True, {}  # Avoid empty reply
         else:
+            messages: list[BaseMessage] = []
+            if self.graph:
+                memories = await self.graph.search(content, user, thread_id, limit=10)
+                if memories:
+                    messages.append(AIMessage(memories))
+                    mem_title, mem_content = memories.split(":\n", maxsplit=1)
+                    self.console.print(
+                        Panel(
+                            escape(mem_content),
+                            title=mem_title,
+                            border_style="light_steel_blue1",
+                        )
+                    )
+            messages.append(HumanMessage(f"[{date}] {user}: {content}"))
             config = {
                 "configurable": {"thread_id": thread_id},
                 "max_concurrency": 1,
@@ -121,7 +149,7 @@ class Agent:
             start_time = end_time = datetime.now().timestamp()
             usage: Usage = Usage()
             async for _, chunk in self.agent.astream(
-                {"messages": [HumanMessage(content)]},
+                {"messages": messages},
                 config,  # type: ignore
                 subgraphs=True,
             ):
@@ -285,10 +313,25 @@ class Agent:
                 )
             yield self.current_agent, step, True, extra
 
+            if self.graph:
+                mem_timer = Timer()
+                new_memories = await self.graph.add(
+                    content=[(user, content), (self.current_agent, step)],
+                    chat_id=thread_id,
+                )
+                mem_values = {k: len(v) for k, v in new_memories.model_dump().items()}
+                self.console.print(
+                    Panel(
+                        escape(f"{mem_values} in {mem_timer.done()}."),
+                        title="Added Memories",
+                        border_style="light_steel_blue1",
+                    )
+                )
+
 
 async def run_agent(dev: bool = False, generate_png: bool = False) -> None:
     content = ""
-    with await Agent.init_with_tools(dev=True, generate_png=generate_png) as agent:
+    with await Agent.init(dev=True, generate_png=generate_png) as agent:
         if content:
             print(f"> {content}")
         while True:

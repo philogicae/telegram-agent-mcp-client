@@ -10,7 +10,7 @@ from typing import Any, Awaitable, Callable
 from rich.logging import RichHandler
 
 from ..core import Agent
-from .utils import Timer
+from ..core.utils import Timer
 
 
 class Logger(ABC):
@@ -168,7 +168,7 @@ class AgenticBot(ABC):
 
     async def run(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
         try:
-            self.agent = await Agent.init_with_tools(self.dev)
+            self.agent = await Agent.init(self.dev)
             await self.bot.initialize(**self.prepare_handlers(**kwargs))
             self.log.info(f"{self.bot.__class__.__name__} is ready!")
             await gather(

@@ -14,6 +14,8 @@ services:
     image: telegram-agent
     restart: unless-stopped
     command: telegram-agent-mcp-client --telegram
+    depends_on:
+      - neo4j-community
     env_file:
       - .env
     volumes:
