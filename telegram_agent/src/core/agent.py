@@ -313,7 +313,12 @@ class Agent:
                 )
             yield self.current_agent, step, True, extra
 
-            if self.graph:
+            if (
+                self.graph
+                and step
+                and step not in "...✅❌"
+                and not step.lower().startswith("successfully transferred")
+            ):
                 mem_timer = Timer()
                 new_memories = await self.graph.add(
                     content=[(user, content), (self.current_agent, step)],

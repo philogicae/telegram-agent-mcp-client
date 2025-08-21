@@ -3,8 +3,10 @@ from shutil import copyfile
 from typing import Any
 
 from dotenv import load_dotenv
+from langchain_core.messages import RemoveMessage
 from langchain_core.messages.utils import count_tokens_approximately, trim_messages
 from langchain_core.tools import BaseTool
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.prebuilt import create_react_agent
 from langgraph_swarm import create_handoff_tool
 from pydantic import BaseModel
@@ -24,7 +26,7 @@ class AgentConfig(BaseModel):
     transfer_instructions: dict[str, str]
 
 
-def pre_model_hook(state: dict[str, Any]) -> dict[str, Any]:
+def pre_model_hook(state: dict[str, Any], remove_all: bool = False) -> dict[str, Any]:
     trimmed_messages = trim_messages(
         state["messages"],
         strategy="last",
@@ -34,6 +36,8 @@ def pre_model_hook(state: dict[str, Any]) -> dict[str, Any]:
         allow_partial=True,
         # end_on=("human", "tool"),
     )
+    if remove_all:
+        return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES)] + trimmed_messages}
     return {"llm_input_messages": trimmed_messages}
 
 
