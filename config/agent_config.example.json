@@ -36,7 +36,7 @@
           "trigger": "to dig into a topic when the user didn't explicitely mention `deep search`",
           "steps": [
             "`web_search`",
-            "Gather content sequentially from most relevant urls with `fetch_https_url`"
+            "Gather content sequentially from the most relevant URLs with `fetch_https_url`"
           ]
         },
         "new_releases": {

@@ -124,7 +124,7 @@ class GraphRAG(Singleton):
     ) -> str:
         memories = await self.search_memories(content, user, chat_id, limit)
         if memories:
-            return "Episodic Memories:\n> " + "\n> ".join(
+            return "# Episodic Memories:\n> " + "\n> ".join(
                 [edge.fact for edge in memories]
             )
         return ""
@@ -141,7 +141,7 @@ class GraphRAG(Singleton):
     async def recent(self, chat_id: Any, limit: int = 10) -> str:
         memories = await self.recent_memories(chat_id, limit)
         if memories:
-            return "Recent Memories:\n> " + "\n> ".join(
+            return "# Recent Memories:\n> " + "\n> ".join(
                 [edge.fact for edge in memories]
             )
         return ""
