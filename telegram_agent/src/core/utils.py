@@ -88,3 +88,24 @@ def pre_model_hook(state: dict[str, Any], remove_all: bool = False) -> dict[str,
     return {"llm_input_messages": trimmed_messages}
 
 
+dt_min_aware = datetime.min.replace(tzinfo=timezone.utc)
+dt_max_aware = datetime.max.replace(tzinfo=timezone.utc)
+
+
+def sort_edges(edge: EntityEdge) -> tuple[datetime, datetime]:
+    start_time = edge.valid_at or edge.created_at
+    end_time = edge.expired_at or edge.invalid_at
+    return (
+        start_time if start_time else dt_min_aware,
+        end_time if end_time else dt_max_aware,
+    )
+
+
+def format_date(date: datetime) -> str:
+    return (
+        date.strftime("%Y-%m-%d %H:%M:%S")
+        .replace(" 00:00:00", "")
+        .replace("-01-01", "")
+    )
+
+

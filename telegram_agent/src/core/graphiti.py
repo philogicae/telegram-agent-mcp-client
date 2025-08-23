@@ -8,15 +8,16 @@ from dotenv import load_dotenv
 from google.genai.types import ThinkingConfig
 from graphiti_core import Graphiti
 from graphiti_core.cross_encoder.gemini_reranker_client import GeminiRerankerClient
+from graphiti_core.edges import EntityEdge
 from graphiti_core.embedder.gemini import GeminiEmbedder, GeminiEmbedderConfig
 from graphiti_core.llm_client.gemini_client import (  # type: ignore
     GeminiClient,
     LLMConfig,
 )
-from graphiti_core.nodes import EpisodeType
+from graphiti_core.nodes import EntityNode, EpisodeType
 from graphiti_core.utils.maintenance.graph_data_operations import clear_data
 
-from .utils import Singleton
+from .utils import Singleton, format_date, sort_edges
 
 environ["GRAPHITI_TELEMETRY_ENABLED"] = "false"
 logger = getLogger()
@@ -92,6 +93,42 @@ class GraphRAG(Singleton):
         await clear_data(self.graphiti.driver)
         await self.init_graph()
 
+    def _format_mem_nodes(self, nodes: list[EntityNode]) -> str:
+        results: list[str] = []
+        if nodes:
+            sorted_nodes = sorted(
+                nodes,
+                key=lambda x: x.created_at,
+            )
+            for node in sorted_nodes:
+                start: Any = node.created_at
+                date = f"[{format_date(start)}] " if start else ""
+                results.append(date + f"<{node.name}>: {node.summary}")
+        return "\n".join(results)
+
+    def _format_mem_edges(self, edges: list[EntityEdge]) -> str:
+        results: list[str] = []
+        if edges:
+            sorted_edges = sorted(
+                edges,
+                key=sort_edges,
+            )
+            unique_edges = set()
+            for edge in sorted_edges:
+                if edge.fact not in unique_edges:
+                    unique_edges.add(edge.fact)
+                    start: Any = edge.valid_at or edge.created_at
+                    date = ""
+                    if start:
+                        date += f"[{format_date(start)}"
+                        end_str = "] "
+                        end = edge.expired_at or edge.invalid_at
+                        if end and end > start:
+                            end_str = f" to {format_date(end)}] "
+                        date += end_str
+                    results.append(date + f"<{edge.name}>: {edge.fact}")
+        return "\n".join(results)
+
     # Methods
     async def add(
         self,
@@ -100,7 +137,7 @@ class GraphRAG(Singleton):
         source: str = "Group Chat",
     ) -> Any:
         date = datetime.now()
-        return await self.graphiti.add_episode(
+        results = await self.graphiti.add_episode(
             name=f"{source.lower().replace(' ', '_')}_{chat_id}_on_{date.strftime('%Y-%m-%d_%H-%M-%S')}",
             episode_body="\n".join([f"{user}: {message}" for user, message in content]),
             reference_time=date,
@@ -108,40 +145,39 @@ class GraphRAG(Singleton):
             source=EpisodeType.message,
             source_description=source,
         )
+        return {
+            "stats": {k: len(v) for k, v in results.model_dump().items()},
+            "nodes": self._format_mem_nodes(results.nodes),
+            "edges": self._format_mem_edges(results.edges),
+        }
 
     async def search_memories(
         self, content: str, user: str, chat_id: Any, limit: int = 10
-    ) -> list[Any]:
-        memories: list[Any] = await self.graphiti.search(
+    ) -> list[EntityEdge]:
+        return await self.graphiti.search(
             query=f"{user}: {content}",
             group_ids=[str(chat_id)],
             num_results=limit,
         )
-        return [mem for mem in memories if not mem.expired_at and not mem.invalid_at]
 
     async def search(
         self, content: str, user: str, chat_id: Any, limit: int = 10
     ) -> str:
         memories = await self.search_memories(content, user, chat_id, limit)
-        if memories:
-            return "# Episodic Memories:\n> " + "\n> ".join(
-                [edge.fact for edge in memories]
-            )
-        return ""
+        formatted_edges = self._format_mem_edges(memories)
+        return formatted_edges if formatted_edges else ""
 
-    async def recent_memories(self, chat_id: Any, limit: int = 10) -> list[Any]:
-        memories: list[Any] = await self.graphiti.retrieve_episodes(
+    async def recent_messages(self, chat_id: Any, limit: int = 10) -> list[Any]:
+        messages: list[Any] = await self.graphiti.retrieve_episodes(
             reference_time=datetime.now(),
             last_n=limit,
             group_ids=[str(chat_id)],
             source=EpisodeType.text,
         )
-        return memories
+        return messages
 
     async def recent(self, chat_id: Any, limit: int = 10) -> str:
-        memories = await self.recent_memories(chat_id, limit)
-        if memories:
-            return "# Recent Memories:\n> " + "\n> ".join(
-                [edge.fact for edge in memories]
-            )
+        messages = await self.recent_messages(chat_id, limit)
+        if messages:
+            return "\n".join([node.fact for node in messages])
         return ""
