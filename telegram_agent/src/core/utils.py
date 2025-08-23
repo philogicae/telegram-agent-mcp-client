@@ -109,3 +109,17 @@ def format_date(date: datetime) -> str:
     )
 
 
+class ReContext(BaseModel):
+    summary: str
+    user_message: str
+
+
+def summarize_and_rephrase(llm: Any, chat_history: list[Any], msg: str) -> ReContext:
+    chat_history.append(
+        HumanMessage(
+            f"Return a summary of current chat history (if empty, return 'None') and, apart, richly rephrase the following user message with additionnal contextual information if needed (e.g. to avoid out-of-context short user queries like 'yes', 'no', etc.) and preserving the format ([date] <user>: <message>):\n{msg}"
+        )
+    )
+    structured_llm = llm.with_structured_output(schema=ReContext)
+    result: ReContext = structured_llm.invoke(chat_history)
+    return result

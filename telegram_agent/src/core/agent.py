@@ -1,14 +1,9 @@
 from datetime import datetime
-from os import getenv, makedirs
 from typing import Any, AsyncGenerator, Callable, Sequence
 
-from aiosqlite import connect
-from dotenv import load_dotenv
+from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
-from langgraph.checkpoint.base import BaseCheckpointSaver
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt.tool_node import ToolNode
 from langgraph_swarm import create_swarm
@@ -19,18 +14,17 @@ from telebot.types import Message as TelegramMessage
 
 from .config import AgentConfig, get_agent_config
 from .graphiti import GraphRAG
-from .tools import get_tools
-from .utils import Flag, Timer, Usage, format_called_tool
-
-load_dotenv()
-
-
-def checkpointer(dev: bool = False) -> BaseCheckpointSaver:  # type: ignore
-    if dev:
-        return InMemorySaver()
-    data_folder = "/app/data"
-    makedirs(data_folder, exist_ok=True)
-    return AsyncSqliteSaver(connect(f"{data_folder}/checkpointer.sqlite"))
+from .llm import get_llm
+from .tools import MCP_CONFIG, get_tools
+from .utils import (
+    Flag,
+    Timer,
+    Usage,
+    checkpointer,
+    format_called_tool,
+    pre_model_hook,
+    summarize_and_rephrase,
+)
 
 
 class Agent:
@@ -40,6 +34,7 @@ class Agent:
     tools_by_agent: dict[str, list[str]]
     current_agent: str
     graph: GraphRAG | Any
+    llm: LanguageModelLike
     console: Console
     dev: bool
     debug: bool
@@ -50,6 +45,7 @@ class Agent:
             Sequence[BaseTool | Callable[..., Any] | dict[str, Any]] | ToolNode | None
         ) = None,
         graph: GraphRAG | None = None,
+        persist: bool = False,
         dev: bool = False,
         debug: bool = False,
         generate_png: bool = False,
@@ -62,6 +58,7 @@ class Agent:
                 all_tools.append(tools)
         self.tools = all_tools
         self.graph = graph
+        self.llm = get_llm()
         self.console = Console()
         self.dev = dev
         self.debug = debug
@@ -71,9 +68,9 @@ class Agent:
         self.agent = create_swarm(
             agents=self.agent_config.agents,
             default_active_agent=self.current_agent,
-        ).compile(checkpointer=checkpointer(dev), debug=debug)
+        ).compile(checkpointer=checkpointer(dev, persist), debug=debug)
         if generate_png:
-            graph_file = getenv("MCP_CONFIG", "./config") + "/graph.png"
+            graph_file = MCP_CONFIG + "/graph.png"
             self.agent.get_graph().draw_mermaid_png(output_file_path=graph_file)
             print(f"Graph saved to {graph_file}")
             exit()
@@ -97,12 +94,13 @@ class Agent:
         dev: bool = False,
         enable_graph: bool = True,
         enable_tools: bool = True,
+        enable_persist: bool = False,
         debug: bool = False,
         generate_png: bool = False,
     ) -> "Agent":
         graph = (await Agent.load_graph()) if enable_graph else None
         tools = (await Agent.load_tools()) if enable_tools else None
-        return Agent(tools, graph, dev, debug, generate_png)
+        return Agent(tools, graph, enable_persist, dev, debug, generate_png)
 
     async def chat(
         self, content: str | TelegramMessage | Any
@@ -123,20 +121,49 @@ class Agent:
         if not content:
             yield self.current_agent, "...", True, {}  # Avoid empty reply
         else:
+            content = f"[{date}] {user}: {content}"
             messages: list[BaseMessage] = []
             if self.graph:
-                memories = await self.graph.search(content, user, thread_id, limit=10)
-                if memories:
-                    messages.append(AIMessage(memories))
-                    mem_title, mem_content = memories.split(":\n", maxsplit=1)
-                    self.console.print(
-                        Panel(
-                            escape(mem_content),
-                            title=mem_title,
-                            border_style="light_steel_blue1",
-                        )
+                chat_history: list[Any] = []
+                state = self.agent.get_state({"configurable": {"thread_id": thread_id}})
+                if state.values.get("messages"):
+                    chat_history = pre_model_hook(state.values).get(
+                        "llm_input_messages", []
                     )
-            messages.append(HumanMessage(f"[{date}] {user}: {content}"))
+                recontext = summarize_and_rephrase(
+                    self.llm,
+                    chat_history,
+                    content,
+                )
+                chat_summary = recontext.summary
+                content = recontext.user_message
+                query = content.rsplit(": ", 1)[1]
+                memories = await self.graph.search(query, user, thread_id, limit=100)
+                if memories:
+                    res: Any = self.llm.invoke(
+                        [
+                            HumanMessage(
+                                "Write a summary about only relevant memories for the given episodic memories, according to the context and the latest user message, by excluding out-of-context information. If all memories are irrelevant, just return 'None'"
+                            ),
+                            HumanMessage(
+                                f"# Episodic Memories:\n{memories}\n\n# Context:\n{chat_summary}\n\n# User Message:\n{content}"
+                            ),
+                        ]
+                    )
+                    filtered_memories = res.content.strip()
+                    if filtered_memories.lower() != "none":
+                        messages.append(
+                            AIMessage("# Episodic Memory:\n" + filtered_memories)
+                        )
+                        self.console.print(
+                            Panel(
+                                escape(filtered_memories),
+                                title="Episodic Memory",
+                                border_style="light_steel_blue1",
+                            )
+                        )
+
+            messages.append(HumanMessage(content))
             config = {
                 "configurable": {"thread_id": thread_id},
                 "max_concurrency": 1,
@@ -320,14 +347,15 @@ class Agent:
                 and not step.lower().startswith("successfully transferred")
             ):
                 mem_timer = Timer()
-                new_memories = await self.graph.add(
+                result = await self.graph.add(
                     content=[(user, content), (self.current_agent, step)],
                     chat_id=thread_id,
                 )
-                mem_values = {k: len(v) for k, v in new_memories.model_dump().items()}
                 self.console.print(
                     Panel(
-                        escape(f"{mem_values} in {mem_timer.done()}."),
+                        escape(
+                            f"{result['stats']} in {mem_timer.done()}\n# Nodes:\n{result['nodes']}\n# Edges:\n{result['edges']}"
+                        ),
                         title="Added Memories",
                         border_style="light_steel_blue1",
                     )
