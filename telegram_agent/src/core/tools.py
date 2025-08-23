@@ -10,9 +10,11 @@ from rich.console import Console
 
 load_dotenv()
 
+MCP_CONFIG = getenv("MCP_CONFIG", "./config")
+
 
 def get_tool_config() -> tuple[dict[str, Any], dict[str, Any]]:
-    config_file = getenv("MCP_CONFIG", "./config") + "/mcp_config.json"
+    config_file = MCP_CONFIG + "/mcp_config.json"
     if not path.exists(config_file):
         print("mcp_config.json file not found: creating from example")
         copyfile("mcp_config.example.json", config_file)

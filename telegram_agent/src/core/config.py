@@ -1,12 +1,9 @@
-from os import getenv, path
+from os import path
 from shutil import copyfile
 from typing import Any
 
 from dotenv import load_dotenv
-from langchain_core.messages import RemoveMessage
-from langchain_core.messages.utils import count_tokens_approximately, trim_messages
 from langchain_core.tools import BaseTool
-from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.prebuilt import create_react_agent
 from langgraph_swarm import create_handoff_tool
 from pydantic import BaseModel
@@ -14,7 +11,8 @@ from pyjson5 import load  # pylint: disable=no-name-in-module
 from rich.console import Console
 
 from .llm import get_llm
-from .tools import get_tools
+from .tools import MCP_CONFIG, get_tools
+from .utils import pre_model_hook
 
 load_dotenv()
 
@@ -26,25 +24,10 @@ class AgentConfig(BaseModel):
     transfer_instructions: dict[str, str]
 
 
-def pre_model_hook(state: dict[str, Any], remove_all: bool = False) -> dict[str, Any]:
-    trimmed_messages = trim_messages(
-        state["messages"],
-        strategy="last",
-        token_counter=count_tokens_approximately,
-        max_tokens=5000,
-        start_on="human",
-        allow_partial=True,
-        # end_on=("human", "tool"),
-    )
-    if remove_all:
-        return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES)] + trimmed_messages}
-    return {"llm_input_messages": trimmed_messages}
-
-
 def get_agent_config(
     tools: list[BaseTool], display: bool = True, verbose: bool = False
 ) -> AgentConfig:
-    config_file = getenv("MCP_CONFIG", "./config") + "/agent_config.json"
+    config_file = MCP_CONFIG + "/agent_config.json"
     if not path.exists(config_file):
         print("agent_config.json file not found: creating from example")
         copyfile("agent_config.example.json", config_file)

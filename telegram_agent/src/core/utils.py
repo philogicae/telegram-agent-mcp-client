@@ -1,7 +1,19 @@
+from datetime import datetime, timezone
 from enum import Enum
+from os import makedirs
 from re import sub
 from time import time
 from typing import Any
+
+from aiosqlite import connect
+from graphiti_core.edges import EntityEdge
+from langchain_core.messages import HumanMessage, RemoveMessage
+from langchain_core.messages.utils import count_tokens_approximately, trim_messages
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
+from pydantic import BaseModel
 
 
 class Flag(Enum):
@@ -51,3 +63,28 @@ class Timer:
 
     def done(self) -> str:
         return f"{time() - self.start:.2f}s"
+
+
+def checkpointer(dev: bool = False, persist: bool = False) -> BaseCheckpointSaver:  # type: ignore
+    if dev or not persist:
+        return InMemorySaver()
+    data_folder = "/app/data"
+    makedirs(data_folder, exist_ok=True)
+    return AsyncSqliteSaver(connect(f"{data_folder}/checkpointer.sqlite"))
+
+
+def pre_model_hook(state: dict[str, Any], remove_all: bool = False) -> dict[str, Any]:
+    trimmed_messages = trim_messages(
+        state["messages"],
+        strategy="last",
+        token_counter=count_tokens_approximately,
+        max_tokens=5000,
+        start_on="human",
+        allow_partial=True,
+        # end_on=("human", "tool"),
+    )
+    if remove_all:
+        return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES)] + trimmed_messages}
+    return {"llm_input_messages": trimmed_messages}
+
+
