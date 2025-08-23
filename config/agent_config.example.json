@@ -21,7 +21,7 @@
         }
       }
     },
-    "handoff": "Continue current task with {agent}"
+    "handoff": "Continue current task with {agent} (Which you will become, never ever say 'Successfully transferred', DO IT)"
   },
   "agents": {
     "Friendly Agent": {
