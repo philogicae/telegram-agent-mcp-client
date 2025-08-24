@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from pyjson5 import load  # pylint: disable=no-name-in-module
 from rich.console import Console
 
-from .llm import get_llm
+from .llm import LLM
 from .tools import MCP_CONFIG, get_tools
 from .utils import pre_model_hook
 
@@ -84,7 +84,7 @@ def get_agent_config(
     console = Console()
     if display or verbose:
         console.print(f"\nAvailable agents: {len(agent_config)}")
-    model = get_llm()
+    model = LLM.get()
     agents: list[Any] = []
     tools_by_agent: dict[str, list[str]] = {}
     available_tools: dict[str, BaseTool] = {tool.name: tool for tool in tools}

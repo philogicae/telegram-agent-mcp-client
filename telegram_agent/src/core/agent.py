@@ -6,6 +6,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt.tool_node import ToolNode
+from langgraph.types import StateSnapshot
 from langgraph_swarm import create_swarm
 from rich.console import Console
 from rich.markup import escape
@@ -14,7 +15,7 @@ from telebot.types import Message as TelegramMessage
 
 from .config import AgentConfig, get_agent_config
 from .graphiti import GraphRAG
-from .llm import get_llm
+from .llm import LLM
 from .tools import MCP_CONFIG, get_tools
 from .utils import (
     Flag,
@@ -22,7 +23,6 @@ from .utils import (
     Usage,
     checkpointer,
     format_called_tool,
-    pre_model_hook,
     summarize_and_rephrase,
 )
 
@@ -58,7 +58,7 @@ class Agent:
                 all_tools.append(tools)
         self.tools = all_tools
         self.graph = graph
-        self.llm = get_llm()
+        self.llm = LLM.get()
         self.console = Console()
         self.dev = dev
         self.debug = debug
@@ -102,6 +102,9 @@ class Agent:
         tools = (await Agent.load_tools()) if enable_tools else None
         return Agent(tools, graph, enable_persist, dev, debug, generate_png)
 
+    def state(self, thread_id: str) -> StateSnapshot:
+        return self.agent.get_state({"configurable": {"thread_id": thread_id}})
+
     async def chat(
         self, content: str | TelegramMessage | Any
     ) -> AsyncGenerator[tuple[str, str, bool, dict[str, str]], None]:
@@ -124,30 +127,28 @@ class Agent:
             content = f"[{date}] {user}: {content}"
             messages: list[BaseMessage] = []
             if self.graph:
-                chat_history: list[Any] = []
-                state = self.agent.get_state({"configurable": {"thread_id": thread_id}})
-                if state.values.get("messages"):
-                    chat_history = pre_model_hook(state.values).get(
-                        "llm_input_messages", []
-                    )
                 recontext = summarize_and_rephrase(
-                    self.llm,
-                    chat_history,
-                    content,
+                    self.llm, self.state(thread_id), content
                 )
-                chat_summary = recontext.summary
+                self.console.print(
+                    Panel(
+                        escape(
+                            f"Summary: {recontext.summary}\n{recontext.user_message}"
+                        ),
+                        title="ReContext",
+                        border_style="light_steel_blue1",
+                    )
+                )
                 content = recontext.user_message
-                query = content.rsplit(": ", 1)[1]
-                memories = await self.graph.search(query, user, thread_id, limit=100)
+                memories = await self.graph.search(
+                    content.rsplit(": ", 1)[1], user, thread_id, limit=100
+                )
                 if memories:
                     res: Any = self.llm.invoke(
                         [
                             HumanMessage(
-                                "Write a summary about only relevant memories for the given episodic memories, according to the context and the latest user message, by excluding out-of-context information. If all memories are irrelevant, just return 'None'"
-                            ),
-                            HumanMessage(
-                                f"# Episodic Memories:\n{memories}\n\n# Context:\n{chat_summary}\n\n# User Message:\n{content}"
-                            ),
+                                f"Return only relevant memories for the given episodic memories, according to the context and the latest user message, by excluding out-of-context information. If all memories are irrelevant, just return 'None'.\n\n# Episodic Memories:\n{memories}\n\n# Context:\n{recontext.summary}\n\n# User Message:\n{content}"
+                            )
                         ]
                     )
                     filtered_memories = res.content.strip()
@@ -351,10 +352,12 @@ class Agent:
                     content=[(user, content), (self.current_agent, step)],
                     chat_id=thread_id,
                 )
+                nodes: str = f"\n# Nodes:\n{result['nodes']}" if result["nodes"] else ""
+                edges: str = f"\n# Edges:\n{result['edges']}" if result["edges"] else ""
                 self.console.print(
                     Panel(
                         escape(
-                            f"{result['stats']} in {mem_timer.done()}\n# Nodes:\n{result['nodes']}\n# Edges:\n{result['edges']}"
+                            f"{result['stats']} in {mem_timer.done()}" + nodes + edges
                         ),
                         title="Added Memories",
                         border_style="light_steel_blue1",

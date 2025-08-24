@@ -81,6 +81,7 @@ class GraphRAG(Singleton):
             )
             if clear:
                 await obj.clear()
+                print("Graph reset successfully.")
             else:
                 await obj.init_graph()
         return obj

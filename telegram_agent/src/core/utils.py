@@ -13,6 +13,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
+from langgraph.types import StateSnapshot
 from pydantic import BaseModel
 
 
@@ -114,10 +115,13 @@ class ReContext(BaseModel):
     user_message: str
 
 
-def summarize_and_rephrase(llm: Any, chat_history: list[Any], msg: str) -> ReContext:
+def summarize_and_rephrase(llm: Any, state: StateSnapshot, user_msg: str) -> ReContext:
+    chat_history: list[Any] = []
+    if state.values.get("messages"):
+        chat_history = pre_model_hook(state.values).get("llm_input_messages", [])
     chat_history.append(
         HumanMessage(
-            f"Return a summary of current chat history (if empty, return 'None') and, apart, richly rephrase the following user message with additionnal contextual information if needed (e.g. to avoid out-of-context short user queries like 'yes', 'no', etc.) and preserving the format ([date] <user>: <message>):\n{msg}"
+            f"Return a summary of current chat history (if empty, return 'None') and, apart, richly rephrase the following user message with additionnal contextual information if needed (e.g. to avoid out-of-context short user queries like 'yes', 'no', etc.) and preserving the format ([date] <user>: <message>):\n{user_msg}"
         )
     )
     structured_llm = llm.with_structured_output(schema=ReContext)
