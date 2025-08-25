@@ -2492,16 +2492,16 @@ wheels = [
 
 [[package]]
 name = "rqbit-mcp"
-version = "0.8.2"
+version = "0.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastmcp" },
     { name = "httpx", extra = ["http2"] },
     { name = "python-dotenv" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c4/3b/14b503dce2f91769b591b18ba543c6f21ba67bdde29e5054c9add673cab7/rqbit_mcp-0.8.2.tar.gz", hash = "sha256:47ac14af603c0dafe6ebe96387e7e43773683c299bf82346aa9012c011073925", size = 7898, upload-time = "2025-08-16T16:12:54.645Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c7/07/1a0c98c3e761c3d068e1ab52176961596ba8824da009960ea359611f4603/rqbit_mcp-0.9.0.tar.gz", hash = "sha256:20856fa2f8100a9a3fb8a56193e488f5860b55cd7d6ec68465bc01f57cc853c6", size = 7899, upload-time = "2025-08-25T11:59:44.427Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/61/76/b562d7c9c59ebd8129604c844265a77723edabf5f744f376f00f3f3e8356/rqbit_mcp-0.8.2-py3-none-any.whl", hash = "sha256:a3ec8999d9f89ac794e7eb920dc0dfc1eaef9aeec6cc15eca00c8cb3df7dad10", size = 10237, upload-time = "2025-08-16T16:12:53.528Z" },
+    { url = "https://files.pythonhosted.org/packages/78/9e/44471a209dec9e6b0bd895a5376a084363a9f52e88b2cdaffb83b71e221c/rqbit_mcp-0.9.0-py3-none-any.whl", hash = "sha256:906709b622c7370b1fb19571cc8ad5e0d3734aa3a381a7f1af18c7ad4f4c4353", size = 10238, upload-time = "2025-08-25T11:59:43.19Z" },
 ]
 
 [[package]]
@@ -2636,7 +2636,7 @@ wheels = [
 
 [[package]]
 name = "telegram-agent-mcp-client"
-version = "0.9.0"
+version = "0.10.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
