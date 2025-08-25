@@ -47,6 +47,12 @@ class TelegramBot(Bot):
         await self.bot.set_my_commands([])
         me = await self.bot.get_me()
 
+        # Handlers
+        handle_chat = kwargs.get("chat")
+        if not handle_chat:
+            raise ValueError("Chat handler is required")
+        handle_document = kwargs.get("document")
+
         @self.bot.message_handler(
             func=lambda m: m.chat.type == "private"
             or (m.reply_to_message and m.reply_to_message.from_user.id == me.id)
@@ -64,9 +70,7 @@ class TelegramBot(Bot):
             text = str(message.text).strip()
             if text.startswith(self.group_msg_trigger):
                 message.text = text[1:].strip()
-            handler = kwargs.get("chat")
-            if handler:
-                await handler(message)
+            await handle_chat(message)
 
         @self.bot.callback_query_handler(
             func=lambda call: call.data in self.pagination_action
@@ -75,15 +79,15 @@ class TelegramBot(Bot):
             if isinstance(call.message, Message):
                 await self.change_page(call.message, call.data)
 
-        @self.bot.message_handler(
-            func=lambda m: m.chat.type == "private"
-            or (m.reply_to_message and m.reply_to_message.from_user.id == me.id),
-            content_types=["document"],
-        )  # type: ignore
-        async def _handle_file(message: Message) -> None:
-            handler = kwargs.get("document")
-            if handler:
-                await handler(message)
+        if handle_document:
+
+            @self.bot.message_handler(
+                func=lambda m: m.chat.type == "private"
+                or (m.reply_to_message and m.reply_to_message.from_user.id == me.id),
+                content_types=["document"],
+            )  # type: ignore
+            async def _handle_file(message: Message) -> None:
+                await handle_document(message)
 
     async def start(self) -> None:
         await self.bot.infinity_polling(skip_pending=True, timeout=300)

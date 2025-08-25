@@ -4,8 +4,8 @@ from os import getenv
 from dotenv import load_dotenv
 from telebot.types import Message
 
-from .abstract import AgenticBot, handler
-from .utils import logify, unpack_user
+from ..abstract import AgenticBot, handler
+from ..utils import logify, unpack_user
 
 load_dotenv()
 TELEGRAM_CHAT_DEV = getenv("TELEGRAM_CHAT_DEV")

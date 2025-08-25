@@ -8,8 +8,8 @@ from httpx import AsyncClient
 from pydantic import BaseModel
 from rqbit_client import RqbitClient
 
-from .abstract import AgenticBot, Manager
-from .utils import logify, progress_bar
+from ..abstract import AgenticBot, Manager
+from ..utils import logify, progress_bar
 
 load_dotenv()
 MEDIA_LIB_REFRESH = getenv("MEDIA_LIB_REFRESH")
