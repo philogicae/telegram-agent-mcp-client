@@ -15,13 +15,11 @@ TELEGRAM_CHAT_DEV = getenv("TELEGRAM_CHAT_DEV")
 async def telegram_report_issue(
     instance: AgenticBot, orig_msg: Message, reply_msg: Message, e: Exception | str
 ) -> None:
-    cause, error = "Telegram", ""
-    if isinstance(e, str):
-        cause = "Agent"
-        error = f"\n- {e}"
+    cause = "Agent" if isinstance(e, str) else "Telegram"
+    error = f"\n{e}"
     instance.log.error(f"-> {cause} Exception: {e}")
     user, name = unpack_user(orig_msg)
-    if TELEGRAM_CHAT_DEV and TELEGRAM_CHAT_DEV != str(orig_msg.chat.id):
+    if TELEGRAM_CHAT_DEV and TELEGRAM_CHAT_DEV == str(orig_msg.chat.id):
         await instance.bot.send(
             TELEGRAM_CHAT_DEV,
             logify(
@@ -29,13 +27,14 @@ async def telegram_report_issue(
                 f"⚠️ {cause} issue detected on chat:\n- *{orig_msg.chat.id}* | {orig_msg.chat.title or 'Private'}\n- @{user}: {name}{error}",
             ),
         )
-    await instance.bot.reply(
-        reply_msg,
-        logify(
-            "Error",
-            f"⚠️ Something went wrong with {cause}...\n🚒 Reported automatically to admin",
-        ),
-    )
+    else:
+        await instance.bot.reply(
+            reply_msg,
+            logify(
+                "Error",
+                f"⚠️ Something went wrong with {cause}...\n🚒 Reported automatically to admin",
+            ),
+        )
 
 
 @handler
