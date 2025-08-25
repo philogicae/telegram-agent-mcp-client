@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 from enum import Enum
 from os import makedirs
 from re import sub
-from time import time
 from typing import Any
 
 from aiosqlite import connect
@@ -15,6 +14,8 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.types import StateSnapshot
 from pydantic import BaseModel
+
+from .llm import LLM
 
 
 class Flag(Enum):
@@ -47,23 +48,6 @@ class Usage:
 
 def format_called_tool(tool: Any) -> str:
     return sub("_|-", " ", str(tool)).title()
-
-
-class Singleton:
-    _instance: Any
-
-    def __new__(cls, *args, **kwargs) -> Any:  # type: ignore
-        if not hasattr(cls, "_instance"):
-            cls._instance = super().__new__(cls, *args, **kwargs)
-        return cls._instance
-
-
-class Timer:
-    def __init__(self) -> None:
-        self.start = time()
-
-    def done(self) -> str:
-        return f"{time() - self.start:.2f}s"
 
 
 def checkpointer(dev: bool = False, persist: bool = False) -> BaseCheckpointSaver:  # type: ignore
@@ -115,15 +99,32 @@ class ReContext(BaseModel):
     user_message: str
 
 
-def summarize_and_rephrase(llm: Any, state: StateSnapshot, user_msg: str) -> ReContext:
+def summarize_and_rephrase(
+    state: StateSnapshot, user_msg: str, provider: str = "gemini"
+) -> ReContext:
     chat_history: list[Any] = []
     if state.values.get("messages"):
         chat_history = pre_model_hook(state.values).get("llm_input_messages", [])
     chat_history.append(
         HumanMessage(
-            f"Return a summary of current chat history (if empty, return 'None') and, apart, richly rephrase the following user message with additionnal contextual information if needed (e.g. to avoid out-of-context short user queries like 'yes', 'no', etc.) and preserving the format ([date] <user>: <message>):\n{user_msg}"
+            f"Return a summary of current chat history (if empty, return 'None') and, apart, richly rephrase the following user message with additionnal contextual information if needed (e.g. to avoid out-of-context short user queries like 'yes', 'no', etc.) and preserving the format (<user>: <message>):\n{user_msg}"
         )
     )
+    llm: Any = LLM.get(provider)
     structured_llm = llm.with_structured_output(schema=ReContext)
     result: ReContext = structured_llm.invoke(chat_history)
     return result
+
+
+def filter_relevant_memories(
+    memories: str, context: str, user_msg: str, provider: str = "gemini"
+) -> str:
+    result: Any = LLM.get(provider).invoke(
+        [
+            HumanMessage(
+                f"Return only relevant memories for the given episodic memories, according to the context and the latest user message, by excluding out-of-context information. If all memories are irrelevant, just return 'None'.\n\n# Episodic Memories:\n{memories}\n\n# Context:\n{context}\n\n# User Message:\n{user_msg}"
+            )
+        ]
+    )
+    filtered: str = result.content.strip()
+    return filtered

@@ -10,7 +10,7 @@ from typing import Any, Awaitable, Callable
 from rich.logging import RichHandler
 
 from ..core import Agent
-from ..core.utils import Timer
+from ..utils import Timer
 
 
 class Logger(ABC):

@@ -17,7 +17,8 @@ from graphiti_core.llm_client.gemini_client import (  # type: ignore
 from graphiti_core.nodes import EntityNode, EpisodeType
 from graphiti_core.utils.maintenance.graph_data_operations import clear_data
 
-from .utils import Singleton, format_date, sort_edges
+from ..utils import Singleton
+from .utils import format_date, sort_edges
 
 environ["GRAPHITI_TELEMETRY_ENABLED"] = "false"
 logger = getLogger()

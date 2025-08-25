@@ -1,6 +1,6 @@
 from telebot.types import Message
 
-from ..core.utils import Timer
+from ..utils import Timer
 from .abstract import Logger
 from .utils import unpack_user
 

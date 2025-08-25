@@ -1,7 +1,6 @@
 from datetime import datetime
 from typing import Any, AsyncGenerator, Callable, Sequence
 
-from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
 from langgraph.graph.state import CompiledStateGraph
@@ -13,15 +12,15 @@ from rich.markup import escape
 from rich.panel import Panel
 from telebot.types import Message as TelegramMessage
 
+from ..utils import Timer
 from .config import AgentConfig, get_agent_config
 from .graphiti import GraphRAG
-from .llm import LLM
 from .tools import MCP_CONFIG, get_tools
 from .utils import (
     Flag,
-    Timer,
     Usage,
     checkpointer,
+    filter_relevant_memories,
     format_called_tool,
     summarize_and_rephrase,
 )
@@ -34,7 +33,6 @@ class Agent:
     tools_by_agent: dict[str, list[str]]
     current_agent: str
     graph: GraphRAG | Any
-    llm: LanguageModelLike
     console: Console
     dev: bool
     debug: bool
@@ -58,7 +56,6 @@ class Agent:
                 all_tools.append(tools)
         self.tools = all_tools
         self.graph = graph
-        self.llm = LLM.get()
         self.console = Console()
         self.dev = dev
         self.debug = debug
@@ -124,34 +121,29 @@ class Agent:
         if not content:
             yield self.current_agent, "...", True, {}  # Avoid empty reply
         else:
-            content = f"[{date}] {user}: {content}"
+            content = f"{user}: {content}"
             messages: list[BaseMessage] = []
             if self.graph:
-                recontext = summarize_and_rephrase(
-                    self.llm, self.state(thread_id), content
+                recontext = summarize_and_rephrase(self.state(thread_id), content)
+                content = (
+                    recontext.user_message
+                    if ":" in recontext.user_message
+                    else f"{user}: {recontext.user_message}"
                 )
                 self.console.print(
                     Panel(
-                        escape(
-                            f"Summary: {recontext.summary}\n{recontext.user_message}"
-                        ),
+                        escape(f"Summary: {recontext.summary}\n{content}"),
                         title="ReContext",
                         border_style="light_steel_blue1",
                     )
                 )
-                content = recontext.user_message
-                memories = await self.graph.search(
-                    content.rsplit(": ", 1)[1], user, thread_id, limit=100
+                memories: str = await self.graph.search(
+                    content, user, thread_id, limit=100
                 )
                 if memories:
-                    res: Any = self.llm.invoke(
-                        [
-                            HumanMessage(
-                                f"Return only relevant memories for the given episodic memories, according to the context and the latest user message, by excluding out-of-context information. If all memories are irrelevant, just return 'None'.\n\n# Episodic Memories:\n{memories}\n\n# Context:\n{recontext.summary}\n\n# User Message:\n{content}"
-                            )
-                        ]
+                    filtered_memories = filter_relevant_memories(
+                        memories, recontext.summary, content
                     )
-                    filtered_memories = res.content.strip()
                     if filtered_memories.lower() != "none":
                         messages.append(
                             AIMessage("# Episodic Memory:\n" + filtered_memories)
@@ -164,8 +156,8 @@ class Agent:
                             )
                         )
 
-            messages.append(HumanMessage(content))
-            config = {
+            messages.append(HumanMessage(f"[{date}] {content}"))
+            config: Any = {
                 "configurable": {"thread_id": thread_id},
                 "max_concurrency": 1,
                 "recursion_limit": 100,
@@ -177,9 +169,7 @@ class Agent:
             start_time = end_time = datetime.now().timestamp()
             usage: Usage = Usage()
             async for _, chunk in self.agent.astream(
-                {"messages": messages},
-                config,  # type: ignore
-                subgraphs=True,
+                {"messages": messages}, config, subgraphs=True
             ):
                 msg_type = "agent"
                 msg: Any = None
@@ -197,7 +187,7 @@ class Agent:
                     continue
 
                 # Content
-                text = None
+                text: Any = None
                 if isinstance(msg.content, list):
                     for item in msg.content:
                         if isinstance(item, str):
@@ -206,6 +196,13 @@ class Agent:
                             text = item["text"].strip()
                 elif isinstance(msg.content, str):
                     text = msg.content.strip()
+
+                if "</think>" in text:  # Ollama Qwen3
+                    splitted = text.split("<think>", 1)[1].split("</think>", 1)
+                    think, text = splitted[0].strip(), splitted[1].strip()
+                    self.console.print(
+                        Panel(escape(think), title="Think", border_style="white")
+                    )
 
                 # Tools
                 tool_calls: Any = None
