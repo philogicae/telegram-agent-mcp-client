@@ -14,7 +14,7 @@ from ..utils import Timer
 
 
 class Logger(ABC):
-    instance: str = ""
+    instance: str = "BOT"
     level: Any = INFO
 
     def __init__(self) -> None:
@@ -28,7 +28,8 @@ class Logger(ABC):
         for lib in Logging.manager.loggerDict:
             if not lib.startswith(parent_logger):
                 getLogger(lib).setLevel(WARNING)
-        self.logger = getLogger("BOT")
+        self.logger = getLogger(self.instance)
+        self.logger.setLevel(self.level)
 
     def info(self, log: str) -> None:
         self.logger.info(log)
@@ -51,12 +52,27 @@ class Logger(ABC):
         pass
 
 
+def fixed_default(_: Any, text: str) -> str:
+    return text
+
+
+def logify_default(
+    _: Any, agent: str | None = "Logs", content: list[str] | str = ""
+) -> str:
+    return f"{agent.replace(' ', '-') if agent else 'Logs'}:\n" + "\n".join(
+        [content] if content and isinstance(content, str) else content
+    )
+
+
 class Bot(ABC):
+    core: Any
     last_call: float = 0
     delay: float = 0.2
     group_msg_trigger: str = "!"
     waiting: str = "💭 I'm thinking..."
     retries: int = 5
+    fixed: Callable[..., str] = fixed_default
+    logify: Callable[..., str] = logify_default
 
     def __init__(
         self,
@@ -144,7 +160,7 @@ class Manager(ABC):
 
 class AgenticBot(ABC):
     dev: bool = False
-    bot: Any
+    bot: Bot
     log: Logger
     agent: Any
     managers: dict[str, Manager]

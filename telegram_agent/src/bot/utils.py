@@ -1,3 +1,5 @@
+from typing import Any
+
 from telebot.types import InlineKeyboardMarkup, Message
 from telebot.util import quick_markup
 from telegramify_markdown import markdownify
@@ -12,11 +14,13 @@ def unpack_user(msg: Message) -> tuple[str, str]:
     return "?", "Unknown"
 
 
-def fixed(text: str) -> str:
+def fixed_telegram(_: Any, text: str) -> str:
     return markdownify(text, normalize_whitespace=True)
 
 
-def logify(agent: str | None = "Logs", content: list[str] | str = "") -> str:
+def logify_telegram(
+    _: Any, agent: str | None = "Logs", content: list[str] | str = ""
+) -> str:
     logs = [content] if content and isinstance(content, str) else content
     return (
         (

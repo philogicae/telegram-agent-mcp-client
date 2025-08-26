@@ -6,7 +6,7 @@ from telebot.types import CallbackQuery, LinkPreviewOptions, Message
 from telebot.util import smart_split
 
 from ..abstract import Bot
-from ..utils import fixed, logify, reply_markup
+from ..utils import fixed_telegram, logify_telegram, reply_markup
 
 disable_web_page_preview = {
     "link_preview_options": LinkPreviewOptions(is_disabled=True)
@@ -14,7 +14,9 @@ disable_web_page_preview = {
 
 
 class TelegramBot(Bot):
-    bot: AsyncTeleBot
+    core: AsyncTeleBot
+    fixed: Callable[..., str] = fixed_telegram
+    logify: Callable[..., str] = logify_telegram
     max_msg_length: int = 1000
     extra_msg_length: int = 500
     pagination_action: list[str] = ["first", "prev", "next", "last"]
@@ -40,12 +42,12 @@ class TelegramBot(Bot):
         super().__init__(delay, group_msg_trigger, waiting, retries)
         if max_msg_length:
             self.max_msg_length = max_msg_length
-        self.bot = AsyncTeleBot(token=telegram_id, parse_mode="MarkdownV2")
+        self.core = AsyncTeleBot(token=telegram_id, parse_mode="MarkdownV2")
         self.edit_cache: dict[int, Any] = {}
 
     async def initialize(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
-        await self.bot.set_my_commands([])
-        me = await self.bot.get_me()
+        await self.core.set_my_commands([])
+        me = await self.core.get_me()
 
         # Handlers
         handle_chat = kwargs.get("chat")
@@ -53,7 +55,7 @@ class TelegramBot(Bot):
             raise ValueError("Chat handler is required")
         handle_document = kwargs.get("document")
 
-        @self.bot.message_handler(
+        @self.core.message_handler(
             func=lambda m: m.chat.type == "private"
             or (m.reply_to_message and m.reply_to_message.from_user.id == me.id)
             or m.text.startswith(self.group_msg_trigger),
@@ -72,7 +74,7 @@ class TelegramBot(Bot):
                 message.text = text[1:].strip()
             await handle_chat(message)
 
-        @self.bot.callback_query_handler(
+        @self.core.callback_query_handler(
             func=lambda call: call.data in self.pagination_action
         )  # type: ignore
         async def _handle_page(call: CallbackQuery) -> None:
@@ -81,7 +83,7 @@ class TelegramBot(Bot):
 
         if handle_document:
 
-            @self.bot.message_handler(
+            @self.core.message_handler(
                 func=lambda m: m.chat.type == "private"
                 or (m.reply_to_message and m.reply_to_message.from_user.id == me.id),
                 content_types=["document"],
@@ -90,7 +92,7 @@ class TelegramBot(Bot):
                 await handle_document(message)
 
     async def start(self) -> None:
-        await self.bot.infinity_polling(skip_pending=True, timeout=300)
+        await self.core.infinity_polling(skip_pending=True, timeout=300)
 
     async def send(
         self,
@@ -104,13 +106,13 @@ class TelegramBot(Bot):
         )
         if text and len(text) > self._dynamic_length(text):
             paginated_msg: Message = await self.paginated(
-                self.bot.send_message, ref, fixed(text)
+                self.core.send_message, ref, self.fixed(text)
             )
             return paginated_msg
         msg: Message = await self._exec(
-            self.bot.send_message,
+            self.core.send_message,
             ref,
-            fixed(text or self.waiting),
+            self.fixed(text or self.waiting),
             **disable_web_page_preview,
         )
         if not text:
@@ -124,13 +126,13 @@ class TelegramBot(Bot):
     ) -> Message:
         if text and len(text) > self._dynamic_length(text):
             paginated_msg: Message = await self.paginated(
-                self.bot.reply_to, to_message, fixed(text)
+                self.core.reply_to, to_message, self.fixed(text)
             )
             return paginated_msg
         msg: Message = await self._exec(
-            self.bot.reply_to,
+            self.core.reply_to,
             to_message,
-            fixed(text or self.waiting),
+            self.fixed(text or self.waiting),
             **disable_web_page_preview,
         )
         if not text:
@@ -153,9 +155,9 @@ class TelegramBot(Bot):
             content = cache.get("content")
             if not content:
                 return False
-            orig = logify(agent, content)
+            orig = self.logify(agent, content)
             if final:
-                edited = (logify(agent, content[:-1]) + f"\n{text}").strip()
+                edited = (self.logify(agent, content[:-1]) + f"\n{text}").strip()
             else:
                 if "🛠️" in content[-1] and text in "✅❌":  # Tool result edit
                     content[-1] = f"{text}{content[-1][1:-3]}"
@@ -163,20 +165,20 @@ class TelegramBot(Bot):
                     content[-1] = text
                 if not content[-1].endswith("..."):
                     content.append(self.waiting)
-                edited = logify(agent, content)
+                edited = self.logify(agent, content)
         msg: Message | bool = False
         if edited != orig:
             if edited and len(edited) > self._dynamic_length(edited):  # Paginated
                 msg = await self.paginated(
-                    self.bot.edit_message_text,
+                    self.core.edit_message_text,
                     (message.chat.id, message.id),
-                    fixed(edited),
+                    self.fixed(edited),
                     cache.get("current"),
                 )
             else:  # Single message
                 msg = await self._exec(
-                    self.bot.edit_message_text,
-                    fixed(edited),
+                    self.core.edit_message_text,
+                    self.fixed(edited),
                     message.chat.id,
                     message.id,
                     **disable_web_page_preview,
@@ -234,8 +236,8 @@ class TelegramBot(Bot):
             if cache["current"] != new_index:
                 cache["current"] = new_index
                 await self._exec(
-                    self.bot.edit_message_text,
-                    fixed(cache["pages"][new_index]),
+                    self.core.edit_message_text,
+                    self.fixed(cache["pages"][new_index]),
                     message.chat.id,
                     message.id,
                     reply_markup=reply_markup(new_index, len(cache["pages"])),
@@ -244,18 +246,18 @@ class TelegramBot(Bot):
 
     async def pin(self, message: Message) -> bool:
         success: bool = await self._exec(
-            self.bot.pin_chat_message, message.chat.id, message.id, True
+            self.core.pin_chat_message, message.chat.id, message.id, True
         )
         return success
 
     async def unpin(self, message: Message) -> bool:
         success: bool = await self._exec(
-            self.bot.unpin_chat_message, message.chat.id, message.id
+            self.core.unpin_chat_message, message.chat.id, message.id
         )
         return success
 
     async def delete(self, message: Message) -> bool:
         success: bool = await self._exec(
-            self.bot.delete_message, message.chat.id, message.id
+            self.core.delete_message, message.chat.id, message.id
         )
         return success

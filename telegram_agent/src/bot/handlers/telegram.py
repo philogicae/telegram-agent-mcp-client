@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from telebot.types import Message
 
 from ..abstract import AgenticBot, handler
-from ..utils import logify, unpack_user
+from ..utils import unpack_user
 
 load_dotenv()
 TELEGRAM_CHAT_DEV = getenv("TELEGRAM_CHAT_DEV")
@@ -17,20 +17,20 @@ async def telegram_report_issue(
 ) -> None:
     cause = "Agent" if isinstance(e, str) else "Telegram"
     error = f"\n{e}"
-    instance.log.error(f"-> {cause} Exception: {e}")
-    user, name = unpack_user(orig_msg)
-    if TELEGRAM_CHAT_DEV and TELEGRAM_CHAT_DEV == str(orig_msg.chat.id):
+    instance.log.error(f"{cause} -> Exception: {e}")
+    if TELEGRAM_CHAT_DEV:  # Report to admin
+        user, name = unpack_user(orig_msg)
         await instance.bot.send(
             TELEGRAM_CHAT_DEV,
-            logify(
+            instance.bot.logify(
                 "Error",
-                f"⚠️ {cause} issue detected on chat:\n- *{orig_msg.chat.id}* | {orig_msg.chat.title or 'Private'}\n- @{user}: {name}{error}",
+                f"⚠️ {cause} issue detected on chat:\n[{orig_msg.chat.id}] {orig_msg.chat.title or 'Private'}\n[@{user}] {name}{error}",
             ),
         )
-    else:
+    if TELEGRAM_CHAT_DEV != str(orig_msg.chat.id):  # Notify user
         await instance.bot.reply(
             reply_msg,
-            logify(
+            instance.bot.logify(
                 "Error",
                 f"⚠️ Something went wrong with {cause}...\n🚒 Reported automatically to admin",
             ),
@@ -67,9 +67,7 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
             if not done:
                 await sleep(0.5)  # No need to spam
     except Exception as e:
-        await telegram_report_issue(
-            instance, msg, reply, f"{instance.agent.current_agent} -> {e}"
-        )
+        await telegram_report_issue(instance, msg, reply, e)
     instance.log.sent(msg, timer)
 
 
@@ -79,7 +77,7 @@ async def telegram_file(instance: AgenticBot, msg: Message) -> None:
     doc = msg.document
     if doc:
         file_name = doc.file_name
-        file_info = await instance.bot.bot.get_file(doc.file_id)
+        file_info = await instance.bot.core.get_file(doc.file_id)
         # downloaded_file = instance.bot.download_file(file_info.file_path)
         print(file_name, file_info)
     instance.log.sent(msg, timer)
