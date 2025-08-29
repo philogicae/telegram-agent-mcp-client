@@ -4,6 +4,7 @@ from typing import Any
 from dotenv import load_dotenv
 from langchain_core.language_models import LanguageModelLike
 from langchain_google_genai import ChatGoogleGenerativeAI as ChatGemini
+from langchain_google_genai import HarmBlockThreshold, HarmCategory
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 
@@ -76,7 +77,8 @@ class LLM(Singleton):
                     disable_streaming="tool_calling",
                     temperature=0.6,
                     thinking_budget=512,  # -1 for dynamic/unlimited
-                    transport="rest",  # Avoid retry bug
+                    safety_settings={k: HarmBlockThreshold.OFF for k in HarmCategory},
+                    # transport="rest"
                 )
 
         chosen_provider: str = provider or obj.provider
