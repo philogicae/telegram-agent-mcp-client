@@ -146,13 +146,13 @@ class Agent:
                 mem_stats = found_memories["stats"]
                 memories = f"{found_memories['nodes']}{found_memories['edges']}".strip()
                 if memories:
-                    self.console.print(
+                    """self.console.print(
                         Panel(
                             escape(f"{mem_stats}\n{memories}"),
                             title=f"Unfiltered Memory ({mem_timer.done()})",
                             border_style="light_steel_blue1",
                         )
-                    )
+                    )"""
                     mem_timer = Timer()
                     filtered_memories = filter_relevant_memories(
                         memories, recontext.summary, content
@@ -161,9 +161,9 @@ class Agent:
                         messages.append(
                             AIMessage("# Episodic Memory:\n" + filtered_memories)
                         )
-                        mem_stats["edges"] = filtered_memories.count("EDG<")
-                        mem_stats["nodes"] = filtered_memories.count("NOD<")
-                        del mem_stats["episodes"]
+                        # mem_stats["edges"] = filtered_memories.count("EDG<")
+                        # mem_stats["nodes"] = filtered_memories.count("NOD<")
+                        # del mem_stats["episodes"]
                         self.console.print(
                             Panel(
                                 escape(f"{mem_stats}\n{filtered_memories}"),
@@ -351,10 +351,10 @@ class Agent:
                         else step
                     )
                 )
-            # internal_mem = (
-            #    quotify_telegram("", filtered_memories) if filtered_memories else ""
-            # )
-            # step = f"{internal_mem}\n{step}".strip()
+            """ internal_mem = (
+                quotify_telegram("", filtered_memories) if filtered_memories else ""
+            )
+            step = f"{internal_mem}\n{step}".strip() """
             yield self.current_agent, step, True, extra
 
             if (

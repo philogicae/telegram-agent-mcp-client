@@ -128,7 +128,7 @@ def filter_relevant_memories(
     result: FilteredMemories = structured_llm.invoke(
         [
             HumanMessage(
-                f"Return only relevant memory lines (intact but compacted) for the given episodic memories extracted from knowledge graph (nodes and edges), according to the context and the latest user message, by excluding out-of-context information. If all memories are irrelevant, return empty list.\n\n# Episodic Memories:\n{memories}\n\n# Context:\n{context}\n\n# User Message:\n{user_msg}"
+                f"Return only relevant memory lines (intact but compact) for the given episodic memories extracted from knowledge graph (nodes and edges), according to the context and the latest user message, by excluding out-of-context information. If all memories are irrelevant, return empty list.\n\n# Episodic Memories:\n{memories}\n\n# Context:\n{context}\n\n# User Message:\n{user_msg}"
             )
         ]
     )
