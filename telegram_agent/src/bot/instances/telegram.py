@@ -21,12 +21,18 @@ class TelegramBot(Bot):
     extra_msg_length: int = 500
     pagination_action: list[str] = ["first", "prev", "next", "last"]
 
-    def _dynamic_length(self, text: str) -> int:
+    def _dynamic_length(self, text: str) -> tuple[int, int]:
+        include_quote = text.split("||\n", maxsplit=1)
+        if len(include_quote) > 1:
+            return self._dynamic_length(include_quote[1])[0], len(include_quote[0]) + 3
         return (
-            self.max_msg_length
-            if len(text) % self.max_msg_length
-            > len(text) % (self.max_msg_length + self.extra_msg_length)
-            else self.max_msg_length + self.extra_msg_length
+            (
+                self.max_msg_length
+                if len(text) % self.max_msg_length
+                > len(text) % (self.max_msg_length + self.extra_msg_length)
+                else self.max_msg_length + self.extra_msg_length
+            ),
+            0,
         )
 
     def __init__(
@@ -104,7 +110,7 @@ class TelegramBot(Bot):
             if isinstance(message_or_chat_id, Message)
             else message_or_chat_id
         )
-        if text and len(text) > self._dynamic_length(text):
+        if text and len(text) > self._dynamic_length(text)[0]:
             paginated_msg: Message = await self.paginated(
                 self.core.send_message, ref, self.fixed(text)
             )
@@ -124,7 +130,7 @@ class TelegramBot(Bot):
         to_message: Message,
         text: str | None = None,
     ) -> Message:
-        if text and len(text) > self._dynamic_length(text):
+        if text and len(text) > self._dynamic_length(text)[0]:
             paginated_msg: Message = await self.paginated(
                 self.core.reply_to, to_message, self.fixed(text)
             )
@@ -168,7 +174,7 @@ class TelegramBot(Bot):
                 edited = self.logify(agent, content)
         msg: Message | bool = False
         if edited != orig:
-            if edited and len(edited) > self._dynamic_length(edited):  # Paginated
+            if edited and len(edited) > self._dynamic_length(edited)[0]:  # Paginated
                 msg = await self.paginated(
                     self.core.edit_message_text,
                     (message.chat.id, message.id),
@@ -194,7 +200,13 @@ class TelegramBot(Bot):
         text: str,
         page: int = 0,
     ) -> Any:
-        pages = smart_split(text, self._dynamic_length(text))
+        max_length, quote_length = self._dynamic_length(text)
+        pages: list[str] = []
+        if quote_length:
+            pages = smart_split(text[quote_length:], max_length)
+            pages[0] = text[:quote_length] + pages[0]
+        else:
+            pages = smart_split(text, max_length)
         msg: Any = None
         if isinstance(ref, tuple):  # Edit
             msg = await self._exec(

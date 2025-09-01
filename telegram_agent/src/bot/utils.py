@@ -1,5 +1,6 @@
 from typing import Any
 
+from telebot.formatting import mcite
 from telebot.types import InlineKeyboardMarkup, Message
 from telebot.util import quick_markup
 from telegramify_markdown import markdownify
@@ -15,6 +16,9 @@ def unpack_user(msg: Message) -> tuple[str, str]:
 
 
 def fixed_telegram(_: Any, text: str) -> str:
+    include_quote = text.split("||\n", maxsplit=1)
+    if len(include_quote) > 1:
+        return include_quote[0] + "||\n" + fixed_telegram(_, include_quote[1])
     return markdownify(text, normalize_whitespace=True)
 
 
@@ -31,6 +35,10 @@ def logify_telegram(
         if logs
         else ""
     )
+
+
+def quotify_telegram(_: Any, text: str) -> str:
+    return mcite(text, escape=True, expandable=True)
 
 
 def progress_bar(current: int | float, total: int | float, size: int = 15) -> str:

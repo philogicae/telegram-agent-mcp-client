@@ -13,7 +13,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.types import StateSnapshot
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .llm import LLM
 
@@ -95,8 +95,12 @@ def format_date(date: datetime) -> str:
 
 
 class ReContext(BaseModel):
-    summary: str
-    user_message: str
+    summary: str = Field(description="Summary of the chat history")
+    user_message: str = Field(description="Rephrased user message")
+
+
+class FilteredMemories(BaseModel):
+    memories: list[str] = Field(description="Filtered memories")
 
 
 def summarize_and_rephrase(
@@ -119,12 +123,13 @@ def summarize_and_rephrase(
 def filter_relevant_memories(
     memories: str, context: str, user_msg: str, provider: str = "gemini"
 ) -> str:
-    result: Any = LLM.get(provider).invoke(
+    llm: Any = LLM.get(provider)
+    structured_llm = llm.with_structured_output(schema=FilteredMemories)
+    result: FilteredMemories = structured_llm.invoke(
         [
             HumanMessage(
-                f"Return only relevant memories for the given episodic memories, according to the context and the latest user message, by excluding out-of-context information. If all memories are irrelevant, just return 'None'.\n\n# Episodic Memories:\n{memories}\n\n# Context:\n{context}\n\n# User Message:\n{user_msg}"
+                f"Return only relevant memory lines (intact but compacted) for the given episodic memories extracted from knowledge graph (nodes and edges), according to the context and the latest user message, by excluding out-of-context information. If all memories are irrelevant, return empty list.\n\n# Episodic Memories:\n{memories}\n\n# Context:\n{context}\n\n# User Message:\n{user_msg}"
             )
         ]
     )
-    filtered: str = result.content.strip()
-    return filtered
+    return "\n".join(result.memories)

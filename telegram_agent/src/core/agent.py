@@ -123,7 +123,9 @@ class Agent:
         else:
             content = f"{user}: {content}"
             messages: list[BaseMessage] = []
+            filtered_memories: str = ""
             if self.graph:
+                mem_timer = Timer()
                 recontext = summarize_and_rephrase(self.state(thread_id), content)
                 content = (
                     recontext.user_message
@@ -133,25 +135,39 @@ class Agent:
                 self.console.print(
                     Panel(
                         escape(f"Summary: {recontext.summary}\n{content}"),
-                        title="ReContext",
+                        title=f"ReContext ({mem_timer.done()})",
                         border_style="light_steel_blue1",
                     )
                 )
-                memories: str = await self.graph.search(
+                mem_timer = Timer()
+                found_memories = await self.graph.full_search(
                     content, user, thread_id, limit=100
                 )
+                mem_stats = found_memories["stats"]
+                memories = f"{found_memories['nodes']}{found_memories['edges']}".strip()
                 if memories:
+                    self.console.print(
+                        Panel(
+                            escape(f"{mem_stats}\n{memories}"),
+                            title=f"Unfiltered Memory ({mem_timer.done()})",
+                            border_style="light_steel_blue1",
+                        )
+                    )
+                    mem_timer = Timer()
                     filtered_memories = filter_relevant_memories(
                         memories, recontext.summary, content
                     )
-                    if filtered_memories.lower() != "none":
+                    if filtered_memories:
                         messages.append(
                             AIMessage("# Episodic Memory:\n" + filtered_memories)
                         )
+                        mem_stats["edges"] = filtered_memories.count("EDG<")
+                        mem_stats["nodes"] = filtered_memories.count("NOD<")
+                        del mem_stats["episodes"]
                         self.console.print(
                             Panel(
-                                escape(filtered_memories),
-                                title="Episodic Memory",
+                                escape(f"{mem_stats}\n{filtered_memories}"),
+                                title=f"Episodic Memory ({mem_timer.done()})",
                                 border_style="light_steel_blue1",
                             )
                         )
@@ -294,10 +310,9 @@ class Agent:
                             escape(
                                 " | ".join(
                                     [f"{k}: {v}" for k, v in msg.usage_metadata.items()]
-                                    + [f"took: {timer:.2f} sec."]
                                 )
                             ),
-                            title="Usage",
+                            title=f"Usage ({timer:.2f} sec)",
                             border_style="yellow",
                         )
                     )
@@ -315,9 +330,9 @@ class Agent:
             self.console.print(
                 Panel(
                     escape(
-                        f"{usage}\ntotal_calls: {total_agent_calls + total_tool_calls} | agent_calls: {total_agent_calls} | tool_calls: {total_tool_calls}{(' (' + ', '.join([k + ': ' + str(v) for k, v in calls_by_tool.items()]) + ')') if calls_by_tool else ''} | took: {end_time - start_time:.2f} sec."
+                        f"{usage}\ntotal_calls: {total_agent_calls + total_tool_calls} | agent_calls: {total_agent_calls} | tool_calls: {total_tool_calls}{(' (' + ', '.join([k + ': ' + str(v) for k, v in calls_by_tool.items()]) + ')') if calls_by_tool else ''}"
                     ),
-                    title="Usage Summary",
+                    title=f"Usage Summary ({end_time - start_time:.2f} sec)",
                     border_style="bright_yellow",
                 )
             )
@@ -336,6 +351,10 @@ class Agent:
                         else step
                     )
                 )
+            # internal_mem = (
+            #    quotify_telegram("", filtered_memories) if filtered_memories else ""
+            # )
+            # step = f"{internal_mem}\n{step}".strip()
             yield self.current_agent, step, True, extra
 
             if (
@@ -345,18 +364,16 @@ class Agent:
                 and not step.lower().startswith("successfully transferred")
             ):
                 mem_timer = Timer()
-                result = await self.graph.add(
+                results = await self.graph.add(
                     content=[(user, content), (self.current_agent, step)],
                     chat_id=thread_id,
                 )
-                nodes: str = f"\n# Nodes:\n{result['nodes']}" if result["nodes"] else ""
-                edges: str = f"\n# Edges:\n{result['edges']}" if result["edges"] else ""
                 self.console.print(
                     Panel(
                         escape(
-                            f"{result['stats']} in {mem_timer.done()}" + nodes + edges
+                            f"{results['stats']}" + results["nodes"] + results["edges"]
                         ),
-                        title="Added Memories",
+                        title=f"Added Memories ({mem_timer.done()})",
                         border_style="light_steel_blue1",
                     )
                 )
