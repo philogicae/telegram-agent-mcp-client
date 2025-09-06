@@ -111,7 +111,7 @@ class GraphRAG(Singleton):
             )
             unique_edges = set()
             for edge in sorted_edges:
-                if edge.fact not in unique_edges:
+                if edge.fact not in unique_edges and edge.name != "IS_DUPLICATE_OF":
                     unique_edges.add(edge.fact)
                     start: Any = edge.valid_at or edge.created_at
                     date = ""

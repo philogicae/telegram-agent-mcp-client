@@ -616,7 +616,7 @@ wheels = [
 
 [[package]]
 name = "graphiti-core"
-version = "0.20.1"
+version = "0.20.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "diskcache" },
@@ -628,9 +628,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c1/bf/b1810bcf747f8e571e78a811171b58663cefcd6e7ee1fcd13dcf4cc41add/graphiti_core-0.20.1.tar.gz", hash = "sha256:59f3c33b65d74764dbd655e4c0e603e276c6c300b8e2fd717211834f2ec2da89", size = 6492942, upload-time = "2025-09-03T22:43:51.109Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cb/5e/cdc626f1679e77d4dec7a4ac4d61eb88f11aab8dcdde55008aaf1d2140ee/graphiti_core-0.20.2.tar.gz", hash = "sha256:98bd0908190a5ce06c5714635f7894b86ea672efee8c9c6990c8185318e4329f", size = 6491601, upload-time = "2025-09-05T16:15:00.69Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1a/75/1fc879999a29042951eb54f8d9ce41af9e069b908b94725a8efaf5446a97/graphiti_core-0.20.1-py3-none-any.whl", hash = "sha256:0d3619170add4cae33e39c27050815e30e6f94c68d866e675e060183c8ead1e6", size = 154877, upload-time = "2025-09-03T22:43:49.543Z" },
+    { url = "https://files.pythonhosted.org/packages/31/a2/ed1cb5f78052a41e082c227c7bc71ae10d161f42844b6866ccd86384f7e1/graphiti_core-0.20.2-py3-none-any.whl", hash = "sha256:15dea3d803461bf6cbacde78d66a81c64ff2e66b7cb5bad7742df734af3406e0", size = 152805, upload-time = "2025-09-05T16:14:58.387Z" },
 ]
 
 [package.optional-dependencies]
@@ -1783,7 +1783,7 @@ wheels = [
 
 [[package]]
 name = "posthog"
-version = "6.7.3"
+version = "6.7.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "backoff" },
@@ -1793,9 +1793,9 @@ dependencies = [
     { name = "six" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/49/f3/650f728d1da777d07730b835605278206eba7be864952ef6b8c15fc5405e/posthog-6.7.3.tar.gz", hash = "sha256:3d03ab7e6328a2407dcafa5615760bd99a4c20b18b7d548160175634ab53e73c", size = 117739, upload-time = "2025-09-04T18:22:07.158Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/40/d7f585e09e47f492ebaeb8048a8e2ce5d9f49a3896856a7a975cbc1484fa/posthog-6.7.4.tar.gz", hash = "sha256:2bfa74f321ac18efe4a48a256d62034a506ca95477af7efa32292ed488a742c5", size = 118209, upload-time = "2025-09-05T15:29:21.517Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/26/8c/448fa7ead69c4e5b5bdb699856813bc39c8415bb58e3ed2868a1d8986fb9/posthog-6.7.3-py3-none-any.whl", hash = "sha256:c669d0a43ddd2c34762fdbfd4d89e453430991e7ff9c2baf8e7c36619525d624", size = 135930, upload-time = "2025-09-04T18:22:05.196Z" },
+    { url = "https://files.pythonhosted.org/packages/bb/95/e795059ef73d480a7f11f1be201087f65207509525920897fb514a04914c/posthog-6.7.4-py3-none-any.whl", hash = "sha256:7f1872c53ec7e9a29b088a5a1ad03fa1be3b871d10d70c8bf6c2dafb91beaac5", size = 136409, upload-time = "2025-09-05T15:29:19.995Z" },
 ]
 
 [[package]]
