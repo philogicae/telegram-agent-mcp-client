@@ -138,8 +138,12 @@ class DocumentManager(Manager):
                         self.documents[filename].uploaded_at = now
                         self.documents[filename].done = True
                         self.documents[filename].error = True
+        all_found = queue.keys() | failed.keys()
         for filename, document in self.documents.items():
-            if document.uploaded_at + timedelta(seconds=30) < now:
+            if filename not in all_found and (
+                document.uploaded_at + timedelta(seconds=30) < now
+                or int(document.percent.strip("%")) > 0
+            ):
                 self.documents[filename].done = True
 
     async def update_chats(self) -> None:
