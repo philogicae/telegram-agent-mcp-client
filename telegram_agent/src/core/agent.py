@@ -1,9 +1,11 @@
 from datetime import datetime
+from os import getenv
 from typing import Any, AsyncGenerator, Callable, Sequence
 
+from addict import Dict
+from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
-from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt.tool_node import ToolNode
 from langgraph.types import StateSnapshot
 from langgraph_swarm import create_swarm
@@ -13,7 +15,7 @@ from rich.panel import Panel
 from telebot.types import Message as TelegramMessage
 
 from ..utils import Timer
-from .config import AgentConfig, get_agent_config
+from .config import get_agent_config
 from .graphiti import GraphRAG
 from .tools import MCP_CONFIG, get_tools
 from .utils import (
@@ -25,13 +27,13 @@ from .utils import (
     summarize_and_rephrase,
 )
 
+load_dotenv()
+WHITELIST: set[str] = set(getenv("WHITELIST", "").lower().split(","))
+
 
 class Agent:
-    agent_config: AgentConfig
-    agent: CompiledStateGraph[Any]
+    agents: Dict = Dict()  # type: ignore
     tools: Sequence[BaseTool | Callable[..., Any] | dict[str, Any]] | ToolNode | None
-    tools_by_agent: dict[str, list[str]]
-    current_agent: str
     graph: GraphRAG | Any
     console: Console
     dev: bool
@@ -59,17 +61,37 @@ class Agent:
         self.console = Console()
         self.dev = dev
         self.debug = debug
-        self.agent_config = get_agent_config(all_tools)
-        self.tools_by_agent = self.agent_config.tools_by_agent
-        self.current_agent = self.agent_config.active
-        self.agent = create_swarm(
-            agents=self.agent_config.agents,
-            default_active_agent=self.current_agent,
+
+        # Default Agents
+        default = self.agents.default = Dict()  # type: ignore
+        default.config = get_agent_config(all_tools)
+        default.active = {}
+        default.agent = create_swarm(
+            agents=default.config.agents,
+            default_active_agent=default.config.active,
         ).compile(checkpointer=checkpointer(dev, persist), debug=debug)
         if generate_png:
-            graph_file = MCP_CONFIG + "/graph.png"
-            self.agent.get_graph().draw_mermaid_png(output_file_path=graph_file)
-            print(f"Graph saved to {graph_file}")
+            graph_file = MCP_CONFIG + "/default_graph.png"
+            default.agent.get_graph().draw_mermaid_png(output_file_path=graph_file)
+            print(f"Default Graph saved to {graph_file}")
+
+        # Only Documentalist
+        documentalist = self.agents.documentalist = Dict()  # type: ignore
+        documentalist.config = get_agent_config(
+            all_tools, only_agents=["Documentalist"], config_name="Restricted"
+        )
+        documentalist.agent = create_swarm(
+            agents=documentalist.config.agents,
+            default_active_agent=documentalist.config.active,
+        ).compile(checkpointer=checkpointer(dev, persist), debug=debug)
+        if generate_png:
+            graph_file = MCP_CONFIG + "/documentalist_graph.png"
+            documentalist.agent.get_graph().draw_mermaid_png(
+                output_file_path=graph_file
+            )
+            print(f"Documentalist Graph saved to {graph_file}")
+
+        if generate_png:
             exit()
 
     def __enter__(self) -> "Agent":
@@ -99,8 +121,11 @@ class Agent:
         tools = (await Agent.load_tools()) if enable_tools else None
         return Agent(tools, graph, enable_persist, dev, debug, generate_png)
 
-    def state(self, thread_id: str) -> StateSnapshot:
-        return self.agent.get_state({"configurable": {"thread_id": thread_id}})
+    def state(self, swarm: Any, thread_id: str) -> StateSnapshot:
+        state: StateSnapshot = swarm.agent.get_state(
+            {"configurable": {"thread_id": thread_id}}
+        )
+        return state
 
     async def chat(
         self, content: str | TelegramMessage | Any
@@ -118,15 +143,30 @@ class Agent:
                 Panel(escape(content), title="User", border_style="white")
             )
 
+        swarm = (
+            self.agents.default
+            if not WHITELIST or user.lower() in WHITELIST
+            else self.agents.documentalist  # Restricted to Documentalist for public tests
+        )
+        if thread_id not in swarm.active:
+            swarm.active[thread_id] = swarm.config.active
+
         if not content:
-            yield self.current_agent, "...", True, {}  # Avoid empty reply
+            yield (
+                swarm.active[thread_id],
+                "...",
+                True,
+                {},
+            )  # Avoid empty reply
         else:
             content = f"{user}: {content}"
             messages: list[BaseMessage] = []
             filtered_memories: str = ""
             if self.graph:
                 mem_timer = Timer()
-                recontext = summarize_and_rephrase(self.state(thread_id), content)
+                recontext = summarize_and_rephrase(
+                    self.state(swarm, thread_id), content
+                )
                 content = (
                     recontext.user_message
                     if ":" in recontext.user_message
@@ -146,13 +186,6 @@ class Agent:
                 mem_stats = found_memories["stats"]
                 memories = f"{found_memories['nodes']}{found_memories['edges']}".strip()
                 if memories:
-                    """self.console.print(
-                        Panel(
-                            escape(f"{mem_stats}\n{memories}"),
-                            title=f"Unfiltered Memory ({mem_timer.done()})",
-                            border_style="light_steel_blue1",
-                        )
-                    )"""
                     mem_timer = Timer()
                     filtered_memories = filter_relevant_memories(
                         memories, recontext.summary, content
@@ -184,21 +217,21 @@ class Agent:
             ignore_tool_result: bool = False
             start_time = end_time = datetime.now().timestamp()
             usage: Usage = Usage()
-            async for _, chunk in self.agent.astream(
+            async for _, chunk in swarm.agent.astream(
                 {"messages": messages}, config, subgraphs=True
             ):
                 msg_type = "agent"
                 msg: Any = None
                 if "agent" in chunk:
-                    msg = chunk[msg_type]["messages"][0]  # type: ignore
+                    msg = chunk[msg_type]["messages"][0]
                     if msg.name:
-                        self.current_agent = msg.name.title()
+                        swarm.active[thread_id] = msg.name.title()
                     if not msg.tool_calls:
                         total_agent_calls += 1
                     called_tool = None
                 elif "tools" in chunk:
                     msg_type = "tools"
-                    msg = chunk[msg_type]["messages"][0]  # type: ignore
+                    msg = chunk[msg_type]["messages"][0]
                 else:
                     continue
 
@@ -239,8 +272,8 @@ class Agent:
                 if ignore_tool_result:
                     ignore_tool_result = False
                     continue
-                elif called_tool and called_tool not in self.tools_by_agent.get(
-                    self.current_agent, []
+                elif called_tool and called_tool not in swarm.config.tools_by_agent.get(
+                    swarm.active[thread_id], []
                 ):
                     ignore_tool_result = True
                     continue
@@ -255,7 +288,9 @@ class Agent:
                         Panel(
                             escape(text),
                             title=(
-                                "Result" if msg_type == "tools" else self.current_agent
+                                "Result"
+                                if msg_type == "tools"
+                                else swarm.active[thread_id]
                             ),
                             border_style=(
                                 "green3" if msg_type == "tools" else "bright_cyan"
@@ -320,11 +355,13 @@ class Agent:
                 # Intermediate step
                 if step and not done:
                     if self.dev:
-                        intermediate_step = f"{self.current_agent} -> YIELD: {step}"
+                        intermediate_step = (
+                            f"{swarm.active[thread_id]} -> YIELD: {step}"
+                        )
                         if extra:
                             intermediate_step += f" {extra['tool']}"
                         self.console.print(intermediate_step)
-                    yield self.current_agent, step, False, extra
+                    yield swarm.active[thread_id], step, False, extra
 
             # Usage Summary
             self.console.print(
@@ -344,18 +381,14 @@ class Agent:
                 step = str(text)
             if self.dev:
                 self.console.print(
-                    f"{self.current_agent} -> FINAL: "
+                    f"{swarm.active[thread_id]} -> FINAL: "
                     + (
                         f"{step[:21]}...{step[-21:]}"
                         if step and len(step) > 45
                         else step
                     )
                 )
-            """ internal_mem = (
-                quotify_telegram("", filtered_memories) if filtered_memories else ""
-            )
-            step = f"{internal_mem}\n{step}".strip() """
-            yield self.current_agent, step, True, extra
+            yield swarm.active[thread_id], step, True, extra
 
             if (
                 self.graph
@@ -365,7 +398,10 @@ class Agent:
             ):
                 mem_timer = Timer()
                 results = await self.graph.add(
-                    content=[(user, content), (self.current_agent, step)],
+                    content=[
+                        (user, content),
+                        (swarm.active[thread_id], step),
+                    ],
                     chat_id=thread_id,
                 )
                 self.console.print(

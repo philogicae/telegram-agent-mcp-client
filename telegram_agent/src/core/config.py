@@ -25,7 +25,11 @@ class AgentConfig(BaseModel):
 
 
 def get_agent_config(
-    tools: list[BaseTool], display: bool = True, verbose: bool = False
+    tools: list[BaseTool],
+    config_name: str | None = "Default",
+    only_agents: list[str] | None = None,
+    display: bool = True,
+    verbose: bool = False,
 ) -> AgentConfig:
     config_file = MCP_CONFIG + "/agent_config.json"
     if not path.exists(config_file):
@@ -33,7 +37,11 @@ def get_agent_config(
         copyfile("agent_config.example.json", config_file)
 
     configuration: dict[str, Any] = load(open(config_file, "r", encoding="utf-8"))
-    agent_config: dict[str, Any] = configuration.get("agents", {})
+    agent_config: dict[str, Any] = {
+        k: v
+        for k, v in configuration.get("agents", {}).items()
+        if only_agents is None or k in only_agents
+    }
     if len(agent_config) < 1:
         raise ValueError("No agents found in agent_config.json")
 
@@ -83,7 +91,7 @@ def get_agent_config(
     # Create agents
     console = Console()
     if display or verbose:
-        console.print(f"\nAvailable agents: {len(agent_config)}")
+        console.print(f"\n# {config_name} - Available agents: {len(agent_config)}")
     model = LLM.get()
     agents: list[Any] = []
     tools_by_agent: dict[str, list[str]] = {}

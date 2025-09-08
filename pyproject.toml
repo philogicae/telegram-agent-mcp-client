@@ -9,6 +9,7 @@ license = "MIT"
 dependencies = [
     "rich",
     "pydantic",
+    "addict",
     "python-dotenv",
     "pyjson5",
     "langchain",
