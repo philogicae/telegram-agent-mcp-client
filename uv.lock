@@ -625,7 +625,7 @@ wheels = [
 
 [[package]]
 name = "graphiti-core"
-version = "0.20.2"
+version = "0.20.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "diskcache" },
@@ -637,9 +637,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cb/5e/cdc626f1679e77d4dec7a4ac4d61eb88f11aab8dcdde55008aaf1d2140ee/graphiti_core-0.20.2.tar.gz", hash = "sha256:98bd0908190a5ce06c5714635f7894b86ea672efee8c9c6990c8185318e4329f", size = 6491601, upload-time = "2025-09-05T16:15:00.69Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dd/80/5d75a60f1c7bbeb6b2d8e37bcb398ea23a0660ce96550862ddd50e827f8f/graphiti_core-0.20.4.tar.gz", hash = "sha256:12d90b273ba80b0b34891aec68cc6fa535cd4e82d04e47e07c071551b70784c0", size = 6491694, upload-time = "2025-09-08T19:43:40.446Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/31/a2/ed1cb5f78052a41e082c227c7bc71ae10d161f42844b6866ccd86384f7e1/graphiti_core-0.20.2-py3-none-any.whl", hash = "sha256:15dea3d803461bf6cbacde78d66a81c64ff2e66b7cb5bad7742df734af3406e0", size = 152805, upload-time = "2025-09-05T16:14:58.387Z" },
+    { url = "https://files.pythonhosted.org/packages/53/d2/74cfd73347f8fbd40277332269cd17ca007a61ce4d5214edbc021ad51228/graphiti_core-0.20.4-py3-none-any.whl", hash = "sha256:2820b49ba0b957d9a9b803f266d46dc7328b5b2593695f54626ebffb33f05f97", size = 152878, upload-time = "2025-09-08T19:43:38.155Z" },
 ]
 
 [package.optional-dependencies]
@@ -1162,7 +1162,7 @@ wheels = [
 
 [[package]]
 name = "langsmith"
-version = "0.4.26"
+version = "0.4.27"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -1173,9 +1173,9 @@ dependencies = [
     { name = "requests-toolbelt" },
     { name = "zstandard" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f2/54/6e919bbad4761bc45805f623c1f75582388468e081367d4cc43a3fbd20f9/langsmith-0.4.26.tar.gz", hash = "sha256:1fab1f52c40a374ce7f391085bffb10511a9fd5035c1d6feebb222e1faea5845", size = 955076, upload-time = "2025-09-08T02:24:56.014Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/62/6f/7d88228b7614fa0204e58b8b8c46e6f564659ee07a525c8aeae77a05598a/langsmith-0.4.27.tar.gz", hash = "sha256:6e8bbc425797202952d4e849431e6276e7985b44536ec0582eb96eaf9129c393", size = 956062, upload-time = "2025-09-08T19:01:49.677Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b9/e8/5ec22fbe4323564c947eaebe4a3b010f1e0c80e8cbddb30fd5889007c4cb/langsmith-0.4.26-py3-none-any.whl", hash = "sha256:86eb83c21a1c3396eb2c7e02db4173fceda290ad8e1b7468ed0022c6aae2a220", size = 383852, upload-time = "2025-09-08T02:24:53.773Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/26/99bc52e1c47fb4b995aece85a5313349a5e2559e4143ee2345d8bd1446ff/langsmith-0.4.27-py3-none-any.whl", hash = "sha256:23708e6478d1c74ac0e428bbc92df6704993e34305fb62a0c64d2fefc35bd67f", size = 384752, upload-time = "2025-09-08T19:01:47.362Z" },
 ]
 
 [[package]]
@@ -1571,7 +1571,7 @@ wheels = [
 
 [[package]]
 name = "openai"
-version = "1.106.1"
+version = "1.107.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -1583,9 +1583,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/79/b6/1aff7d6b8e9f0c3ac26bfbb57b9861a6711d5d60bd7dd5f7eebbf80509b7/openai-1.106.1.tar.gz", hash = "sha256:5f575967e3a05555825c43829cdcd50be6e49ab6a3e5262f0937a3f791f917f1", size = 561095, upload-time = "2025-09-04T18:17:15.303Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/88/67/d6498de300f83ff57a79cb7aa96ef3bef8d6f070c3ded0f1b5b45442a6bc/openai-1.107.0.tar.gz", hash = "sha256:43e04927584e57d0e9e640ee0077c78baf8150098be96ebd5c512539b6c4e9a4", size = 566056, upload-time = "2025-09-08T19:25:47.604Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/00/e1/47887212baa7bc0532880d33d5eafbdb46fcc4b53789b903282a74a85b5b/openai-1.106.1-py3-none-any.whl", hash = "sha256:bfdef37c949f80396c59f2c17e0eda35414979bc07ef3379596a93c9ed044f3a", size = 930768, upload-time = "2025-09-04T18:17:13.349Z" },
+    { url = "https://files.pythonhosted.org/packages/91/ed/e8a4fd20390f2858b95227c288df8fe0c835f7c77625f7583609161684ba/openai-1.107.0-py3-none-any.whl", hash = "sha256:3dcfa3cbb116bd6924b27913b8da28c4a787379ff60049588547a1013e6d6438", size = 950968, upload-time = "2025-09-08T19:25:45.552Z" },
 ]
 
 [[package]]

@@ -21,7 +21,7 @@
         }
       }
     },
-    "handoff": "Continue current task with {agent} (Which you will become, so never reply saying things like 'Successfully transferred' and then stop, instead **continue** the task)"
+    "handoff": "Continue current task with {agent} (Never reply saying you transferred the task, you **must** always continue it instead)"
   },
   "agents": {
     "Friendly Agent": {
