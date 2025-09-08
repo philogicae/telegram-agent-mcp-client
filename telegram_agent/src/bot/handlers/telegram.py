@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from telebot.types import Message
 
 from ..abstract import AgenticBot, handler
-from ..utils import unpack_user
+from ..utils import str_size, unpack_user
 
 load_dotenv()
 TELEGRAM_CHAT_DEV = getenv("TELEGRAM_CHAT_DEV")
@@ -73,11 +73,14 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
 
 @handler
 async def telegram_file(instance: AgenticBot, msg: Message) -> None:
-    timer = instance.log.received(msg)
-    doc = msg.document
-    if doc:
-        file_name = doc.file_name
-        file_info = await instance.bot.core.get_file(doc.file_id)
-        # downloaded_file = instance.bot.download_file(file_info.file_path)
-        print(file_name, file_info)
-    instance.log.sent(msg, timer)
+    if msg.document:
+        file_name = msg.document.file_name
+        file_info = await instance.bot.core.get_file(msg.document.file_id)
+        file_path = file_info.file_path
+        file_size = str_size(file_info.file_size)
+        msg.text = f"DOCUMENT ({file_size}): {file_name} = {file_path}"
+        timer = instance.log.received(msg)
+        await instance.managers["document"].notify(
+            msg.chat.id, {"filename": file_name, "size": file_size, "path": file_path}
+        )
+        instance.log.sent(msg, timer)

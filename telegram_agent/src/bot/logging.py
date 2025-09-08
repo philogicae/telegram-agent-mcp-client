@@ -12,7 +12,7 @@ class TelegramLogger(Logger):
         source = self.instance + ": " if self.instance else ""
         user, name = unpack_user(msg)
         self.logger.info(
-            f"{source}[{msg.chat.id}] {msg.chat.title or 'Private'}\n@{user}: {name} -> {msg.text}"
+            f"{source}[{msg.chat.id}] {msg.chat.title or 'Private'}\n\t@{user}: {name} -> {msg.text}"
         )
         return super().received(msg)
 
@@ -20,5 +20,5 @@ class TelegramLogger(Logger):
         source = self.instance + ": " if self.instance else ""
         user, name = unpack_user(msg)
         self.logger.info(
-            f"{source}[{msg.chat.id}] {msg.chat.title or 'Private'}\n@{user}: {name} <- {timer.done()}"
+            f"{source}[{msg.chat.id}] {msg.chat.title or 'Private'}\n\t@{user}: {name} <- {timer.done()}"
         )

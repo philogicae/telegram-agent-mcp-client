@@ -131,8 +131,15 @@ class DownloadManager(Manager):
                 del self.chats[chat_id]
 
     def create_message(self, torrents: list[Torrent]) -> str:
-        current, total, files = 0, 0, []
-        for torrent in torrents:
+        current, total, count, files = 0, 0, 0, []
+        for torrent in sorted(
+            torrents,
+            key=lambda x: (
+                (x.stats if isinstance(x.stats, dict) else {}).get("state") == "live"
+            ),
+        ):
+            if count > 3:
+                continue
             stats = torrent.stats if isinstance(torrent.stats, dict) else {}
             status = "🟢" if stats.get("state") == "live" else "🟧"
             current_bytes, total_bytes = (
@@ -159,6 +166,7 @@ class DownloadManager(Manager):
             )
             current += current_bytes
             total += total_bytes
+            count += 1
         header = (
             f"🌊 [{len(torrents)}] {progress_bar(current, total, size=11)}\n{SEPARATOR}"
         )

@@ -1,4 +1,5 @@
 from os import getenv
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -6,7 +7,7 @@ from .abstract import AgenticBot
 from .handlers import telegram_chat, telegram_file
 from .instances import TelegramBot
 from .logging import TelegramLogger
-from .managers import DownloadManager
+from .managers import DocumentManager, DownloadManager
 
 load_dotenv()
 
@@ -37,7 +38,12 @@ async def run_telegram_bot(dev: bool = False) -> None:
             raise ValueError("TELEGRAM_BOT_ID is not set")
 
     managers: dict[str, type] = {}
+    handlers: dict[str, Any] = {"chat": telegram_chat}
     if getenv("RQBIT_URL"):
         managers["download_torrent"] = DownloadManager
+    if getenv("RAG_URL"):
+        managers["document"] = DocumentManager
+        handlers["document"] = telegram_file
+
     with AgenticTelegramBot(telegram_id, dev, managers) as bot:
-        await bot.run(chat=telegram_chat, document=telegram_file)
+        await bot.run(**handlers)

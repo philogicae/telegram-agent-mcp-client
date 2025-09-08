@@ -25,12 +25,12 @@
   },
   "agents": {
     "Friendly Agent": {
-      "prompt": "You are a smart, helpful, rational, and methodical assistant called Friendly Agent",
+      "prompt": "You are a smart, helpful, and methodical assistant called Friendly Agent",
       "tools": ["think"],
       "transfer": "for any request falling outside the scope of other specialized agents"
     },
     "Search Agent": {
-      "prompt": "You are a smart, helpful, rational, and methodical search agent",
+      "prompt": "You are a smart, helpful, and methodical search agent",
       "routines": {
         "crawl": {
           "trigger": "to dig into a topic when the user didn't explicitely mention `deep search`",
@@ -65,7 +65,7 @@
       "transfer": "for any request requiring searching the web, news, fetching a URL, looking up information, or finding media information (such as new/last movie/series/release/media)"
     }
     /* "Media Manager": {
-      "prompt": "You are a smart, helpful, rational, and methodical media manager agent",
+      "prompt": "You are a smart, helpful, and methodical media manager agent",
       "routines": {
         "find_media": {
           "trigger": "for requests looking like 'Find <movie/series>'",

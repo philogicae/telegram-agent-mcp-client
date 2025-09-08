@@ -62,3 +62,13 @@ def reply_markup(index: int, total: int) -> InlineKeyboardMarkup:
         },
         row_width=5,
     )
+
+
+def str_size(size: int) -> str:
+    return (
+        f"{size / 1024 / 1024:.2f}MB"
+        if size > 1024 * 1024
+        else f"{size / 1024:.2f}KB"
+        if size > 1024
+        else f"{size}B"
+    )
