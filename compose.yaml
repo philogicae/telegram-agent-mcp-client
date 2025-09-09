@@ -42,10 +42,12 @@ services:
   docs-ui:
     container_name: docs-ui
     build:
-      context: ./docs-ui
+      context: ./docs_ui
       dockerfile: Dockerfile
     image: docs-ui
     restart: unless-stopped
+    ports:
+      - "4040:4040"
     env_file:
       - .env
     <<: [ *default-logging ]
