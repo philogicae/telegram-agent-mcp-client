@@ -131,44 +131,46 @@ class DownloadManager(Manager):
                 del self.chats[chat_id]
 
     def create_message(self, torrents: list[Torrent]) -> str:
-        current, total, count, files = 0, 0, 0, []
+        current, total, total_count, hidden_count, files = 0, 0, 0, 0, []
         for torrent in sorted(
             torrents,
             key=lambda x: (
                 (x.stats if isinstance(x.stats, dict) else {}).get("state") == "live"
             ),
         ):
-            if count > 3:
-                continue
-            stats = torrent.stats if isinstance(torrent.stats, dict) else {}
-            status = "🟢" if stats.get("state") == "live" else "🟧"
-            current_bytes, total_bytes = (
-                stats.get("progress_bytes", 0),
-                stats.get("total_bytes", 0),
-            )
-            live_stats = stats.get("live") or {}
-            peers = live_stats.get("snapshot", {}).get("peer_stats", {})
-            live = peers.get("live", 0)
-            seen = peers.get("seen", 0)
-            download_speed = live_stats.get("download_speed", {}).get(
-                "human_readable", "♾"
-            )
-            time_remaining = (live_stats.get("time_remaining") or {}).get(
-                "human_readable", "♾"
-            )
-            details = (
-                f"👤 {live}/{seen} 📊 {download_speed} ⏰ {time_remaining}\n"
-                if live
-                else ""
-            )
-            files.append(
-                f"{torrent.name}\n{details}{status} {progress_bar(current_bytes, total_bytes)}"
-            )
-            current += current_bytes
-            total += total_bytes
-            count += 1
-        header = (
-            f"🌊 [{len(torrents)}] {progress_bar(current, total, size=11)}\n{SEPARATOR}"
-        )
+            if total_count < 3:
+                stats = torrent.stats if isinstance(torrent.stats, dict) else {}
+                status = "🟢" if stats.get("state") == "live" else "🟧"
+                current_bytes, total_bytes = (
+                    stats.get("progress_bytes", 0),
+                    stats.get("total_bytes", 0),
+                )
+                live_stats = stats.get("live") or {}
+                peers = live_stats.get("snapshot", {}).get("peer_stats", {})
+                live = peers.get("live", 0)
+                seen = peers.get("seen", 0)
+                download_speed = live_stats.get("download_speed", {}).get(
+                    "human_readable", "♾"
+                )
+                time_remaining = (live_stats.get("time_remaining") or {}).get(
+                    "human_readable", "♾"
+                )
+                details = (
+                    f"👤 {live}/{seen} 📊 {download_speed} ⏰ {time_remaining}\n"
+                    if live
+                    else ""
+                )
+                files.append(
+                    f"{torrent.name}\n{details}{status} {progress_bar(current_bytes, total_bytes)}"
+                )
+                current += current_bytes
+                total += total_bytes
+            else:
+                hidden_count += 1
+            total_count += 1
+        header = f"🌊 [{len(torrents)}] {progress_bar(current, total_count * 100, size=11)}\n{SEPARATOR}"
         content = f"\n{SEPARATOR}\n".join(files)
-        return f"{header}\n{content}"
+        hidden = (
+            f"\n{SEPARATOR}\n+{hidden_count} more in queue..." if hidden_count else ""
+        )
+        return f"{header}\n{content}{hidden}"

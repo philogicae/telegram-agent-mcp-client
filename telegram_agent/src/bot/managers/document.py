@@ -153,10 +153,7 @@ class DocumentManager(Manager):
             finished: list[tuple[str, Document]] = []
             for filename in message.filenames:
                 document = self.documents[filename]
-                if not document.done:
-                    active.append((filename, document))
-                else:
-                    finished.append((filename, document))
+                (active if not document.done else finished).append((filename, document))
             if active:
                 text = self.create_message(active)
                 if not message.obj:
@@ -190,22 +187,26 @@ class DocumentManager(Manager):
                 del self.chats[chat_id]
 
     def create_message(self, documents: list[tuple[str, Document]]) -> str:
-        current, count, files = 0, 0, []
+        current, total_count, hidden_count, files = 0, 0, 0, []
         for filename, document in sorted(
             documents,
             key=lambda x: (x[1].status == "in queue", -int(x[1].percent.strip("%"))),
         ):
-            if count > 3:
-                continue
-            source = f"[{document.source}] " if document.source else ""
-            status = document.status[0].upper() + document.status[1:]
-            status_icon = "🟢" if status != "In queue" else "⏳"
-            current_percent = int(document.percent.strip("%"))
-            files.append(
-                f"{source}{filename}\nStatus: {status}\n{status_icon} {progress_bar(current_percent, 100)}"
-            )
-            current += current_percent
-            count += 1
-        header = f"📄 [{len(documents)}] {progress_bar(current, count * 100, size=11)}\n{SEPARATOR}"
+            if total_count < 3:
+                source = f"[{document.source}] " if document.source else ""
+                status = document.status[0].upper() + document.status[1:]
+                status_icon = "🟢" if status != "In queue" else "⏳"
+                current_percent = int(document.percent.strip("%"))
+                files.append(
+                    f"{source}{filename}\nStatus: {status}\n{status_icon} {progress_bar(current_percent, 100)}"
+                )
+                current += current_percent
+            else:
+                hidden_count += 1
+            total_count += 1
+        header = f"📄 [{len(documents)}] {progress_bar(current, total_count * 100, size=11)}\n{SEPARATOR}"
         content = f"\n{SEPARATOR}\n".join(files)
-        return f"{header}\n{content}"
+        hidden = (
+            f"\n{SEPARATOR}\n+{hidden_count} more in queue..." if hidden_count else ""
+        )
+        return f"{header}\n{content}{hidden}"
