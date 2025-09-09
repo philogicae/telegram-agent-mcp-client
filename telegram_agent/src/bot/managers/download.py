@@ -168,7 +168,9 @@ class DownloadManager(Manager):
             else:
                 hidden_count += 1
             total_count += 1
-        header = f"🌊 [{len(torrents)}] {progress_bar(current, total_count * 100, size=11)}\n{SEPARATOR}"
+        header = (
+            f"🌊 [{len(torrents)}] {progress_bar(current, total, size=11)}\n{SEPARATOR}"
+        )
         content = f"\n{SEPARATOR}\n".join(files)
         hidden = (
             f"\n{SEPARATOR}\n+{hidden_count} more in queue..." if hidden_count else ""
