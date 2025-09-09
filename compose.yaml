@@ -39,6 +39,18 @@ services:
     <<: [ *default-logging ]
     network_mode: host
 
+  docs-ui:
+    container_name: docs-ui
+    build:
+      context: ./docs-ui
+      dockerfile: Dockerfile
+    image: docs-ui
+    restart: unless-stopped
+    env_file:
+      - .env
+    <<: [ *default-logging ]
+    network_mode: host
+
 volumes:
   agent_data:
   neo4j_data:
