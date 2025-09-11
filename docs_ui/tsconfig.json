@@ -21,10 +21,8 @@
     ],
     "paths": {
       "@components/*": ["./app/components/*"],
-      "@frames/*": ["./app/frames/*"],
       "@hooks/*": ["./app/hooks/*"],
       "@layout/*": ["./app/layout/*"],
-      "@services/*": ["./app/services/*"],
       "@utils/*": ["./app/utils/*"]
     }
   },

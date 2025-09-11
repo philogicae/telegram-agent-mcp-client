@@ -1,4 +1,3 @@
-'use client'
 import Image from 'next/image'
 
 export default function Navbar({ children }: { children: React.ReactNode }) {
@@ -14,7 +13,9 @@ export default function Navbar({ children }: { children: React.ReactNode }) {
           </span>
         </div>
       </div>
-      {children}
+      <div className="flex flex-col items-center justify-center w-full h-full">
+        {children}
+      </div>
     </div>
   )
 }

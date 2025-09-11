@@ -1,13 +1,10 @@
-'use client'
-import NotFound from '@components/frames/NotFound'
-import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { FaBan } from 'react-icons/fa6'
 
 export default function Custom404() {
-  const router = useRouter()
-  useEffect(() => {
-    if (!(window.location.pathname + window.location.hash).startsWith('/#/'))
-      router.replace('/#/404')
-  }, [router])
-  return <NotFound />
+  return (
+    <div className="h-40 w-40 flex flex-col items-center justify-center gap-3 bg-black text-white rounded-lg">
+      <FaBan className="text-7xl" />
+      <span className="text-2xl font-bold">Not Found</span>
+    </div>
+  )
 }
