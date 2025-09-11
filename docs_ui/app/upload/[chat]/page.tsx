@@ -270,7 +270,7 @@ export default function Upload({
             onPress={resetState}
             className="inline-flex cursor-pointer rounded-lg text-white bg-black px-8 py-4 text-md font-bold disabled:bg-gray-300 disabled:text-gray-500 border border-black ring-2 ring-black border-offset-1 hover:text-cyan-400 w-52"
           >
-            <FiRefreshCw className="h-5 w-5 mr-2 flex-shrink-0" />
+            <FiUpload className="h-5 w-5 mr-2 flex-shrink-0" />
             Upload More Files
           </Button>
         </Card>

@@ -1,5 +1,5 @@
 'use client'
-import Loading from '@components/Loading'
+import Generating from '@components/Generating'
 import NotFound from '@components/NotFound'
 import { CUSTOM_CSS } from '@utils/preview'
 import DOMPurify from 'dompurify'
@@ -42,7 +42,7 @@ export default function Preview({
   }, [id])
 
   if (loading) {
-    return <Loading />
+    return <Generating />
   }
   if (error) {
     return <NotFound />
