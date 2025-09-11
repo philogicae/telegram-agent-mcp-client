@@ -13,6 +13,8 @@ import {
   FiAlertCircle,
   FiCheckCircle,
   FiFile,
+  FiFileText,
+  FiRefreshCw,
   FiUpload,
   FiX,
 } from 'react-icons/fi'
@@ -22,6 +24,13 @@ interface UploadedFile {
   id: string
 }
 
+type UploadStatus = 'idle' | 'uploading' | 'success' | 'error'
+
+interface UploadResultData {
+  message: string
+  files?: Array<{ name: string }>
+}
+
 export default function Upload({
   params,
 }: {
@@ -29,8 +38,10 @@ export default function Upload({
 }) {
   const { chat } = use(params)
   const [files, setFiles] = useState<UploadedFile[]>([])
-  const [isUploading, setIsUploading] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle')
+  const [uploadResult, setUploadResult] = useState<UploadResultData | null>(
+    null
+  )
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
@@ -166,42 +177,130 @@ export default function Upload({
 
   const handleUpload = useCallback(async () => {
     if (files.length === 0) return
-    setIsUploading(true)
-    setUploadProgress(0)
+
+    setUploadStatus('uploading')
     setError(null)
     setSuccess(null)
+
     const formData = new FormData()
     formData.append('chat', chat)
     files.forEach(({ file }) => {
-      formData.append('files', file)
+      // Use the file's name as the key, per the backend API
+      formData.append(file.name, file)
     })
+
     try {
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       })
+
       const result = await response.json()
+
       if (!response.ok) {
         throw new Error(result.error || 'Upload failed')
       }
-      setSuccess(result.message)
-      setFiles([])
-      setUploadProgress(100)
-      setTimeout(() => {
-        setUploadProgress(0)
-      }, 2000)
-    } catch (error) {
+
+      setUploadStatus('success')
+      setUploadResult({ message: result.message, files: result.files })
+    } catch (err) {
       const errorMessage =
-        error instanceof Error
-          ? error.message
-          : 'Upload failed. Please try again.'
-      setError(errorMessage)
+        err instanceof Error
+          ? err.message
+          : 'An unknown error occurred. Please try again.'
+      setUploadStatus('error')
+      setUploadResult({ message: errorMessage })
     } finally {
-      setIsUploading(false)
+      setFiles([])
     }
   }, [files, chat])
 
-  return chat === '1' ? (
+  const resetState = () => {
+    setFiles([])
+    setUploadStatus('idle')
+    setUploadResult(null)
+    setError(null)
+    setSuccess(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  if (chat !== 'dev') {
+    return <Restricted />
+  }
+
+  if (uploadStatus === 'success' && uploadResult) {
+    return (
+      <div className="flex flex-col w-full h-full items-center justify-center px-4 py-2">
+        <Card className="flex flex-col w-full sm:w-4/5 md:w-3/4 lg:w-2/3 xl:w-1/2 h-full shadow-none items-center justify-center gap-3 bg-white dark:bg-black text-black dark:text-white">
+          <FiCheckCircle className="h-16 w-16 text-green-500 mx-auto" />
+          <h2 className="text-2xl font-bold">Upload Successful</h2>
+          {uploadResult.files && uploadResult.files.length > 0 && (
+            <>
+              <div className="inline-flex items-center justify-center rounded-lg bg-gray-300 dark:bg-gray-700 px-5 py-0.5 text-sm font-bold text-black dark:text-white">
+                <span>
+                  {uploadResult.files.length} valid file
+                  {uploadResult.files.length === 1 ? '' : 's'} found
+                </span>
+              </div>
+              <ul className="h-1/4 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-lg p-2 space-y-1.5 text-xs sm:text-sm">
+                {uploadResult.files.map((file) => (
+                  <li
+                    key={file.name}
+                    className="flex items-center justify-start hover:bg-gray-100 dark:hover:bg-gray-900 border border-gray-500 rounded-lg gap-2 p-1 text-gray-700 dark:text-gray-300"
+                  >
+                    <FiFileText className="flex-shrink-0" />
+                    <span className="truncate">{file.name}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <div className="flex flex-col items-center justify-center w-full py-2">
+            <span className="text-black dark:text-white text-center">
+              {uploadResult.message}
+            </span>
+            <span className="text-green-500 font-bold text-center">
+              Go back to Telegram to follow their status
+            </span>
+          </div>
+          <Button
+            size="md"
+            onPress={resetState}
+            className="inline-flex cursor-pointer rounded-lg text-white bg-black px-8 py-4 text-md font-bold disabled:bg-gray-300 disabled:text-gray-500 border border-black ring-2 ring-black border-offset-1 hover:text-cyan-400 w-52"
+          >
+            <FiRefreshCw className="h-5 w-5 mr-2 flex-shrink-0" />
+            Upload More Files
+          </Button>
+        </Card>
+      </div>
+    )
+  }
+
+  if (uploadStatus === 'error' && uploadResult) {
+    return (
+      <div className="flex flex-col w-full h-full items-center justify-center px-4 py-2">
+        <Card className="flex flex-col w-full sm:w-4/5 md:w-3/4 lg:w-2/3 xl:w-1/2 h-full shadow-none items-center justify-center gap-4 bg-white dark:bg-black text-black dark:text-white">
+          <FiAlertCircle className="h-16 w-16 text-red-500 mx-auto" />
+          <h2 className="text-2xl font-bold">Upload Failed</h2>
+          <p className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg">
+            {uploadResult.message}
+          </p>
+          <Button
+            size="md"
+            onPress={resetState}
+            className="inline-flex cursor-pointer rounded-lg text-white bg-black px-8 py-4 text-md font-bold disabled:bg-gray-300 disabled:text-gray-500 border border-black ring-2 ring-black border-offset-1 hover:text-green-400 w-40"
+          >
+            <FiRefreshCw className="h-8 w-8 mr-2" />
+            Try Again
+          </Button>
+        </Card>
+      </div>
+    )
+  }
+
+  return (
     <div className="flex flex-col w-full h-full items-center justify-center px-4 py-2">
       <div className="absolute top-2.5 right-2 flex flex-row h-8 w-28 rounded-lg items-center justify-center bg-black ring-2 ring-black border-offset-1">
         <div className="flex h-8 w-full rounded-lg border dark:border-1.5 border-white items-center justify-center pl-1 text-green-500">
@@ -283,10 +382,10 @@ export default function Upload({
                 <Button
                   size="md"
                   onPress={handleUpload}
-                  disabled={files.length === 0 || isUploading}
+                  disabled={files.length === 0 || uploadStatus === 'uploading'}
                   className="inline-flex cursor-pointer rounded-lg text-white bg-black px-8 py-4 text-md font-bold disabled:bg-gray-300 disabled:text-gray-500 border border-black ring-2 ring-black border-offset-1 hover:text-green-400 w-full"
                 >
-                  {isUploading
+                  {uploadStatus === 'uploading'
                     ? 'Uploading...'
                     : `Upload ${files.length} File${files.length === 1 ? '' : 's'}`}
                 </Button>
@@ -301,10 +400,12 @@ export default function Upload({
                   <Button
                     size="md"
                     onPress={handleUpload}
-                    disabled={files.length === 0 || isUploading}
+                    disabled={
+                      files.length === 0 || uploadStatus === 'uploading'
+                    }
                     className="inline-flex cursor-pointer rounded-lg text-white bg-black px-8 py-4 text-md font-bold disabled:bg-gray-300 disabled:text-gray-500 border border-black ring-2 ring-black border-offset-1 hover:text-green-400"
                   >
-                    {isUploading
+                    {uploadStatus === 'uploading'
                       ? 'Uploading...'
                       : `Upload ${files.length} File${files.length === 1 ? '' : 's'}`}
                   </Button>
@@ -313,7 +414,7 @@ export default function Upload({
                   <Button
                     size="sm"
                     onPress={clearAllFiles}
-                    disabled={isUploading}
+                    disabled={uploadStatus === 'uploading'}
                     className="text-white text-sm hover:text-red-500 w-full bg-black border border-black ring-2 ring-black border-offset-1"
                   >
                     Clear All
@@ -340,7 +441,7 @@ export default function Upload({
                         type="button"
                         onClick={() => removeFile(id)}
                         className="text-gray-700 hover:text-red-700 dark:text-gray-300 dark:hover:text-red-300 transition-colors rounded hover:bg-red-50 dark:hover:bg-red-900/20 border"
-                        disabled={isUploading}
+                        disabled={uploadStatus === 'uploading'}
                         aria-label={`Remove ${file.name}`}
                       >
                         <FiX className="h-5 w-5" />
@@ -351,22 +452,21 @@ export default function Upload({
               </div>
             </div>
           )}
-          {isUploading && (
-            <div>
+          {uploadStatus === 'uploading' && (
+            <div className="w-full pt-4">
               <Progress
-                value={uploadProgress}
+                isIndeterminate
+                aria-label="Uploading..."
                 className="w-full"
                 color="success"
               />
               <p className="text-base text-gray-700 dark:text-gray-300 mt-3 text-center">
-                Uploading files...
+                Uploading files, please wait...
               </p>
             </div>
           )}
         </CardBody>
       </Card>
     </div>
-  ) : (
-    <Restricted />
   )
 }
