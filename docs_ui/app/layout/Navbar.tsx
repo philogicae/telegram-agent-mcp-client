@@ -44,7 +44,7 @@ export default function Navbar({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       </div>
-      <div className="flex flex-col items-center justify-center w-full h-full">
+      <div className="flex flex-col items-center justify-center w-full h-full overflow-y-auto">
         {children}
       </div>
     </div>
