@@ -20,9 +20,9 @@ export default function RootLayout({
     <html lang="en" className={font.className}>
       <body>
         <HeroUI>
-          <Suspense fallback={<Loading />}>
-            <Navbar>{children}</Navbar>
-          </Suspense>
+          <Navbar>
+            <Suspense fallback={<Loading />}>{children}</Suspense>
+          </Navbar>
         </HeroUI>
       </body>
     </html>

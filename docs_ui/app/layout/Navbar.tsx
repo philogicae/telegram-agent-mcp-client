@@ -1,19 +1,13 @@
 'use client'
 import Image from 'next/image'
 import { useCallback, useEffect, useState } from 'react'
-import { FaMoon, FaSun } from 'react-icons/fa6'
+import { FiMoon, FiSun } from 'react-icons/fi'
 
 export default function Navbar({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState('light')
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light')
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme') || 'light'
-    if (savedTheme === 'dark') {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
-    setTheme(savedTheme)
+    theme === 'dark' && document.documentElement.classList.add('dark')
   }, [])
 
   const toggleTheme = useCallback(() => {
@@ -40,7 +34,11 @@ export default function Navbar({ children }: { children: React.ReactNode }) {
             onClick={toggleTheme}
             className="flex h-8 w-12 rounded-lg border dark:border-1.5 border-white ring-2 ring-black border-offset-1 bg-black text-white items-center justify-center rounded-l-none"
           >
-            {theme === 'light' ? <FaMoon /> : <FaSun />}
+            {theme === 'light' ? (
+              <FiSun className="text-red-200" />
+            ) : (
+              <FiMoon className="text-cyan-200" />
+            )}
           </button>
         </div>
       </div>

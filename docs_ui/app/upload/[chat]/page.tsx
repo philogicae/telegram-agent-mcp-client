@@ -303,7 +303,7 @@ export default function Upload({
   return (
     <div className="flex flex-col w-full h-full items-center justify-center px-4 py-2">
       <div className="absolute top-2.5 right-2 flex flex-row h-8 w-28 rounded-lg items-center justify-center bg-black ring-2 ring-black border-offset-1">
-        <div className="flex h-8 w-full rounded-lg border dark:border-1.5 border-white items-center justify-center pl-1 text-green-500">
+        <div className="flex h-8 w-full rounded-lg border dark:border-1.5 border-green-500 items-center justify-center pl-1 text-green-500">
           <FaCircleCheck className="text-sm" />
           <span className="text-xs font-mono tracking-tighter px-2">
             Connected
@@ -369,11 +369,12 @@ export default function Upload({
             />
             <FiUpload className="mx-auto h-16 w-16 sm:h-20 sm:w-20 text-gray-400 dark:text-gray-500 mb-4" />
             <h3 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white mb-4">
-              Drop files here or click to browse
+              Drop files or click to browse
             </h3>
             <p className="text-gray-500 dark:text-gray-400 text-sm">
-              Valid formats: PDF, images, documents, and more • Max 200MB per
-              file
+              .zip, docs, books, images, etc.
+              <br />
+              max 200MB/file
             </p>
           </button>
           {files.length > 0 && (

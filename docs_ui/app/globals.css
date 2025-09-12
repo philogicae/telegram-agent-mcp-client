@@ -2,8 +2,8 @@
 @config "../tailwind.config.ts";
 
 html {
-  @apply flex w-full h-full antialiased;
+  @apply flex w-full h-full antialiased text-black bg-white dark:bg-black dark:text-white;
 }
 body {
-  @apply w-full h-full overflow-hidden text-black bg-white;
+  @apply w-full h-full overflow-hidden;
 }

@@ -1,6 +1,6 @@
 'use client'
-import Generating from '@components/Generating'
 import NotFound from '@components/NotFound'
+import Previewing from '@components/Previewing'
 import { CUSTOM_CSS } from '@utils/preview'
 import DOMPurify from 'dompurify'
 import { use, useCallback, useEffect, useState } from 'react'
@@ -42,14 +42,14 @@ export default function Preview({
   }, [id])
 
   if (loading) {
-    return <Generating />
+    return <Previewing />
   }
   if (error) {
     return <NotFound />
   }
   return (
     <div
-      className="flex h-full w-full items-start justify-start p-8 text-black dark:text-white bg-white dark:bg-black"
+      className="flex h-full w-full items-start justify-start p-8"
       /* biome-ignore lint/security/noDangerouslySetInnerHtml: The HTML is sanitized with DOMPurify */
       dangerouslySetInnerHTML={{ __html: htmlContent }}
     />
