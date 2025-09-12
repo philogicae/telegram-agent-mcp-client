@@ -77,6 +77,14 @@ def str_size(size: int) -> str:
 
 def sanitize_filename(filename: str) -> str:
     filename = unidecode(filename)
-    return "".join(
-        char if char.isalnum() or char in "-_." else "_" for char in filename
-    )
+    splitted = filename.rsplit(".", maxsplit=1)
+    try:
+        return (
+            "".join(
+                char if char.isalnum() or char in "-_" else "_" for char in splitted[0]
+            )
+            + "."
+            + splitted[-1]
+        ).lower()
+    except Exception:
+        return ""

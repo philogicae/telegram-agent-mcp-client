@@ -203,7 +203,7 @@ class AgenticBot(ABC):
         except KeyboardInterrupt:
             self.log.info(f"{self.bot.__class__.__name__} killed by KeyboardInterrupt")
         except Exception as e:
-            self.log.error(e)
+            self.log.exception(e)
 
 
 def handler(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:

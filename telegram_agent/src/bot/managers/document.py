@@ -56,7 +56,7 @@ class DocumentManager(Manager):
     async def notify(self, chat_id: int, data: dict[str, str]) -> None:
         source = data["filename"]
         res = await self.upload_document(source, data["path"])
-        source = sanitize_filename(source)
+        source = sanitize_filename(source) or source
         documents: list[str] = res.get("files")
         if not documents:
             await self.no_file(chat_id, source, data["size"])
