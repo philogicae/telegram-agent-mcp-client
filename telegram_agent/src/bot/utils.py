@@ -1,3 +1,4 @@
+from re import sub
 from typing import Any
 
 from telebot.formatting import mcite
@@ -20,7 +21,7 @@ def fixed_telegram(_: Any, text: str) -> str:
     include_quote = text.split("||\n", maxsplit=1)
     if len(include_quote) > 1:
         return include_quote[0] + "||\n" + fixed_telegram(_, include_quote[1])
-    return markdownify(text, normalize_whitespace=True)
+    return html_to_markdown(markdownify(text, normalize_whitespace=True))
 
 
 def logify_telegram(
@@ -88,3 +89,28 @@ def sanitize_filename(filename: str) -> str:
         ).lower()
     except Exception:
         return ""
+
+
+def transform_urls(html_text: str) -> str:
+    # <a href="URL">TEXT</a> -> [TEXT](URL)
+    pattern = r'<a href="([^"]+)">([^<]+)</a>'
+    replacement = r"[\2](\1)"
+    return sub(pattern, replacement, html_text)
+
+
+def transform_images(html_text: str) -> str:
+    # <img src="URL" ...> -> [](URL)
+    pattern = r'<img[^>]*src="([^"]+)"[^>]*\/?>'
+    replacement = r"[](\1)"
+    return sub(pattern, replacement, html_text)
+
+
+def transform_linked_images(html_text: str) -> str:
+    # <a ...><img src="URL" ...></a> -> [](URL)
+    pattern = r'<a[^>]*>\s*<img[^>]*src="([^"]+)"[^>]*/>\s*</a>'
+    replacement = r"[](\1)"
+    return sub(pattern, replacement, html_text)
+
+
+def html_to_markdown(html_text: str) -> str:
+    return transform_urls(transform_images(transform_linked_images(html_text)))
