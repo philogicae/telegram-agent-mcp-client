@@ -12,6 +12,7 @@ from ..utils import progress_bar
 
 load_dotenv()
 RAG_URL = getenv("RAG_URL")
+DOCS_UI_URL = getenv("DOCS_UI_URL", "").strip("/")
 SEPARATOR = "___________________________________"
 
 
@@ -55,9 +56,11 @@ class DocumentManager(Manager):
     async def notify(self, chat_id: int, data: dict[str, str]) -> None:
         source = data["filename"]
         res = await self.upload_document(source, data["path"])
-        documents: list[str] = res.get("files") if res else []
+        documents: list[str] = res.get("files")
         if not documents:
             await self.no_file(chat_id, source, data["size"])
+        elif documents[0] == "file too large":
+            await self.file_too_large(chat_id, source, data["size"])
         else:
             now = datetime.now()
             for filename in documents:
@@ -87,6 +90,15 @@ class DocumentManager(Manager):
             ),
         )
 
+    async def file_too_large(self, chat_id: int, filename: str, size: str) -> None:
+        await self.instance.bot.send(
+            chat_id,
+            self.instance.bot.logify(
+                self.name, f"❌ File too large: {filename} ({size})"
+            )
+            + f"\n> Telegram API only allows files up to 20MB.\n> To upload multiple or larger files:\n> [{DOCS_UI_URL.split('/')[-1]}]({DOCS_UI_URL})",
+        )
+
     async def upload_document(self, file_name: str, file_path: str) -> Any:
         try:
             file = await self.instance.bot.core.download_file(file_path)
@@ -101,7 +113,8 @@ class DocumentManager(Manager):
                 self.instance.log.error(f"Uploading document: {e}")
         except Exception as e:
             self.instance.log.error(f"Downloading file: {e}")
-        return None
+            return {"files": ["file too large"]}
+        return {"files": []}
 
     async def all_document_status(self) -> Any:
         try:
