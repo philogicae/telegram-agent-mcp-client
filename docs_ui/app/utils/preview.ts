@@ -21,5 +21,7 @@ export const CUSTOM_CSS = `
           .dark a { color: #60a5fa; }
           a:hover { text-decoration: underline; }
           blockquote { display: none; }
+          .report-id { display: none; }
+          #report-id { display: none; }
           img { max-height: 200px; display: block; margin: 0 auto; max-width: 100%; height: auto; border-radius: 6px; }
         `
