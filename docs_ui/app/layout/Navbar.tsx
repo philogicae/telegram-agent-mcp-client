@@ -4,10 +4,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { FiMoon, FiSun } from 'react-icons/fi'
 
 export default function Navbar({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light')
+  const [theme, setTheme] = useState('light')
 
   useEffect(() => {
-    theme === 'dark' && document.documentElement.classList.add('dark')
+    if (localStorage.getItem('theme') === 'dark') {
+      document.documentElement.classList.add('dark')
+      setTheme('dark')
+    }
   }, [])
 
   const toggleTheme = useCallback(() => {
