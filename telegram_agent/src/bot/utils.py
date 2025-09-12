@@ -21,11 +21,10 @@ def fixed_telegram(_: Any, text: str) -> str:
     include_quote = text.split("||\n", maxsplit=1)
     if len(include_quote) > 1:
         return include_quote[0] + "||\n" + fixed_telegram(_, include_quote[1])
-    return (
-        markdownify(html_to_markdown(text), normalize_whitespace=True)
-        .strip()
-        .replace("\\\\", "\\")
-    )
+    fixed = markdownify(html_to_markdown(text), normalize_whitespace=True)
+    fixed = sub(r"\n{2,}", "\n\n", fixed)  # Remove extra newlines
+    fixed = sub(r"\n[\t ]+", "\n", fixed)  # Remove leading tabs and spaces
+    return fixed.strip().replace("\\\\", "\\")  # Remove double backslashes
 
 
 def logify_telegram(
