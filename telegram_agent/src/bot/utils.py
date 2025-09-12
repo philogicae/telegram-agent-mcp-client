@@ -21,7 +21,11 @@ def fixed_telegram(_: Any, text: str) -> str:
     include_quote = text.split("||\n", maxsplit=1)
     if len(include_quote) > 1:
         return include_quote[0] + "||\n" + fixed_telegram(_, include_quote[1])
-    return html_to_markdown(markdownify(text, normalize_whitespace=True))
+    return (
+        markdownify(html_to_markdown(text), normalize_whitespace=True)
+        .strip()
+        .replace("\\\\", "\\")
+    )
 
 
 def logify_telegram(
@@ -93,24 +97,30 @@ def sanitize_filename(filename: str) -> str:
 
 def transform_urls(html_text: str) -> str:
     # <a href="URL">TEXT</a> -> [TEXT](URL)
-    pattern = r'<a href="([^"]+)">([^<]+)</a>'
+    pattern = r'<a[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>'
     replacement = r"[\2](\1)"
     return sub(pattern, replacement, html_text)
 
 
 def transform_images(html_text: str) -> str:
     # <img src="URL" ...> -> [](URL)
-    pattern = r'<img[^>]*src="([^"]+)"[^>]*\/?>'
-    replacement = r"[](\1)"
+    pattern = r'<img[^>]*src="([^"]+)"[^>]*alt="([^"]+)"[^>]*\/>'
+    replacement = r"> [IMG: \2](\1)"
     return sub(pattern, replacement, html_text)
 
 
 def transform_linked_images(html_text: str) -> str:
     # <a ...><img src="URL" ...></a> -> [](URL)
-    pattern = r'<a[^>]*>\s*<img[^>]*src="([^"]+)"[^>]*/>\s*</a>'
-    replacement = r"[](\1)"
+    pattern = r'<a[^>]*>\s*<img[^>]*src="([^"]+)"[^>]*alt="([^"]+)"[^>]*\/>\s*<\/a>'
+    replacement = r"> [IMG: \2](\1)"
     return sub(pattern, replacement, html_text)
 
 
+def quote_report_id(html_text: str) -> str:
+    return html_text.replace("```\nReport", "```\n> Report")
+
+
 def html_to_markdown(html_text: str) -> str:
-    return transform_urls(transform_images(transform_linked_images(html_text)))
+    return quote_report_id(
+        transform_urls(transform_images(transform_linked_images(html_text)))
+    )

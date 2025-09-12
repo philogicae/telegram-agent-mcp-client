@@ -8,7 +8,7 @@ from telebot.util import smart_split
 from ..abstract import Bot
 from ..utils import fixed_telegram, logify_telegram, reply_markup
 
-disable_web_page_preview = {
+msg_params: dict[str, Any] = {
     "link_preview_options": LinkPreviewOptions(is_disabled=True)
 }
 
@@ -119,7 +119,7 @@ class TelegramBot(Bot):
             self.core.send_message,
             ref,
             self.fixed(text or self.waiting),
-            **disable_web_page_preview,
+            **msg_params,
         )
         if not text:
             self.edit_cache[msg.id] = {"current": 0, "content": [self.waiting]}
@@ -139,7 +139,7 @@ class TelegramBot(Bot):
             self.core.reply_to,
             to_message,
             self.fixed(text or self.waiting),
-            **disable_web_page_preview,
+            **msg_params,
         )
         if not text:
             self.edit_cache[msg.id] = {"current": 0, "content": [self.waiting]}
@@ -187,7 +187,7 @@ class TelegramBot(Bot):
                     self.fixed(edited),
                     message.chat.id,
                     message.id,
-                    **disable_web_page_preview,
+                    **msg_params,
                 )
                 if (replace or final) and message.id in self.edit_cache:
                     del self.edit_cache[message.id]
@@ -215,7 +215,7 @@ class TelegramBot(Bot):
                 ref[0],
                 ref[1],
                 reply_markup=reply_markup(page, len(pages)),
-                **disable_web_page_preview,
+                **msg_params,
             )
         else:  # Send/Reply
             msg = await self._exec(
@@ -223,7 +223,7 @@ class TelegramBot(Bot):
                 ref,
                 pages[page],
                 reply_markup=reply_markup(page, len(pages)),
-                **disable_web_page_preview,
+                **msg_params,
             )
         cache = self.edit_cache.get(msg.id)
         if not cache:
@@ -253,7 +253,7 @@ class TelegramBot(Bot):
                     message.chat.id,
                     message.id,
                     reply_markup=reply_markup(new_index, len(cache["pages"])),
-                    **disable_web_page_preview,
+                    **msg_params,
                 )
 
     async def pin(self, message: Message) -> bool:
