@@ -28,6 +28,7 @@ dependencies = [
     "telegramify-markdown",
     "langgraph-swarm",
     "graphiti-core[google-genai]",
+    "unidecode",
 ]
 
 [project.urls]

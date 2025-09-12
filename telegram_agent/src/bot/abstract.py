@@ -35,13 +35,16 @@ class Logger(ABC):
         self.logger.info(log)
 
     def warn(self, log: str) -> None:
-        self.logger.warning(f"WARN: {log}")
+        self.logger.warning(log)
 
     def error(self, err: Exception | str) -> None:
-        self.logger.error(f"ERROR: {err}")
+        self.logger.error(err)
+
+    def exception(self, err: Exception | str) -> None:
+        self.logger.exception(err)
 
     def debug(self, log: str) -> None:
-        self.logger.debug(f"DEBUG: {log}")
+        self.logger.debug(log)
 
     @abstractmethod
     def received(self, msg: Any) -> Timer:
@@ -156,6 +159,12 @@ class Manager(ABC):
     @abstractmethod
     async def notify(self, chat_id: int, data: Any) -> None:
         pass
+
+    async def no_file(self, chat_id: int, filename: str, size: str) -> None:
+        raise NotImplementedError
+
+    async def file_too_large(self, chat_id: int, filename: str) -> None:
+        raise NotImplementedError
 
 
 class AgenticBot(ABC):

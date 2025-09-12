@@ -73,14 +73,25 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
 
 @handler
 async def telegram_file(instance: AgenticBot, msg: Message) -> None:
-    if msg.document:
-        file_name = msg.document.file_name
-        file_info = await instance.bot.core.get_file(msg.document.file_id)
-        file_path = file_info.file_path
-        file_size = str_size(file_info.file_size)
-        msg.text = f"DOCUMENT ({file_size}): {file_name} = {file_path}"
-        timer = instance.log.received(msg)
-        await instance.managers["document"].notify(
-            msg.chat.id, {"filename": file_name, "size": file_size, "path": file_path}
-        )
-        instance.log.sent(msg, timer)
+    try:
+        if msg.document:
+            file_name = msg.document.file_name
+            file_info = await instance.bot.core.get_file(msg.document.file_id)
+            file_path = file_info.file_path
+            file_size = str_size(file_info.file_size)
+            msg.text = f"DOCUMENT ({file_size}): {file_name} = {file_path}"
+            timer = instance.log.received(msg)
+            await instance.managers["document"].notify(
+                msg.chat.id,
+                {"filename": file_name, "size": file_size, "path": file_path},
+            )
+            instance.log.sent(msg, timer)
+    except Exception as e:
+        if str(e).endswith("too big"):
+            await instance.managers["document"].file_too_large(
+                msg.chat.id, str(file_name)
+            )
+            instance.log.warn(f"File: {e}")
+        else:
+            await telegram_report_issue(instance, msg, msg, e)
+            instance.log.exception(f"File: {e}")

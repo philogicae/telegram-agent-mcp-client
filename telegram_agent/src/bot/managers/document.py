@@ -8,7 +8,7 @@ from httpx import AsyncClient
 from pydantic import BaseModel
 
 from ..abstract import AgenticBot, Manager
-from ..utils import progress_bar
+from ..utils import progress_bar, sanitize_filename
 
 load_dotenv()
 RAG_URL = getenv("RAG_URL")
@@ -56,11 +56,10 @@ class DocumentManager(Manager):
     async def notify(self, chat_id: int, data: dict[str, str]) -> None:
         source = data["filename"]
         res = await self.upload_document(source, data["path"])
+        source = sanitize_filename(source)
         documents: list[str] = res.get("files")
         if not documents:
             await self.no_file(chat_id, source, data["size"])
-        elif documents[0] == "file too large":
-            await self.file_too_large(chat_id, source, data["size"])
         else:
             now = datetime.now()
             for filename in documents:
@@ -90,13 +89,14 @@ class DocumentManager(Manager):
             ),
         )
 
-    async def file_too_large(self, chat_id: int, filename: str, size: str) -> None:
+    async def file_too_large(self, chat_id: int, filename: str) -> None:
         await self.instance.bot.send(
             chat_id,
             self.instance.bot.logify(
-                self.name, f"❌ File too large: {filename} ({size})"
+                self.name,
+                f"❌ File too large (>20MB): {filename}",
             )
-            + f"\n> Telegram API only allows files up to 20MB.\n> To upload multiple or larger files:\n> [{DOCS_UI_URL.split('/')[-1]}]({DOCS_UI_URL})",
+            + f"\nTelegram API only allows files up to 20MB.\nTo upload multiple or larger files: [{DOCS_UI_URL.split('/')[-1]}/upload/dev]({DOCS_UI_URL}/upload/dev)",
         )
 
     async def upload_document(self, file_name: str, file_path: str) -> Any:
@@ -110,10 +110,9 @@ class DocumentManager(Manager):
                     )
                     return res.json()
             except Exception as e:
-                self.instance.log.error(f"Uploading document: {e}")
+                self.instance.log.exception(f"Uploading document: {e}")
         except Exception as e:
-            self.instance.log.error(f"Downloading file: {e}")
-            return {"files": ["file too large"]}
+            self.instance.log.exception(f"Downloading file: {e}")
         return {"files": []}
 
     async def all_document_status(self) -> Any:

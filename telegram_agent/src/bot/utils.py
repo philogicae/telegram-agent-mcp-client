@@ -4,6 +4,7 @@ from telebot.formatting import mcite
 from telebot.types import InlineKeyboardMarkup, Message
 from telebot.util import quick_markup
 from telegramify_markdown import markdownify
+from unidecode import unidecode
 
 
 def unpack_user(msg: Message) -> tuple[str, str]:
@@ -71,4 +72,11 @@ def str_size(size: int) -> str:
         else f"{size / 1024:.2f}KB"
         if size > 1024
         else f"{size}B"
+    )
+
+
+def sanitize_filename(filename: str) -> str:
+    filename = unidecode(filename)
+    return "".join(
+        char if char.isalnum() or char in "-_." else "_" for char in filename
     )
