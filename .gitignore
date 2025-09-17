@@ -16,6 +16,7 @@ wheels/
 
 # Envs
 .env
+.env.*
 **/*.env
 .venv
 *_config.json
