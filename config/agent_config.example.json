@@ -21,7 +21,7 @@
         }
       }
     },
-    "handoff": "Continue current task with {agent} (Never reply saying you transferred the task, you **must** always continue it instead)"
+    "handoff": "Transform into {agent} to continue current task"
   },
   "agents": {
     "Friendly Agent": {
