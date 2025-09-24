@@ -21,7 +21,7 @@
         }
       }
     },
-    "handoff": "Transform into {agent} to continue current task"
+    "handoff": "Without delegating, you transform and become {agent} to continue the current task"
   },
   "agents": {
     "Friendly Agent": {
