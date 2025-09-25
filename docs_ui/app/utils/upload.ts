@@ -26,15 +26,13 @@ export const ALLOWED_FILE_TYPES = {
   'application/msword': '.doc',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
     '.docx',
+  'application/vnd.oasis.opendocument.text': '.odt',
+  'application/rtf': '.rtf',
+  'application/epub+zip': '.epub',
   'application/vnd.ms-powerpoint': '.ppt',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation':
     '.pptx',
-  'application/vnd.ms-excel': '.xlsx',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
-  'application/vnd.oasis.opendocument.text': '.odt',
-  'application/epub+zip': '.epub',
-  'application/rtf': '.rtf',
-  'application/zip': '.zip',
 
   // Text formats
   'text/plain': '.txt',
@@ -46,18 +44,26 @@ export const ALLOWED_FILE_TYPES = {
   'text/x-rst': '.rst',
   'text/org': '.org',
 
-  // Images
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/bmp': '.bmp',
-  'image/tiff': '.tiff',
-  'image/heic': '.heic',
-
   // Email
   'message/rfc822': '.eml',
   'application/vnd.ms-outlook': '.msg',
+
+  // Images
+  'image/bmp': '.bmp',
+  'image/heic': '.heic',
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/tiff': '.tiff',
+
+  // Audio
+  'audio/wav': '.wav',
+  'audio/mpeg': '.mp3',
+  'audio/aiff': '.aiff',
+  'audio/aac': '.aac',
+  'audio/ogg': '.ogg',
+  'audio/flac': '.flac',
 } as const
 
 export const MAX_FILE_SIZE = 200 * 1024 * 1024 // 200MB
 export const ACCEPTED_EXTENSIONS =
-  '.pdf,.bmp,.eml,.heic,.html,.jpg,.jpeg,.tiff,.png,.txt,.xml,.csv,.doc,.docx,.epub,.md,.msg,.odt,.org,.ppt,.pptx,.rtf,.rst,.tsv,.xlsx,.zip'
+  '.aac,.aiff,.bmp,.csv,.doc,.docx,.eml,.epub,.flac,.heic,.html,.jpeg,.jpg,.md,.mp3,.msg,.odt,.ogg,.org,.pdf,.png,.ppt,.pptx,.rtf,.rst,.tiff,.tsv,.txt,.wav,.xml,.xlsx,.zip'

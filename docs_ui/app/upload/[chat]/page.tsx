@@ -372,7 +372,7 @@ export default function Upload({
               Drop files or click to browse
             </h3>
             <p className="text-gray-500 dark:text-gray-400 text-sm">
-              .zip, docs, books, images, etc.
+              .zip, docs, books, images, audio files are supported.
               <br />
               max 200MB/file
             </p>
