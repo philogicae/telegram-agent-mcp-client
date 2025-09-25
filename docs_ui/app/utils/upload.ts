@@ -21,6 +21,9 @@ export interface UploadError {
 export type UploadResponse = UploadResult | UploadError
 
 export const ALLOWED_FILE_TYPES = {
+  // Archives
+  'application/zip': '.zip',
+
   // Documents
   'application/pdf': '.pdf',
   'application/msword': '.doc',
@@ -65,5 +68,4 @@ export const ALLOWED_FILE_TYPES = {
 } as const
 
 export const MAX_FILE_SIZE = 200 * 1024 * 1024 // 200MB
-export const ACCEPTED_EXTENSIONS =
-  '.aac,.aiff,.bmp,.csv,.doc,.docx,.eml,.epub,.flac,.heic,.html,.jpeg,.jpg,.md,.mp3,.msg,.odt,.ogg,.org,.pdf,.png,.ppt,.pptx,.rtf,.rst,.tiff,.tsv,.txt,.wav,.xml,.xlsx,.zip'
+export const ACCEPTED_EXTENSIONS = Object.values(ALLOWED_FILE_TYPES).join(',')
