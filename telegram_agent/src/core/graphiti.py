@@ -32,10 +32,10 @@ api_key = getenv("GEMINI_API_KEY")
 class GraphRAG(Singleton):
     graphiti: Graphiti | Any
     api_key = api_key
-    model = "gemini-2.5-flash-lite"
-    small_model = "gemini-2.5-flash-lite"
+    model = "gemini-2.5-flash-lite-preview-09-2025"
+    small_model = "gemini-2.5-flash-lite-preview-09-2025"
     temperature = 0
-    thinking_budget = 512
+    thinking_budget = 0  # Disable for now,512
     embedding_model = "gemini-embedding-001"
     embedding_dim = 3072
 
