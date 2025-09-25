@@ -154,7 +154,7 @@ class Agent:
         if not content:
             yield (
                 swarm.active[thread_id],
-                "...",
+                "...?",
                 True,
                 {},
             )  # Avoid empty reply
@@ -223,7 +223,7 @@ class Agent:
             start_time = end_time = datetime.now().timestamp()
             usage: Usage = Usage()
             forced_messages: list[BaseMessage] = []
-            final: bool = False
+            final, retry = False, 0
             while not final:
                 async for _, chunk in swarm.agent.astream(
                     {"messages": forced_messages or messages}, config, subgraphs=True
@@ -406,41 +406,46 @@ class Agent:
                 )
 
                 # Avoid interruptions
-                forced_messages = []
-                end_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                state_values = self.state(swarm, thread_id).values
-                if not state_values.get("messages"):
-                    state_values["messages"] = []
-                last_messages = state_values["messages"]
-                before_last_msg = last_messages[-2]
-                if before_last_msg.type == "tool" and before_last_msg.name.startswith(
-                    "transfer_to_"
-                ):  # Avoid stop after transfer
-                    last_messages.pop()
-                    forced_messages.append(
-                        HumanMessage(
-                            f"[{end_date}] SYSTEM ALERT: It seems you interrupted in the middle of your process after BECOMING the new agent. Agent delegation doesn't exist, you have to continue by yourself. Resume your process, without mentioning this alert message."
+                if retry < 3:
+                    retry += 1
+                    forced_messages = []
+                    end_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    state_values = self.state(swarm, thread_id).values
+                    if not state_values.get("messages"):
+                        state_values["messages"] = []
+                    last_messages = state_values["messages"]
+                    before_last_msg = last_messages[-2]
+                    if (
+                        before_last_msg.type == "tool"
+                        and before_last_msg.name.startswith("transfer_to_")
+                    ):  # Avoid stop after transfer
+                        last_messages.pop()
+                        forced_messages.append(
+                            HumanMessage(
+                                f"[{end_date}] SYSTEM ALERT: It seems you interrupted in the middle of your process after BECOMING the new agent. Agent delegation doesn't exist, you have to continue by yourself. Resume your process, without mentioning this alert message."
+                            )
                         )
-                    )
-                    Panel(
-                        escape("ALERT: Stopped after transfer"),
-                        title="Back on Track",
-                        border_style="medium_violet_red",
-                    )
-                    continue
-                if not step or step in "✅❌":  # Avoid empty reply
-                    last_messages.pop()
-                    forced_messages.append(
-                        HumanMessage(
-                            f"[{end_date}] SYSTEM ALERT: It seems you interrupted in the middle of your process without providing a final reply to the user. Resume your process and reply, without mentioning this alert message."
+                        Panel(
+                            escape("ALERT: Stopped after transfer"),
+                            title="Back on Track",
+                            border_style="medium_violet_red",
                         )
-                    )
-                    Panel(
-                        escape("ALERT: Empty reply"),
-                        title="Back on Track",
-                        border_style="medium_violet_red",
-                    )
-                    continue
+                        continue
+                    if not step or step in "✅❌":  # Avoid empty reply
+                        last_messages.pop()
+                        forced_messages.append(
+                            HumanMessage(
+                                f"[{end_date}] SYSTEM ALERT: It seems you interrupted in the middle of your process without providing a final reply to the user. Resume your process and reply, without mentioning this alert message."
+                            )
+                        )
+                        Panel(
+                            escape("ALERT: Empty reply"),
+                            title="Back on Track",
+                            border_style="medium_violet_red",
+                        )
+                        continue
+                if not step or step in "✅❌":  # Avoid empty reply when retry >= 3
+                    step = "The same internal error occurred 3 times in a row... Please try again."
 
                 # Final step
                 if self.dev:
