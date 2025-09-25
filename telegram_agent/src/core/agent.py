@@ -167,6 +167,11 @@ class Agent:
                 recontext = summarize_and_rephrase(
                     self.state(swarm, thread_id), content
                 )
+                summary = (
+                    f"Summary: {recontext.summary}\n"
+                    if recontext.summary and recontext.summary != "None"
+                    else ""
+                )
                 content = (
                     recontext.user_message
                     if ":" in recontext.user_message
@@ -174,14 +179,14 @@ class Agent:
                 )
                 self.console.print(
                     Panel(
-                        escape(f"Summary: {recontext.summary}\n{content}"),
+                        escape(f"{summary}{content}"),
                         title=f"ReContext ({mem_timer.done()})",
                         border_style="light_steel_blue1",
                     )
                 )
                 mem_timer = Timer()
                 found_memories = await self.graph.full_search(
-                    content, user, thread_id, limit=100
+                    content, user, thread_id, limit=50
                 )
                 mem_stats = found_memories["stats"]
                 memories = f"{found_memories['nodes']}{found_memories['edges']}".strip()
@@ -217,202 +222,265 @@ class Agent:
             ignore_tool_result: bool = False
             start_time = end_time = datetime.now().timestamp()
             usage: Usage = Usage()
-            async for _, chunk in swarm.agent.astream(
-                {"messages": messages}, config, subgraphs=True
-            ):
-                msg_type = "agent"
-                msg: Any = None
-                if "agent" in chunk:
-                    msg = chunk[msg_type]["messages"][0]
-                    if msg.name:
-                        swarm.active[thread_id] = msg.name.title()
-                    if not msg.tool_calls:
-                        total_agent_calls += 1
-                    called_tool = None
-                elif "tools" in chunk:
-                    msg_type = "tools"
-                    msg = chunk[msg_type]["messages"][0]
-                else:
-                    continue
-
-                # Content
-                text: Any = None
-                if isinstance(msg.content, list):
-                    for item in msg.content:
-                        if isinstance(item, str):
-                            text = item.strip()
-                        elif isinstance(item, dict) and "text" in item:
-                            text = item["text"].strip()
-                elif isinstance(msg.content, str):
-                    text = msg.content.strip()
-
-                if "</think>" in text:  # Ollama Qwen3
-                    splitted = text.split("<think>", 1)[1].split("</think>", 1)
-                    think, text = splitted[0].strip(), splitted[1].strip()
-                    self.console.print(
-                        Panel(escape(think), title="Think", border_style="white")
-                    )
-
-                # Tools
-                tool_calls: Any = None
-                if hasattr(msg, "tool_calls") and msg.tool_calls:
-                    listed = []
-                    for tool in msg.tool_calls:
-                        total_tool_calls += 1
-                        called_tool = tool.get("name")
-                        calls_by_tool[called_tool] = (
-                            calls_by_tool.get(called_tool, 0) + 1
-                        )
-                        tool_args = tool.get("args")
-                        tool_details = f": {tool_args}" if tool_args else ""
-                        listed.append(f"-> {called_tool}{tool_details}")
-                    tool_calls = "\n".join(listed)
-
-                # Ignore invalid tools
-                if ignore_tool_result:
-                    ignore_tool_result = False
-                    continue
-                elif called_tool and called_tool not in swarm.config.tools_by_agent.get(
-                    swarm.active[thread_id], []
+            forced_messages: list[BaseMessage] = []
+            final: bool = False
+            while not final:
+                async for _, chunk in swarm.agent.astream(
+                    {"messages": forced_messages or messages}, config, subgraphs=True
                 ):
-                    ignore_tool_result = True
-                    continue
-
-                # Logging
-                step: str = ""
-                done: bool = False
-                extra: dict[str, str] = {}
-
-                if text:
-                    self.console.print(
-                        Panel(
-                            escape(text),
-                            title=(
-                                "Result"
-                                if msg_type == "tools"
-                                else swarm.active[thread_id]
-                            ),
-                            border_style=(
-                                "green3" if msg_type == "tools" else "bright_cyan"
-                            ),
-                        )
-                    )
-                    if msg_type == "tools":  # Yield Tool result
-                        if (
-                            called_tool
-                            and called_tool != "think"
-                            and not str(called_tool).startswith("transfer_to_")
-                        ):
-                            step = "✅"
-                            sample = text.lower()[:50]
-                            for flag in Flag:
-                                if flag.value in sample:
-                                    step = "❌"
-                                    break
-                            extra = {"tool": called_tool, "output": text}
+                    msg_type = "agent"
+                    msg: Any = None
+                    if "agent" in chunk:
+                        msg = chunk[msg_type]["messages"][0]
+                        if msg.name:
+                            swarm.active[thread_id] = msg.name.title()
+                        if not msg.tool_calls:
+                            total_agent_calls += 1
+                        called_tool = None
+                    elif "tools" in chunk:
+                        msg_type = "tools"
+                        msg = chunk[msg_type]["messages"][0]
                     else:
-                        step, done = text, True
+                        continue
 
-                if tool_calls:
-                    if str(called_tool).startswith(
-                        "transfer_to_"
-                    ):  # Call transfer tools
+                    # Content
+                    text: Any = None
+                    if isinstance(msg.content, list):
+                        for item in msg.content:
+                            if isinstance(item, str):
+                                text = item.strip()
+                            elif isinstance(item, dict) and "text" in item:
+                                text = item["text"].strip()
+                    elif isinstance(msg.content, str):
+                        text = msg.content.strip()
+
+                    """ if "</think>" in text:  # Ollama Qwen3
+                        splitted = text.split("<think>", 1)[1].split("</think>", 1)
+                        think, text = splitted[0].strip(), splitted[1].strip()
                         self.console.print(
-                            Panel(
-                                escape(tool_calls),
-                                title="Transfer",
-                                border_style="purple",
+                            Panel(escape(think), title="Think", border_style="white")
+                        ) """
+
+                    # Tools
+                    tool_calls: Any = None
+                    if hasattr(msg, "tool_calls") and msg.tool_calls:
+                        listed = []
+                        for tool in msg.tool_calls:
+                            total_tool_calls += 1
+                            called_tool = tool.get("name")
+                            calls_by_tool[called_tool] = (
+                                calls_by_tool.get(called_tool, 0) + 1
                             )
+                            tool_args = tool.get("args")
+                            tool_details = f": {tool_args}" if tool_args else ""
+                            listed.append(f"-> {called_tool}{tool_details}")
+                        tool_calls = "\n".join(listed)
+
+                    # Ignore invalid tools
+                    if ignore_tool_result:
+                        ignore_tool_result = False
+                        continue
+                    elif (
+                        called_tool
+                        and called_tool
+                        not in swarm.config.tools_by_agent.get(
+                            swarm.active[thread_id], []
                         )
-                        step, done = (
-                            f"🔁 {format_called_tool(called_tool)}",
-                            False,
-                        )
-                    else:  # Call regular tools
-                        self.console.print(
-                            Panel(escape(tool_calls), title="Tools", border_style="red")
-                        )
-                        if called_tool and called_tool != "think":
+                    ):
+                        ignore_tool_result = True
+                        continue
+
+                    # Logging
+                    step: str = ""
+                    done: bool = False
+                    extra: dict[str, str] = {}
+
+                    if text:
+                        if not text.startswith(
+                            "Thread purpose:"
+                        ):  # Ignore think tool result
+                            self.console.print(
+                                Panel(
+                                    escape(text),
+                                    title=(
+                                        "Result"
+                                        if msg_type == "tools"
+                                        else swarm.active[thread_id]
+                                    ),
+                                    border_style=(
+                                        "green3"
+                                        if msg_type == "tools"
+                                        else "bright_cyan"
+                                    ),
+                                )
+                            )
+                        if msg_type == "tools":  # Yield tool result
+                            if (
+                                called_tool
+                                and called_tool != "think"
+                                and not str(called_tool).startswith("transfer_to_")
+                            ):
+                                step = "✅"
+                                sample = text.lower()[:50]
+                                for flag in Flag:
+                                    if flag.value in sample:
+                                        step = "❌"
+                                        break
+                                extra = {"tool": called_tool, "output": text}
+                        else:  # Final result
+                            step, done = text, True
+
+                    if tool_calls:
+                        if str(called_tool).startswith(
+                            "transfer_to_"
+                        ):  # Call transfer tools
+                            self.console.print(
+                                Panel(
+                                    escape(tool_calls),
+                                    title="🔁 Transfer",
+                                    border_style="purple",
+                                )
+                            )
+                            step, done = (
+                                f"🔁 {format_called_tool(called_tool)}",
+                                False,
+                            )
+                        elif called_tool == "think":  # Call think tool
+                            self.console.print(
+                                Panel(
+                                    escape(tool_calls),
+                                    title="💭 Think",
+                                    border_style="hot_pink",
+                                )
+                            )
+                        else:  # Call regular tools
+                            self.console.print(
+                                Panel(
+                                    escape(tool_calls),
+                                    title="🛠️ Tools",
+                                    border_style="red",
+                                )
+                            )
                             step = f"🛠️ {format_called_tool(called_tool)}..."
 
-                # Usage
-                if hasattr(msg, "usage_metadata") and msg.usage_metadata:
-                    timer = datetime.now().timestamp() - end_time
-                    end_time += timer
-                    usage.add_usage(msg.usage_metadata)
-                    self.console.print(
-                        Panel(
-                            escape(
-                                " | ".join(
-                                    [f"{k}: {v}" for k, v in msg.usage_metadata.items()]
-                                )
-                            ),
-                            title=f"Usage ({timer:.2f} sec)",
-                            border_style="yellow",
+                    # Usage
+                    if hasattr(msg, "usage_metadata") and msg.usage_metadata:
+                        timer = datetime.now().timestamp() - end_time
+                        end_time += timer
+                        usage.add_usage(msg.usage_metadata)
+                        self.console.print(
+                            Panel(
+                                escape(
+                                    " | ".join(
+                                        [
+                                            f"{k}: {v}"
+                                            for k, v in msg.usage_metadata.items()
+                                        ]
+                                    )
+                                ),
+                                title=f"Usage ({timer:.2f} sec)",
+                                border_style="yellow",
+                            )
                         )
-                    )
 
-                # Intermediate step
-                if step and not done:
-                    if self.dev:
-                        intermediate_step = (
-                            f"{swarm.active[thread_id]} -> YIELD: {step}"
-                        )
-                        if extra:
-                            intermediate_step += f" {extra['tool']}"
-                        self.console.print(intermediate_step)
-                    yield swarm.active[thread_id], step, False, extra
+                    # Intermediate step
+                    if step and not done:
+                        if self.dev:
+                            intermediate_step = (
+                                f"{swarm.active[thread_id]} -> YIELD: {step}"
+                            )
+                            if extra:
+                                intermediate_step += f" {extra['tool']}"
+                            self.console.print(intermediate_step)
+                        yield swarm.active[thread_id], step, False, extra
 
-            # Usage Summary
-            self.console.print(
-                Panel(
-                    escape(
-                        f"{usage}\ntotal_calls: {total_agent_calls + total_tool_calls} | agent_calls: {total_agent_calls} | tool_calls: {total_tool_calls}{(' (' + ', '.join([k + ': ' + str(v) for k, v in calls_by_tool.items()]) + ')') if calls_by_tool else ''}"
-                    ),
-                    title=f"Usage Summary ({end_time - start_time:.2f} sec)",
-                    border_style="bright_yellow",
-                )
-            )
-
-            # Final step
-            if not step:
-                step = "..."  # Avoid empty reply
-            elif step in "✅❌" and text:
-                step = str(text)
-            if self.dev:
-                self.console.print(
-                    f"{swarm.active[thread_id]} -> FINAL: "
-                    + (
-                        f"{step[:21]}...{step[-21:]}"
-                        if step and len(step) > 45
-                        else step
-                    )
-                )
-            yield swarm.active[thread_id], step, True, extra
-
-            if (
-                self.graph
-                and step
-                and step not in "...✅❌"
-                and not step.lower().startswith("successfully transferred")
-            ):
-                mem_timer = Timer()
-                results = await self.graph.add(
-                    content=[
-                        (user, content),
-                        (swarm.active[thread_id], step),
-                    ],
-                    chat_id=thread_id,
-                )
+                # Usage Summary
                 self.console.print(
                     Panel(
                         escape(
-                            f"{results['stats']}" + results["nodes"] + results["edges"]
+                            f"{usage}\ntotal_calls: {total_agent_calls + total_tool_calls} | agent_calls: {total_agent_calls} | tool_calls: {total_tool_calls}{(' (' + ', '.join([k + ': ' + str(v) for k, v in calls_by_tool.items()]) + ')') if calls_by_tool else ''}"
                         ),
-                        title=f"Added Memories ({mem_timer.done()})",
-                        border_style="light_steel_blue1",
+                        title=f"Usage Summary ({end_time - start_time:.2f} sec)",
+                        border_style="bright_yellow",
                     )
                 )
+
+                # Avoid interruptions
+                forced_messages = []
+                end_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                state_values = self.state(swarm, thread_id).values
+                if not state_values.get("messages"):
+                    state_values["messages"] = []
+                last_messages = state_values["messages"]
+                before_last_msg = last_messages[-2]
+                if before_last_msg.type == "tool" and before_last_msg.name.startswith(
+                    "transfer_to_"
+                ):  # Avoid stop after transfer
+                    last_messages.pop()
+                    forced_messages.append(
+                        HumanMessage(
+                            f"[{end_date}] SYSTEM ALERT: It seems you interrupted in the middle of your process after BECOMING the new agent. Agent delegation doesn't exist, you have to continue by yourself. Resume your process, without mentioning this alert message."
+                        )
+                    )
+                    Panel(
+                        escape("ALERT: Stopped after transfer"),
+                        title="Back on Track",
+                        border_style="medium_violet_red",
+                    )
+                    continue
+                if not step or step in "✅❌":  # Avoid empty reply
+                    last_messages.pop()
+                    forced_messages.append(
+                        HumanMessage(
+                            f"[{end_date}] SYSTEM ALERT: It seems you interrupted in the middle of your process without providing a final reply to the user. Resume your process and reply, without mentioning this alert message."
+                        )
+                    )
+                    Panel(
+                        escape("ALERT: Empty reply"),
+                        title="Back on Track",
+                        border_style="medium_violet_red",
+                    )
+                    continue
+
+                # Final step
+                if self.dev:
+                    self.console.print(
+                        f"{swarm.active[thread_id]} -> FINAL: "
+                        + (
+                            f"{step[:21]}...{step[-21:]}"
+                            if step and len(step) > 45
+                            else step
+                        )
+                    )
+
+                # Exit safe loop
+                final = True
+                yield swarm.active[thread_id], step, True, extra
+
+                # Add memories to graph
+                if self.graph and step:
+                    mem_timer = Timer()
+                    results = await self.graph.add(
+                        content=[
+                            (
+                                user,
+                                content[len(user) + 2 :].strip(),  # Remove '<user>: '
+                            ),
+                            (swarm.active[thread_id], step),
+                        ],
+                        chat_id=thread_id,
+                    )
+                    self.console.print(
+                        Panel(
+                            escape(
+                                f"{results['stats']}"
+                                + results["nodes"]
+                                + results["edges"]
+                            ),
+                            title=f"Added Memories ({mem_timer.done()})",
+                            border_style="light_steel_blue1",
+                        )
+                    )
 
 
 async def run_agent(dev: bool = False, generate_png: bool = False) -> None:
