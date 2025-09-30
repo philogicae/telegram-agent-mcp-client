@@ -132,4 +132,4 @@ def filter_relevant_memories(
             )
         ]
     )
-    return "\n".join(result.memories)
+    return "\n".join(result.memories) if hasattr(result, "memories") else ""
