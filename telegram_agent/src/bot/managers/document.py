@@ -49,8 +49,11 @@ class DocumentManager(Manager):
     async def start(self) -> None:
         while True:
             if self.documents:
-                await self.update_document_status()
-                await self.update_chats()
+                try:
+                    await self.update_document_status()
+                    await self.update_chats()
+                except Exception:
+                    self.instance.log.error("Could not update document status")
             await sleep(self.delay)
 
     async def notify(self, chat_id: int, data: dict[str, str]) -> None:
@@ -122,7 +125,7 @@ class DocumentManager(Manager):
                 return res.json()
         except Exception as e:
             self.instance.log.error(f"Getting document statuses: {e}")
-        return None
+            raise e
 
     async def update_document_status(self) -> None:
         if not self.documents:
