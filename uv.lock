@@ -2636,16 +2636,16 @@ wheels = [
 
 [[package]]
 name = "rqbit-mcp"
-version = "0.9.0"
+version = "0.9.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastmcp" },
     { name = "httpx", extra = ["http2"] },
     { name = "python-dotenv" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c7/07/1a0c98c3e761c3d068e1ab52176961596ba8824da009960ea359611f4603/rqbit_mcp-0.9.0.tar.gz", hash = "sha256:20856fa2f8100a9a3fb8a56193e488f5860b55cd7d6ec68465bc01f57cc853c6", size = 7899, upload-time = "2025-08-25T11:59:44.427Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b7/e7/03078652fdcf1928ca0159a97b883e93abcf6f4a403c4cd23d3e0cffa18e/rqbit_mcp-0.9.1.tar.gz", hash = "sha256:95d769798c86493d23a2a0481618bd77c666d8fcf0c2d7b1bab2f501cb1678fc", size = 7898, upload-time = "2025-09-30T15:03:23.488Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/78/9e/44471a209dec9e6b0bd895a5376a084363a9f52e88b2cdaffb83b71e221c/rqbit_mcp-0.9.0-py3-none-any.whl", hash = "sha256:906709b622c7370b1fb19571cc8ad5e0d3734aa3a381a7f1af18c7ad4f4c4353", size = 10238, upload-time = "2025-08-25T11:59:43.19Z" },
+    { url = "https://files.pythonhosted.org/packages/52/ed/79c60da41134be144cd7644859634112a4a7306a43507e15dd05a12407a3/rqbit_mcp-0.9.1-py3-none-any.whl", hash = "sha256:8ec41b0f9b28a17cd9e42e0b1efc38e05d84f52c94737ccace7a90b0cf0cd8f2", size = 10237, upload-time = "2025-09-30T15:03:22.322Z" },
 ]
 
 [[package]]
