@@ -45,9 +45,8 @@ export default function Preview({
     fetchPreview(id)
   }, [id])
 
-  const handleDownload = async () => {
+  const handleDownload = useCallback(async () => {
     if (!contentRef.current || downloading) return
-
     setDownloading(true)
     try {
       // Dynamically import html2pdf.js to avoid SSR issues
@@ -67,7 +66,7 @@ export default function Preview({
     } finally {
       setDownloading(false)
     }
-  }
+  }, [id, downloading, contentRef])
 
   if (loading) {
     return <Previewing />
@@ -77,7 +76,7 @@ export default function Preview({
   }
   return (
     <>
-      <div className="absolute top-2.5 right-2 flex flex-row h-8 w-28 items-center justify-center">
+      <div className="absolute top-2.5 right-2 flex flex-row h-8 w-32 items-center justify-center">
         <Button
           size="sm"
           onPress={handleDownload}
@@ -85,8 +84,8 @@ export default function Preview({
           className="inline-flex cursor-pointer rounded-lg text-white bg-black gap-2 text-md font-bold disabled:text-cyan-200 border border-black ring-2 ring-black border-offset-1 hover:text-cyan-200 items-center justify-center"
         >
           <FiDownload className="text-md" />
-          <span className="text-sm font-mono tracking-tighter">
-            {downloading ? 'Generating...' : 'Download'}
+          <span className="text-xs font-mono tracking-tighter">
+            {downloading ? 'Generating PDF...' : 'Export as PDF'}
           </span>
         </Button>
       </div>
