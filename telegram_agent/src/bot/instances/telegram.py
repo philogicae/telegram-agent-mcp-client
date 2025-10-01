@@ -257,19 +257,31 @@ class TelegramBot(Bot):
                 )
 
     async def pin(self, message: Message) -> bool:
-        success: bool = await self._exec(
-            self.core.pin_chat_message, message.chat.id, message.id, True
-        )
+        success: bool = False
+        try:
+            success = await self._exec(
+                self.core.pin_chat_message, message.chat.id, message.id, True
+            )
+        except Exception:
+            pass
         return success
 
     async def unpin(self, message: Message) -> bool:
-        success: bool = await self._exec(
-            self.core.unpin_chat_message, message.chat.id, message.id
-        )
+        success: bool = False
+        try:
+            success = await self._exec(
+                self.core.unpin_chat_message, message.chat.id, message.id
+            )
+        except Exception:
+            pass
         return success
 
     async def delete(self, message: Message) -> bool:
-        success: bool = await self._exec(
-            self.core.delete_message, message.chat.id, message.id
-        )
+        success: bool = False
+        try:
+            success = await self._exec(
+                self.core.delete_message, message.chat.id, message.id
+            )
+        except Exception:
+            pass
         return success
