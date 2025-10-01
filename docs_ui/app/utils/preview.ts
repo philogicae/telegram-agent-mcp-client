@@ -1,5 +1,11 @@
 export const CUSTOM_CSS = `
           /* General Typography */
+          * {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            word-break: break-word;
+          }
+
           p, li {
             line-height: 1.6;
             margin-bottom: 1rem;
@@ -59,6 +65,49 @@ export const CUSTOM_CSS = `
             border: 1px solid #eaecf0;
             padding: 4px;
             border-radius: 0.25rem;
+            display: block;
+          }
+
+          /* Code Blocks */
+          pre, code {
+            white-space: pre-wrap;
+            max-width: 100%;
+            overflow-x: auto;
+          }
+
+          pre {
+            padding: 1rem;
+            background-color: #f6f6f6;
+            border-radius: 0.25rem;
+            margin: 1rem 0;
+          }
+
+          .dark pre {
+            background-color: #2d2d2d;
+          }
+
+          /* Tables */
+          table {
+            max-width: 100%;
+            overflow-x: auto;
+            display: block;
+            border-collapse: collapse;
+            margin: 1rem 0;
+          }
+
+          td, th {
+            max-width: 300px;
+          }
+
+          /* Page Break Control for PDF */
+          h1, h2, h3, h4, h5, h6 {
+            page-break-after: avoid;
+            break-after: avoid;
+          }
+
+          pre, table, img {
+            page-break-inside: avoid;
+            break-inside: avoid;
           }
 
           /* Hidden Elements */
