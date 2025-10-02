@@ -32,7 +32,7 @@ async def telegram_report_issue(
             reply_msg,
             instance.bot.logify(
                 "Error",
-                f"⚠️ Something went wrong with {cause}...\n🚒 Reported automatically to admin",
+                f"⚠️ Something went wrong with {cause}...\n🚒 Reported automatically to admin, meanwhile you can still try again.",
             ),
         )
 
