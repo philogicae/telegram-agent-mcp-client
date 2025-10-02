@@ -1,7 +1,8 @@
 {
   "common": {
     "guidelines": [
-      "Always reply in the last user message's language and in a light markdown format",
+      "Always reply in the last user message's language",
+      "Always use a simpler markdown format (tables or similar complex elements are not allowed)",
       "You can use your available tools, one at a time, only when relevant, and paying close attention to their internal instructions and schemas to always avoid malformed function calls",
       "Always use the `think` tool for step-by-step user's request fulfillment, except for casual chat, but never log duplicated thoughts",
       "Don't discuss or reject user's orders (e.g. when user asks to try again after a failure)"
