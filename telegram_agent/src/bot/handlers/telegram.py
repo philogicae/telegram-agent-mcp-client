@@ -1,3 +1,4 @@
+import traceback
 from asyncio import sleep
 from os import getenv
 
@@ -67,6 +68,7 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
             if not done:
                 await sleep(0.5)  # No need to spam
     except Exception as e:
+        traceback.print_exc()
         await telegram_report_issue(instance, msg, reply, e)
     instance.log.sent(msg, timer)
 

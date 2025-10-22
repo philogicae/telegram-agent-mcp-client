@@ -111,7 +111,7 @@ def summarize_and_rephrase(
         chat_history = pre_model_hook(state.values).get("llm_input_messages", [])
     chat_history.append(
         HumanMessage(
-            f"Return a summary of current chat history (if empty, return 'None') and richly rephrase the following user message with additionnal contextual information if needed (e.g. to avoid out-of-context short user queries like 'yes', 'no', etc.) while preserving the input format (<user>: <message>).\n# User Message Processing Example\nLet's say the history mentions that Bob asked to find Dexter S01E01 and the Agent replied that it only found the complete season.\nuser input -> 'Bob: Take it'\nrephrased -> 'Bob: That's fine, since you found Dexter season 1 you can download it'\n# User Message\n{user_msg}"
+            f"Return a compressed summary of current chat history (if empty, return 'None') and richly rephrase the following user message with additionnal contextual information if needed (e.g. to avoid out-of-context short user queries like 'yes', 'no', etc.) while preserving the input format (<user>: <message>).\n# User Message Processing Example\nLet's say the history mentions that Bob asked to find Dexter S01E01 and the Agent replied that it only found the complete season.\nuser input -> 'Bob: Take it'\nrephrased -> 'Bob: That's fine, since you found Dexter season 1 you can download it'\n# User Message\n{user_msg}"
         )
     )
     llm: Any = LLM.get(provider)
