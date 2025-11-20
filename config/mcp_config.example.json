@@ -35,16 +35,14 @@
       "disabled": true
     },
     "deep-search": {
-      "command": "uvx mcp-search-linkup",
+      //  Free: 1000 standard or 100 deep queries by month
+      "serverUrl": "https://mcp.linkup.so/mcp?apiKey=<add-your-key>",
       "edit": {
-        "search-web": {
+        "linkup-search": {
           "name": "deep_search",
           "description": "Deep search on the web using Linkup. Always use 'deep' depth by default. Returns comprehensive content from the most relevant sources. Only call this tool if `deep search` is explicitely requested by the user."
-        }
-      },
-      "env": {
-        //  Free: 1000 standard or 100 deep queries by month
-        "LINKUP_API_KEY": "<add-your-key>"
+        },
+        "linkup-fetch": false
       },
       "disabled": true
     },

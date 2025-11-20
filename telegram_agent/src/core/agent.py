@@ -186,7 +186,7 @@ class Agent:
                 )
                 mem_timer = Timer()
                 found_memories = await self.graph.full_search(
-                    content, user, thread_id, limit=50
+                    content, user, thread_id, limit=25
                 )
                 mem_stats = found_memories["stats"]
                 memories = f"{found_memories['nodes']}{found_memories['edges']}".strip()
