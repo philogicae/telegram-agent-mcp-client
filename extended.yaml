@@ -93,6 +93,13 @@ networks:
     name: ai-agent
     driver: bridge
     enable_ipv6: true
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+        - subnet: fd28:489c:c1d1::/64
+          gateway: fd28:489c:c1d1::1
 
 volumes:
   n8n_data:

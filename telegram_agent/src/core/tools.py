@@ -43,9 +43,9 @@ def get_tool_config() -> tuple[dict[str, Any], dict[str, Any]]:
             del settings["serverUrl"]
             if settings.get("url").endswith("/"):
                 settings["url"] = settings["url"][:-1]
-            if settings["url"].endswith("/sse"):
+            if "/sse" in settings["url"]:
                 settings["transport"] = "sse"
-            elif settings["url"].endswith("/mcp"):
+            elif "/mcp" in settings["url"]:
                 settings["transport"] = "streamable_http"
 
         # To rename or disable a tool
