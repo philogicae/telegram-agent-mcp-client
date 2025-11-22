@@ -2,7 +2,7 @@ from os import getenv
 from typing import Any
 
 from dotenv import load_dotenv
-from langchain_core.language_models import LanguageModelLike
+from langchain.chat_models import BaseChatModel
 from langchain_google_genai import ChatGoogleGenerativeAI as ChatGemini
 from langchain_google_genai import HarmBlockThreshold, HarmCategory
 from langchain_ollama import ChatOllama
@@ -15,14 +15,14 @@ load_dotenv()
 
 class LLM(Singleton):
     provider: Any
-    llm: dict[str, LanguageModelLike]
+    llm: dict[str, BaseChatModel]
 
     def __init__(self) -> None:
         self.provider = getenv("LLM_CHOICE", "gemini")
         self.llm = {}
 
     @staticmethod
-    def get(provider: str | None = None) -> LanguageModelLike:
+    def get(provider: str | None = None) -> BaseChatModel:
         obj = LLM()
         if not obj.llm:
             # Ollama
@@ -71,18 +71,25 @@ class LLM(Singleton):
                     temperature=0.6,
                     reasoning_effort="low",  # low=1024, medium=8192, high=24576
                 )
+                specifics: dict[str, Any] = {
+                    "temperature": 0.6,
+                    "thinking_budget": 512,  # -1 for dynamic/unlimited
+                }
+                """ if "pro" not in model_gemini
+                else {
+                    "temperature": 1,
+                    "thinking_level": "low",  # low / high
+                } """
                 obj.llm["gemini"] = ChatGemini(
                     api_key=api_key_gemini,
                     model=model_gemini,
                     disable_streaming="tool_calling",
-                    temperature=0.6,
-                    thinking_budget=512,  # -1 for dynamic/unlimited
+                    **specifics,
                     safety_settings={k: HarmBlockThreshold.OFF for k in HarmCategory},
-                    # transport="rest"
                 )
 
         chosen_provider: str = provider or obj.provider
-        llm: LanguageModelLike | None = obj.llm.get(chosen_provider)
+        llm: BaseChatModel | None = obj.llm.get(chosen_provider)
         if llm:
             return llm
         raise ValueError(f"LLM {chosen_provider} not found")

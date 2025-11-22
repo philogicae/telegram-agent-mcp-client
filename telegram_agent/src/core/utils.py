@@ -6,8 +6,8 @@ from typing import Any
 
 from aiosqlite import connect
 from graphiti_core.edges import EntityEdge
-from langchain_core.messages import HumanMessage, RemoveMessage
-from langchain_core.messages.utils import count_tokens_approximately, trim_messages
+from langchain.messages import HumanMessage, RemoveMessage, trim_messages
+from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -111,7 +111,23 @@ def summarize_and_rephrase(
         chat_history = pre_model_hook(state.values).get("llm_input_messages", [])
     chat_history.append(
         HumanMessage(
-            f"Return a compressed summary of current chat history (if empty, return 'None') and richly rephrase the following user message with additionnal contextual information if needed (e.g. to avoid out-of-context short user queries like 'yes', 'no', etc.) while preserving the input format (<user>: <message>).\n# User Message Processing Example\nLet's say the history mentions that Bob asked to find Dexter S01E01 and the Agent replied that it only found the complete season.\nuser input -> 'Bob: Take it'\nrephrased -> 'Bob: That's fine, since you found Dexter season 1 you can download it'\n# User Message\n{user_msg}"
+            f"""Analyze the chat history and the latest user message to provide:
+1. A compressed summary of the conversation so far (return 'None' if empty).
+2. A rephrased version of the latest user message that incorporates context to make it self-contained.
+
+# Instructions for Rephrasing
+- Resolve ambiguous references (e.g., "it", "that", "the first one") based on history.
+- Expand short responses (e.g., "yes", "no") to include the action being confirmed/rejected.
+- Maintain the original `<user>: <message>` format.
+- Correct typos but preserve the user's original intent.
+
+# Example
+History: Bob asked to find Dexter S01E01. Agent only found the complete season.
+Input: "Bob: Take it"
+Rephrased: "Bob: Download the complete season 1 of Dexter that you found"
+
+# User Message
+{user_msg}"""
         )
     )
     llm: Any = LLM.get(provider)
@@ -128,8 +144,29 @@ def filter_relevant_memories(
     result: FilteredMemories = structured_llm.invoke(
         [
             HumanMessage(
-                f"Return only relevant memory lines (intact but compact) for the given episodic memories extracted from knowledge graph (nodes and edges), according to the context and the latest user message, by excluding out-of-context information. If all memories are irrelevant, return empty list.\n\n# Episodic Memories:\n{memories}\n\n# Context:\n{context}\n\n# User Message:\n{user_msg}"
+                f"""Analyze the provided episodic memories in relation to the current context and user message.
+Identify and return ONLY the memories that are directly relevant to the user's current intent.
+
+# Instructions
+- Filter out irrelevant or out-of-context information.
+- Return the relevant memory lines intact but compact.
+- If no memories are relevant, return an empty list.
+
+# Episodic Memories
+{memories}
+
+# Context
+{context}
+
+# User Message
+{user_msg}"""
             )
         ]
     )
-    return "\n".join(result.memories) if hasattr(result, "memories") else ""
+    return (
+        "\n".join(result.memories)
+        if hasattr(result, "memories")
+        and result.memories
+        and len(result.memories[0]) > 8
+        else ""
+    )

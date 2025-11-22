@@ -12,11 +12,11 @@ dependencies = [
     "addict",
     "python-dotenv",
     "pyjson5",
-    "langchain<1",
+    "langchain",
     "langchain-openai",
     "langchain-google-genai",
     "langchain-ollama",
-    "langchain-core<1",
+    "langchain-core",
     "langchain-mcp-adapters",
     "langgraph",
     "pytelegrambotapi",
@@ -26,7 +26,7 @@ dependencies = [
     "nest-asyncio",
     "rqbit-mcp",
     "telegramify-markdown",
-    "langgraph-swarm",
+    "langgraph-swarm @ git+https://github.com/philogicae/langgraph-swarm-py.git@langchain_v1.0",
     "graphiti-core[google-genai]",
     "unidecode",
 ]
@@ -44,6 +44,9 @@ dev = ["ruff", "pytest", "pytest-asyncio", "mypy"]
 
 [tool.hatch.build]
 include = ["telegram_agent"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [build-system]
 requires = ["hatchling"]

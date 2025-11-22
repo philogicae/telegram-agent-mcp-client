@@ -3,7 +3,7 @@ from shutil import copyfile
 from typing import Any
 
 from dotenv import load_dotenv
-from langchain_core.tools import BaseTool
+from langchain.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from pyjson5 import load  # pylint: disable=no-name-in-module
 from rich.console import Console

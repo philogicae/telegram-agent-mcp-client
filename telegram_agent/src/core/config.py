@@ -3,8 +3,8 @@ from shutil import copyfile
 from typing import Any
 
 from dotenv import load_dotenv
-from langchain_core.tools import BaseTool
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
+from langchain.tools import BaseTool
 from langgraph_swarm import create_handoff_tool
 from pydantic import BaseModel
 from pyjson5 import load  # pylint: disable=no-name-in-module
@@ -12,7 +12,6 @@ from rich.console import Console
 
 from .llm import LLM
 from .tools import MCP_CONFIG, get_tools
-from .utils import pre_model_hook
 
 load_dotenv()
 
@@ -134,11 +133,11 @@ def get_agent_config(
                                 [f"{i + 1}) {step}" for i, step in enumerate(steps)]
                             )
 
-        agent = create_react_agent(
+        agent: Any = create_agent(
             model=model,
-            pre_model_hook=pre_model_hook,
+            middleware=[],  # TODO: before_agent
             name=name,
-            prompt=prompt
+            system_prompt=prompt
             or f"Missing system prompt for {name}. Signal it to the user.",
             tools=agent_tools,
         )

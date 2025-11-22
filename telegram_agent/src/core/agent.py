@@ -4,8 +4,8 @@ from typing import Any, AsyncGenerator, Callable, Sequence
 
 from addict import Dict
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
-from langchain_core.tools import BaseTool
+from langchain.messages import AIMessage, AnyMessage, HumanMessage
+from langchain.tools import BaseTool
 from langgraph.prebuilt.tool_node import ToolNode
 from langgraph.types import StateSnapshot
 from langgraph_swarm import create_swarm
@@ -160,7 +160,7 @@ class Agent:
             )  # Avoid empty reply
         else:
             content = f"{user}: {content}"
-            messages: list[BaseMessage] = []
+            messages: list[AnyMessage] = []
             filtered_memories: str = ""
             if self.graph:
                 mem_timer = Timer()
@@ -186,7 +186,7 @@ class Agent:
                 )
                 mem_timer = Timer()
                 found_memories = await self.graph.full_search(
-                    content, user, thread_id, limit=25
+                    content, user, thread_id, limit=10
                 )
                 mem_stats = found_memories["stats"]
                 memories = f"{found_memories['nodes']}{found_memories['edges']}".strip()
@@ -219,40 +219,39 @@ class Agent:
             total_agent_calls, total_tool_calls = 0, 0
             calls_by_tool: dict[str, int] = {}
             called_tool: str | None = None
+            called_tool_timer: Timer | None = None
             ignore_tool_result: bool = False
             start_time = end_time = datetime.now().timestamp()
             usage: Usage = Usage()
-            forced_messages: list[BaseMessage] = []
+            forced_messages: list[AnyMessage] = []
             final, retry = False, 0
             while not final:
                 async for _, chunk in swarm.agent.astream(
                     {"messages": forced_messages or messages}, config, subgraphs=True
                 ):
-                    msg_type = "agent"
+                    msg_type = "model"
                     msg: Any = None
-                    if "agent" in chunk:
-                        msg = chunk[msg_type]["messages"][0]
-                        if msg.name:
-                            swarm.active[thread_id] = msg.name.title()
+                    if "model" in chunk:
+                        msg = chunk[msg_type]["messages"][-1]
                         if not msg.tool_calls:
                             total_agent_calls += 1
-                        called_tool = None
+                        called_tool, called_tool_timer = None, None
                     elif "tools" in chunk:
                         msg_type = "tools"
-                        msg = chunk[msg_type]["messages"][0]
+                        msg = chunk[msg_type]["messages"][-1]
                     else:
                         continue
 
                     # Content
                     text: Any = None
-                    if isinstance(msg.content, list):
+                    if isinstance(msg.content, str):
+                        text = msg.content.strip()
+                    elif isinstance(msg.content, list):
                         for item in msg.content:
                             if isinstance(item, str):
                                 text = item.strip()
                             elif isinstance(item, dict) and "text" in item:
                                 text = item["text"].strip()
-                    elif isinstance(msg.content, str):
-                        text = msg.content.strip()
 
                     """ if "</think>" in text:  # Ollama Qwen3
                         splitted = text.split("<think>", 1)[1].split("</think>", 1)
@@ -268,6 +267,7 @@ class Agent:
                         for tool in msg.tool_calls:
                             total_tool_calls += 1
                             called_tool = tool.get("name")
+                            called_tool_timer = Timer()
                             calls_by_tool[called_tool] = (
                                 calls_by_tool.get(called_tool, 0) + 1
                             )
@@ -281,12 +281,22 @@ class Agent:
                         ignore_tool_result = False
                         continue
                     elif (
-                        called_tool
+                        msg_type == "model"
+                        and called_tool
                         and called_tool
                         not in swarm.config.tools_by_agent.get(
                             swarm.active[thread_id], []
                         )
                     ):
+                        self.console.print(
+                            Panel(
+                                escape(
+                                    f"{swarm.active[thread_id]}: Invalid tool '{called_tool}'"
+                                ),
+                                title="❌ Tool Error",
+                                border_style="red",
+                            )
+                        )
                         ignore_tool_result = True
                         continue
 
@@ -326,6 +336,8 @@ class Agent:
                                     if flag.value in sample:
                                         step = "❌"
                                         break
+                                if called_tool_timer:
+                                    step += f" ({called_tool_timer.done()})"
                                 extra = {"tool": called_tool, "output": text}
                         else:  # Final result
                             step, done = text, True
@@ -345,6 +357,9 @@ class Agent:
                                 f"🔁 {format_called_tool(called_tool)}",
                                 False,
                             )
+                            swarm.active[thread_id] = (
+                                str(called_tool)[12:].replace("_", " ").title().strip()
+                            )
                         elif called_tool == "think":  # Call think tool
                             self.console.print(
                                 Panel(
@@ -357,7 +372,7 @@ class Agent:
                             self.console.print(
                                 Panel(
                                     escape(tool_calls),
-                                    title="🛠️ Tools",
+                                    title="🛠️ Tool",
                                     border_style="red",
                                 )
                             )
@@ -431,7 +446,7 @@ class Agent:
                             border_style="medium_violet_red",
                         )
                         continue
-                    if not step or step in "✅❌":  # Avoid empty reply
+                    if not step or step[0] in "✅❌":  # Avoid empty reply
                         last_messages.pop()
                         forced_messages.append(
                             HumanMessage(
@@ -444,7 +459,7 @@ class Agent:
                             border_style="medium_violet_red",
                         )
                         continue
-                if not step or step in "✅❌":  # Avoid empty reply when retry >= 3
+                if not step or step[0] in "✅❌":  # Avoid empty reply when retry >= 3
                     step = "The same internal error occurred 3 times in a row... Please try again."
 
                 # Final step

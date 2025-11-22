@@ -165,8 +165,9 @@ class TelegramBot(Bot):
             if final:
                 edited = (self.logify(agent, content[:-1]) + f"\n{text}").strip()
             else:
-                if "🛠️" in content[-1] and text in "✅❌":  # Tool result edit
-                    content[-1] = f"{text}{content[-1][1:-3]}"
+                if "🛠️" in content[-1] and text[0] in "✅❌":  # Tool result edit
+                    timer: str = text.split(" ", 1)[1]
+                    content[-1] = f"{text[0]}{content[-1][1:-3]} {timer}"
                 else:  # Tool call init or logs
                     content[-1] = text
                 if not content[-1].endswith("..."):
