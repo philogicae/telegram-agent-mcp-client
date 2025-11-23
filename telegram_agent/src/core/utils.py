@@ -58,19 +58,21 @@ def checkpointer(dev: bool = False, persist: bool = False) -> BaseCheckpointSave
     return AsyncSqliteSaver(connect(f"{data_folder}/checkpointer.sqlite"))
 
 
-def pre_model_hook(state: dict[str, Any], remove_all: bool = False) -> dict[str, Any]:
+def pre_agent_hook(
+    state: dict[str, Any] | Any, remove_all: bool = False
+) -> dict[str, Any]:
     trimmed_messages = trim_messages(
-        state["messages"],
+        state.get("messages", []),
         strategy="last",
         token_counter=count_tokens_approximately,
-        max_tokens=5000,
+        max_tokens=6000,
         start_on="human",
         allow_partial=True,
         # end_on=("human", "tool"),
     )
     if remove_all:
         return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES)] + trimmed_messages}
-    return {"llm_input_messages": trimmed_messages}
+    return {"messages": trimmed_messages}
 
 
 dt_min_aware = datetime.min.replace(tzinfo=timezone.utc)
@@ -104,11 +106,11 @@ class FilteredMemories(BaseModel):
 
 
 def summarize_and_rephrase(
-    state: StateSnapshot, user_msg: str, provider: str = "gemini"
+    state: StateSnapshot, user_msg: str, provider: str = "gemini-small"
 ) -> ReContext:
     chat_history: list[Any] = []
     if state.values.get("messages"):
-        chat_history = pre_model_hook(state.values).get("llm_input_messages", [])
+        chat_history = pre_agent_hook(state.values).get("messages", [])
     chat_history.append(
         HumanMessage(
             f"""Analyze the chat history and the latest user message to provide:
@@ -137,7 +139,7 @@ Rephrased: "Bob: Download the complete season 1 of Dexter that you found"
 
 
 def filter_relevant_memories(
-    memories: str, context: str, user_msg: str, provider: str = "gemini"
+    memories: str, context: str, user_msg: str, provider: str = "gemini-small"
 ) -> str:
     llm: Any = LLM.get(provider)
     structured_llm = llm.with_structured_output(schema=FilteredMemories)

@@ -218,6 +218,7 @@ class Agent:
             }
             total_agent_calls, total_tool_calls = 0, 0
             calls_by_tool: dict[str, int] = {}
+            timers_by_tool: dict[str, Timer] = {}
             called_tool: str | None = None
             called_tool_timer: Timer | None = None
             ignore_tool_result: bool = False
@@ -239,6 +240,9 @@ class Agent:
                     elif "tools" in chunk:
                         msg_type = "tools"
                         msg = chunk[msg_type]["messages"][-1]
+                        if hasattr(msg, "name") and msg.name:
+                            called_tool = msg.name
+                            called_tool_timer = timers_by_tool.get(called_tool)
                     else:
                         continue
 
@@ -267,7 +271,7 @@ class Agent:
                         for tool in msg.tool_calls:
                             total_tool_calls += 1
                             called_tool = tool.get("name")
-                            called_tool_timer = Timer()
+                            called_tool_timer = timers_by_tool[called_tool] = Timer()
                             calls_by_tool[called_tool] = (
                                 calls_by_tool.get(called_tool, 0) + 1
                             )
@@ -401,11 +405,14 @@ class Agent:
                     # Intermediate step
                     if step and not done:
                         if self.dev:
+                            step_text, step_timer = step, ""
+                            if step and step[0] in "✅❌":
+                                step_text, step_timer = step.split(" ", 1)
                             intermediate_step = (
-                                f"{swarm.active[thread_id]} -> YIELD: {step}"
+                                f"{swarm.active[thread_id]} -> YIELD: {step_text}"
                             )
                             if extra:
-                                intermediate_step += f" {extra['tool']}"
+                                intermediate_step += f" {extra['tool']} {step_timer}"
                             self.console.print(intermediate_step)
                         yield swarm.active[thread_id], step, False, extra
 

@@ -51,7 +51,7 @@ class LLM(Singleton):
                     model=model_openai,
                     disable_streaming="tool_calling",
                     disabled_params={"parallel_tool_calls": False},
-                    temperature=0.6 if not model_openai.startswith("gpt-5") else None,
+                    temperature=0.7 if not model_openai.startswith("gpt-5") else None,
                     reasoning_effort=(
                         "high" if not model_openai.startswith("gpt-5") else None
                     ),
@@ -61,6 +61,7 @@ class LLM(Singleton):
             # Google Gemini
             api_key_gemini: Any = getenv("GEMINI_API_KEY")
             model_gemini = getenv("GEMINI_API_MODEL")
+            model_gemini_small = getenv("GEMINI_API_MODEL_SMALL")
             if api_key_gemini and model_gemini:
                 obj.llm["gemini-openai"] = ChatOpenAI(
                     base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
@@ -68,23 +69,34 @@ class LLM(Singleton):
                     model=model_gemini,
                     disable_streaming="tool_calling",
                     disabled_params={"parallel_tool_calls": False},
-                    temperature=0.6,
+                    temperature=0.7,
                     reasoning_effort="low",  # low=1024, medium=8192, high=24576
                 )
-                specifics: dict[str, Any] = {
-                    "temperature": 0.6,
-                    "thinking_budget": 512,  # -1 for dynamic/unlimited
-                }
-                """ if "pro" not in model_gemini
-                else {
-                    "temperature": 1,
-                    "thinking_level": "low",  # low / high
-                } """
+                specifics: dict[str, Any] = (
+                    {
+                        "temperature": 0.7,
+                        "thinking_budget": 512,  # -1 for dynamic/unlimited
+                    }
+                    if "pro" not in model_gemini
+                    else {
+                        "temperature": 1,
+                        "thinking_budget": 512,  # -1 for dynamic/unlimited
+                        # "thinking_level": "low",  # TODO: low / high
+                    }
+                )
                 obj.llm["gemini"] = ChatGemini(
                     api_key=api_key_gemini,
                     model=model_gemini,
                     disable_streaming="tool_calling",
                     **specifics,
+                    safety_settings={k: HarmBlockThreshold.OFF for k in HarmCategory},
+                )
+                obj.llm["gemini-small"] = ChatGemini(
+                    api_key=api_key_gemini,
+                    model=model_gemini_small,
+                    disable_streaming="tool_calling",
+                    temperature=0.7,
+                    thinking_budget=512,
                     safety_settings={k: HarmBlockThreshold.OFF for k in HarmCategory},
                 )
 

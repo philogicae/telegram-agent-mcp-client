@@ -4,6 +4,11 @@ from typing import Any
 
 from dotenv import load_dotenv
 from langchain.agents import create_agent
+from langchain.agents.middleware import (
+    AgentMiddleware,
+    ClearToolUsesEdit,
+    ContextEditingMiddleware,
+)
 from langchain.tools import BaseTool
 from langgraph_swarm import create_handoff_tool
 from pydantic import BaseModel
@@ -12,8 +17,17 @@ from rich.console import Console
 
 from .llm import LLM
 from .tools import MCP_CONFIG, get_tools
+from .utils import pre_agent_hook
 
 load_dotenv()
+
+
+class PruneHistory(AgentMiddleware):
+    def before_agent(self, state: Any, runtime: Any) -> dict[str, Any] | None:
+        return pre_agent_hook(state)
+
+    async def abefore_agent(self, state: Any, runtime: Any) -> dict[str, Any] | None:
+        return pre_agent_hook(state)
 
 
 class AgentConfig(BaseModel):
@@ -135,7 +149,17 @@ def get_agent_config(
 
         agent: Any = create_agent(
             model=model,
-            middleware=[],  # TODO: before_agent
+            middleware=[
+                ContextEditingMiddleware(
+                    edits=[
+                        ClearToolUsesEdit(
+                            trigger=1,
+                            keep=5,
+                        ),
+                    ],
+                ),
+                PruneHistory(),
+            ],
             name=name,
             system_prompt=prompt
             or f"Missing system prompt for {name}. Signal it to the user.",
