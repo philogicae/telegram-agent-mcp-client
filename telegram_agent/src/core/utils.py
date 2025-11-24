@@ -59,13 +59,13 @@ def checkpointer(dev: bool = False, persist: bool = False) -> BaseCheckpointSave
 
 
 def pre_agent_hook(
-    state: dict[str, Any] | Any, remove_all: bool = False
+    state: dict[str, Any] | Any, remove_all: bool = False, max_tokens: int = 2000
 ) -> dict[str, Any]:
     trimmed_messages = trim_messages(
         state.get("messages", []),
         strategy="last",
         token_counter=count_tokens_approximately,
-        max_tokens=6000,
+        max_tokens=max_tokens,
         start_on="human",
         allow_partial=True,
         # end_on=("human", "tool"),
@@ -110,7 +110,7 @@ def summarize_and_rephrase(
 ) -> ReContext:
     chat_history: list[Any] = []
     if state.values.get("messages"):
-        chat_history = pre_agent_hook(state.values).get("messages", [])
+        chat_history = pre_agent_hook(state.values, max_tokens=4000).get("messages", [])
     chat_history.append(
         HumanMessage(
             f"""Analyze the chat history and the latest user message to provide:
