@@ -25,10 +25,12 @@ def get_tool_config() -> tuple[dict[str, Any], dict[str, Any]]:
     for server in mcp_servers:
         settings = mcp_servers[server]
 
-        # Ignore disabled servers
-        if settings.get("disabled"):
+        disabled: bool | None = settings.get("disabled")
+        if disabled is not None:
+            del settings["disabled"]
+        if disabled:
+            # Ignore disabled servers
             continue
-        del settings["disabled"]
 
         # stdio
         if settings.get("command"):
@@ -49,8 +51,8 @@ def get_tool_config() -> tuple[dict[str, Any], dict[str, Any]]:
                 settings["transport"] = "streamable_http"
 
         # To rename or disable a tool
-        if settings.get("edit"):
-            edit_config.update(settings.get("edit"))
+        edits = edit_config[server] = settings.get("edit", {})
+        if edits:
             del settings["edit"]
         langchain_config[server] = settings
 
@@ -74,25 +76,28 @@ async def get_tools(display: bool = True) -> list[BaseTool]:
             "logging_callback": lambda *args: None
         }
 
+    console = Console()
+    tools: list[BaseTool] = []
     try:
-        raw_tools = await client.get_tools()
+        for server in config:
+            console.print(f"[cyan]Loading tools from:[/cyan] [purple]{server}[/purple]")
+            raw_tools = await client.get_tools(server_name=server)
+            # Override and filter tools
+            for tool in raw_tools:
+                item = edit_config.get(server)
+                if isinstance(item, dict):
+                    edits = item.get(tool.name)
+                    if isinstance(edits, dict):
+                        tool.name = edits.get("name") or tool.name
+                        tool.description = edits.get("description") or tool.description
+                    elif edits is False:
+                        continue
+                    tools.append(tool)
     except Exception:
-        Console().print_exception()
+        console.print_exception()
         exit()
 
-    # Override tools
-    tools: list[BaseTool] = []
-    for tool in raw_tools:
-        if tool.name in edit_config:
-            item = edit_config[tool.name]
-            if item is False:
-                continue
-            tool.name = item.get("name") or tool.name
-            tool.description = item.get("description") or tool.description
-        tools.append(tool)
-
     if display:
-        console = Console()
         console.print(f"\nAvailable tools: {len(tools)}")
         if tools:
             console.print(", ".join(tool.name for tool in tools), style="bold green")

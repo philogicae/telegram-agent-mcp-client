@@ -59,7 +59,7 @@ def checkpointer(dev: bool = False, persist: bool = False) -> BaseCheckpointSave
 
 
 def pre_agent_hook(
-    state: dict[str, Any] | Any, remove_all: bool = False, max_tokens: int = 2000
+    state: dict[str, Any] | Any, remove_all: bool = False, max_tokens: int = 50000
 ) -> dict[str, Any]:
     trimmed_messages = trim_messages(
         state.get("messages", []),
@@ -110,11 +110,11 @@ def summarize_and_rephrase(
 ) -> ReContext:
     chat_history: list[Any] = []
     if state.values.get("messages"):
-        chat_history = pre_agent_hook(state.values, max_tokens=4000).get("messages", [])
+        chat_history = pre_agent_hook(state.values).get("messages", [])
     chat_history.append(
         HumanMessage(
             f"""Analyze the chat history and the latest user message to provide:
-1. A compressed summary of the conversation so far (return 'None' if empty).
+1. An exhaustive compressed summary of the conversation so far (return 'None' if empty).
 2. A rephrased version of the latest user message that incorporates context to make it self-contained.
 
 # Instructions for Rephrasing

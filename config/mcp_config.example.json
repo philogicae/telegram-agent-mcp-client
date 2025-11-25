@@ -13,7 +13,7 @@
           "description": "Search on the web and return formatted results. If failure, fallback to `deep_search` using 'standard' depth."
         },
         "fetch_content": {
-          "name": "fetch_https_url",
+          "name": "fetch_url",
           "description": "Fetch and parse content from a webpage URL always starting with https://"
         }
       },
@@ -46,6 +46,22 @@
       },
       "disabled": true
     },
+    "grokipedia": {
+      "command": "uvx grokipedia-mcp",
+      "edit": {
+        "search": { "name": "grokipedia_search" },
+        "get_page_content": {
+          "name": "fetch_grokipedia_page",
+          "description": "Get article content from a wiki page"
+        },
+        "get_page": false,
+        "get_page_citations": false,
+        "get_related_pages": false,
+        "get_page_section": false,
+        "get_page_sections": false
+      },
+      "disabled": false
+    },
     "torrent-search": {
       "serverUrl": "http://localhost:8005/sse",
       "edit": {
@@ -57,10 +73,13 @@
     "torrent-client": {
       "serverUrl": "http://localhost:8006/sse",
       "edit": {
+        "delete_torrent": { "name": "cancel_torrent" },
         "start_torrent": false,
         "pause_torrent": false,
         "forget_torrent": false,
-        "get_torrent_details": false
+        "list_torrents": false,
+        "get_torrent_details": false,
+        "get_torrent_stats": false
       },
       "disabled": true
     },

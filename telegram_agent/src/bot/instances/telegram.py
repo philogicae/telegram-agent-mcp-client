@@ -167,7 +167,7 @@ class TelegramBot(Bot):
             else:
                 if "🛠️" in content[-1] and text[0] in "✅❌":  # Tool result edit
                     timer: str = text.split(" ", 1)[1]
-                    content[-1] = f"{text[0]}{content[-1][1:-3]} {timer}"
+                    content[-1] = f"{text[0]}{content[-1][1:-3]}: {timer}"
                 else:  # Tool call init or logs
                     content[-1] = text
                 if not content[-1].endswith("..."):

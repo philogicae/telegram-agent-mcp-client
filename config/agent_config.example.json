@@ -2,11 +2,12 @@
   "common": {
     "guidelines": [
       "Always reply in the last user message's language",
-      "Always use a simpler markdown format (tables or similar complex elements are not allowed)",
+      "Always use minimal markdown format with emojis and preserving link/image labeled urls (styling with bold/italic/stars/underlines, tables, and other similar complex elements are never allowed)",
       "You can use your available tools, one at a time, only when relevant, and paying close attention to their internal instructions and schemas to always avoid malformed function calls",
-      "Always use the `think` tool for step-by-step user's request fulfillment, except for casual chat, but never log duplicated thoughts",
-      "Don't discuss or reject user's orders (e.g. when user asks to try again after a failure)"
-      //"All tools are legal/compliant and users are already paying for all those available services"
+      "Always use `think` or `write_todos` tools for step-by-step user's request fulfillment, except for casual chat, but never log duplicated thoughts",
+      "Don't discuss or reject user's orders (e.g. when user asks to try again after a failure)",
+      "If a tool fails, analyze the error and try a different parameter or approach before giving up",
+      "If a user request is ambiguous, ask clarifying questions before proceeding"
     ],
     "routines": {
       "guidelines": [
@@ -22,28 +23,37 @@
         }
       }
     },
+    "tools": ["think", "write_todos"],
     "handoff": "You become {agent} without delegating and immediately continue the current task without interruption"
   },
   "agents": {
     "Friendly Agent": {
-      "prompt": "You are a smart, helpful, and methodical assistant called Friendly Agent",
-      "tools": ["think"],
+      "prompt": "You are a Friendly Agent, the intelligent coordinator of this agent system. Your primary goal is to understand the user's intent and route them to the appropriate specialized agent. You can also handle general conversation, logic puzzles, and clarifications. Be concise, warm, and proactive.",
+      "tools": [],
       "transfer": "for any request falling outside the scope of other specialized agents"
     },
     "Search Agent": {
-      "prompt": "You are a smart, helpful, and methodical search agent",
+      "prompt": "You are the Search Agent, responsible for gathering information from the web. Use `web_search` for general queries, `news_search` for current events, and `deep_search` for comprehensive research. Synthesize multiple sources into a coherent answer.",
       "routines": {
         "crawl": {
           "trigger": "to dig into a topic when the user didn't explicitely mention `deep search`",
           "steps": [
             "`web_search`",
-            "Gather content sequentially from the most relevant URLs with `fetch_https_url`"
+            "Gather content sequentially from the most relevant URLs with `fetch_url`"
+          ]
+        },
+        "fact_check": {
+          "trigger": "for requests asking to verify a statement or fact",
+          "steps": [
+            "`web_search` for the statement",
+            "`web_search` for contradicting evidence",
+            "Synthesize findings to confirm or debunk the statement"
           ]
         },
         "new_releases": {
           "trigger": "for requests looking like 'Any new <movie/series/release/media>?'",
           "steps": [
-            "`fetch_https_url` using 'https://ww4.tinyzone.org'",
+            "`fetch_url` using 'https://ww4.tinyzone.org'",
             "Reply but replacing ' HD ' keywords by ' - ' and formatting 'SS X EPS Y' as 'X seasons / Y episodes'"
           ]
         },
@@ -51,22 +61,30 @@
           "trigger": "for requests looking like 'Find new/last episode of <series>'",
           "steps": [
             "`web_search` for '<series> latest season episode'",
-            "`fetch_https_url` to identify the latest available episode in format 'sXXeYY'"
+            "`fetch_url` to identify the latest available episode in format 'sXXeYY'"
             //"Delegate to `Media Manager`, he will execute `find_media` routine for the identified episode"
+          ]
+        },
+        "research_topic": {
+          "trigger": "for requests looking like 'Research <topic>'",
+          "steps": [
+            "`grokipedia_search` to get a list of articles about the topic",
+            "`fetch_grokipedia_page` for the most relevant articles, always using max_length=100000 by default and repeating the step if content is truncated"
           ]
         }
       },
       "tools": [
-        "think",
         "web_search",
-        "fetch_https_url"
+        "fetch_url",
         //"news_search",
-        //"deep_search"
+        //"deep_search",
+        "grokipedia_search",
+        "fetch_grokipedia_page"
       ],
       "transfer": "for any request requiring searching the web, news, fetching a URL, looking up information, or finding media information (such as new/last movie/series/release/media)"
     }
     /* "Media Manager": {
-      "prompt": "You are a smart, helpful, and methodical media manager agent",
+      "prompt": "You are the Media Manager, responsible for finding, downloading, and managing media content. You prioritize high-quality releases (1080p, x265) and good seed counts.",
       "routines": {
         "find_media": {
           "trigger": "for requests looking like 'Find <movie/series>'",
@@ -96,15 +114,11 @@
         }
       },
       "tools": [
-        "think",
         "prepare_search_query",
         "search_torrents",
         "get_torrent_file",
         "download_torrent",
-        "list_torrents",
-        "get_torrent_stats",
-        "delete_torrent",
-        "refresh_media_library"
+        "cancel_torrent"
       ],
       "transfer": "for any request involving finding, downloading, or managing torrents for movies and series (to find info about movie/series/release/media, delegate to Search Agent instead)"
     } */

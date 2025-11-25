@@ -8,6 +8,7 @@ from langchain.agents.middleware import (
     AgentMiddleware,
     ClearToolUsesEdit,
     ContextEditingMiddleware,
+    TodoListMiddleware,
 )
 from langchain.tools import BaseTool
 from langgraph_swarm import create_handoff_tool
@@ -60,23 +61,31 @@ def get_agent_config(
 
     # Parse common settings
     common: dict[str, Any] = configuration.get("common", {})
-    guidelines: Any = common.get("guidelines", "")
-    routine_guidelines: Any = ""
-    default_routines: Any = {}
-    if isinstance(guidelines, list) and guidelines:
-        guidelines = "# Mandatory guidelines:\n- " + "\n- ".join(guidelines)
-        routines: Any = common.get("routines", "")
-        if isinstance(routines, dict) and routines:
-            routine_guidelines = routines.get("guidelines", "")
-            if isinstance(routine_guidelines, list) and routine_guidelines:
-                routine_guidelines = "\n- " + "\n- ".join(routine_guidelines)
-            else:
-                routine_guidelines = ""
-            default_routines = routines.get("default", {})
-            if not isinstance(default_routines, dict):
-                default_routines = {}
-    else:
-        guidelines = ""
+
+    # Common tools (prepended to each agent's tools)
+    common_tools_list: list[str] = common.get("tools", [])
+    if not isinstance(common_tools_list, list):
+        common_tools_list = []
+
+    # Guidelines
+    guidelines_list: Any = common.get("guidelines", [])
+    guidelines: str = (
+        "# Mandatory guidelines:\n- " + "\n- ".join(guidelines_list)
+        if isinstance(guidelines_list, list) and guidelines_list
+        else ""
+    )
+
+    # Routines
+    routine_guidelines: str = ""
+    default_routines: dict[str, Any] = {}
+    routines_config: Any = common.get("routines", {})
+    if isinstance(routines_config, dict) and routines_config:
+        routine_guidelines_list: Any = routines_config.get("guidelines", [])
+        if isinstance(routine_guidelines_list, list) and routine_guidelines_list:
+            routine_guidelines = "\n- " + "\n- ".join(routine_guidelines_list)
+        default_routines = routines_config.get("default", {})
+        if not isinstance(default_routines, dict):
+            default_routines = {}
 
     # Create handoff tools
     handoff: str = (
@@ -119,11 +128,13 @@ def get_agent_config(
                     if tool_name != name
                 ]
             )
-        if tools:
+        # Add common tools first, then agent-specific tools
+        agent_tool_names: list[str] = common_tools_list + config.get("tools", [])
+        if tools and agent_tool_names:
             agent_tools.extend(
                 filter(
                     None,
-                    [available_tools.get(tool) for tool in config.get("tools", [])],
+                    [available_tools.get(tool) for tool in agent_tool_names],
                 )
             )
         prompt = config.get("prompt", "")
@@ -150,15 +161,16 @@ def get_agent_config(
         agent: Any = create_agent(
             model=model,
             middleware=[
+                PruneHistory(),
                 ContextEditingMiddleware(
                     edits=[
                         ClearToolUsesEdit(
-                            trigger=1,
+                            trigger=100,
                             keep=5,
                         ),
                     ],
                 ),
-                PruneHistory(),
+                TodoListMiddleware(),
             ],
             name=name,
             system_prompt=prompt

@@ -24,6 +24,7 @@ from .utils import (
     checkpointer,
     filter_relevant_memories,
     format_called_tool,
+    pre_agent_hook,
     summarize_and_rephrase,
 )
 
@@ -140,7 +141,7 @@ class Agent:
                 user = content.from_user.first_name
             content = (content.text or "").strip()
             self.console.print(
-                Panel(escape(content), title="User", border_style="white")
+                Panel(escape(content), title="👤 User", border_style="white")
             )
 
         swarm = (
@@ -168,19 +169,27 @@ class Agent:
                     self.state(swarm, thread_id), content
                 )
                 summary = (
-                    f"Summary: {recontext.summary}\n"
+                    f"Chat Summary: {recontext.summary}"
                     if recontext.summary and recontext.summary != "None"
                     else ""
                 )
+                if summary:
+                    messages = pre_agent_hook(
+                        self.state(swarm, thread_id).values,
+                        remove_all=True,
+                        max_tokens=2000,
+                    ).get("messages", [])
+                    messages.append(AIMessage("# " + summary))
                 content = (
                     recontext.user_message
                     if ":" in recontext.user_message
                     else f"{user}: {recontext.user_message}"
                 )
+                recontext_logs = f"{summary}\n{content}" if summary else content
                 self.console.print(
                     Panel(
-                        escape(f"{summary}{content}"),
-                        title=f"ReContext ({mem_timer.done()})",
+                        escape(recontext_logs),
+                        title=f"💡 ReContext ({mem_timer.done()})",
                         border_style="light_steel_blue1",
                     )
                 )
@@ -205,7 +214,7 @@ class Agent:
                         self.console.print(
                             Panel(
                                 escape(f"{mem_stats}\n{filtered_memories}"),
-                                title=f"Episodic Memory ({mem_timer.done()})",
+                                title=f"🧠 Episodic Memory ({mem_timer.done()})",
                                 border_style="light_steel_blue1",
                             )
                         )
@@ -261,7 +270,7 @@ class Agent:
                         splitted = text.split("<think>", 1)[1].split("</think>", 1)
                         think, text = splitted[0].strip(), splitted[1].strip()
                         self.console.print(
-                            Panel(escape(think), title="Think", border_style="white")
+                            Panel(escape(think), title="💭 Think", border_style="white")
                         ) """
 
                     # Tools
@@ -317,9 +326,14 @@ class Agent:
                                 Panel(
                                     escape(text),
                                     title=(
-                                        "Result"
+                                        "🛠️ Result"
+                                        + (
+                                            f" ({called_tool_timer.done()})"
+                                            if called_tool_timer
+                                            else ""
+                                        )
                                         if msg_type == "tools"
-                                        else swarm.active[thread_id]
+                                        else f"🤖 {swarm.active[thread_id]}"
                                     ),
                                     border_style=(
                                         "green3"
@@ -331,7 +345,7 @@ class Agent:
                         if msg_type == "tools":  # Yield tool result
                             if (
                                 called_tool
-                                and called_tool != "think"
+                                and called_tool not in ["think", "write_todos"]
                                 and not str(called_tool).startswith("transfer_to_")
                             ):
                                 step = "✅"
@@ -341,7 +355,7 @@ class Agent:
                                         step = "❌"
                                         break
                                 if called_tool_timer:
-                                    step += f" ({called_tool_timer.done()})"
+                                    step += f" {called_tool_timer.done()}"
                                 extra = {"tool": called_tool, "output": text}
                         else:  # Final result
                             step, done = text, True
@@ -364,11 +378,18 @@ class Agent:
                             swarm.active[thread_id] = (
                                 str(called_tool)[12:].replace("_", " ").title().strip()
                             )
-                        elif called_tool == "think":  # Call think tool
+                        elif called_tool in [
+                            "think",
+                            "write_todos",
+                        ]:  # Call think/todos tool
                             self.console.print(
                                 Panel(
                                     escape(tool_calls),
-                                    title="💭 Think",
+                                    title=(
+                                        "💭 Think"
+                                        if called_tool == "think"
+                                        else "📝 Todos"
+                                    ),
                                     border_style="hot_pink",
                                 )
                             )
@@ -397,7 +418,7 @@ class Agent:
                                         ]
                                     )
                                 ),
-                                title=f"Usage ({timer:.2f} sec)",
+                                title=f"📊 Usage ({timer:.2f} sec)",
                                 border_style="yellow",
                             )
                         )
@@ -422,7 +443,7 @@ class Agent:
                         escape(
                             f"{usage}\ntotal_calls: {total_agent_calls + total_tool_calls} | agent_calls: {total_agent_calls} | tool_calls: {total_tool_calls}{(' (' + ', '.join([k + ': ' + str(v) for k, v in calls_by_tool.items()]) + ')') if calls_by_tool else ''}"
                         ),
-                        title=f"Usage Summary ({end_time - start_time:.2f} sec)",
+                        title=f"📊 Usage Summary ({end_time - start_time:.2f} sec)",
                         border_style="bright_yellow",
                     )
                 )
@@ -440,6 +461,7 @@ class Agent:
                     if (
                         before_last_msg.type == "tool"
                         and before_last_msg.name.startswith("transfer_to_")
+                        and (not step or len(step) < 50)
                     ):  # Avoid stop after transfer
                         last_messages.pop()
                         forced_messages.append(
@@ -447,10 +469,12 @@ class Agent:
                                 f"[{end_date}] SYSTEM ALERT: It seems you interrupted in the middle of your process after BECOMING the new agent. Agent delegation doesn't exist, you have to continue by yourself. Resume your process, without mentioning this alert message."
                             )
                         )
-                        Panel(
-                            escape("ALERT: Stopped after transfer"),
-                            title="Back on Track",
-                            border_style="medium_violet_red",
+                        self.console.print(
+                            Panel(
+                                escape("ALERT: Stopped after transfer"),
+                                title="↩ Back on Track",
+                                border_style="medium_violet_red",
+                            )
                         )
                         continue
                     if not step or step[0] in "✅❌":  # Avoid empty reply
@@ -460,10 +484,12 @@ class Agent:
                                 f"[{end_date}] SYSTEM ALERT: It seems you interrupted in the middle of your process without providing a final reply to the user. Resume your process and reply, without mentioning this alert message."
                             )
                         )
-                        Panel(
-                            escape("ALERT: Empty reply"),
-                            title="Back on Track",
-                            border_style="medium_violet_red",
+                        self.console.print(
+                            Panel(
+                                escape("ALERT: Empty reply"),
+                                title="↩ Back on Track",
+                                border_style="medium_violet_red",
+                            )
                         )
                         continue
                 if not step or step[0] in "✅❌":  # Avoid empty reply when retry >= 3
@@ -504,7 +530,7 @@ class Agent:
                                 + results["nodes"]
                                 + results["edges"]
                             ),
-                            title=f"Added Memories ({mem_timer.done()})",
+                            title=f"💾 Added Memories ({mem_timer.done()})",
                             border_style="light_steel_blue1",
                         )
                     )
