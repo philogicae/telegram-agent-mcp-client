@@ -69,8 +69,8 @@
         "research_topic": {
           "trigger": "for requests looking like 'Research <topic>'",
           "steps": [
-            "`grokipedia_search` to get a list of articles about the topic",
-            "`fetch_grokipedia_page` for the most relevant articles, always using max_length=100000 by default and repeating the step if content is truncated"
+            "`wiki_search` to get a list of articles about the topic",
+            "`fetch_wiki_page` for the most relevant articles, always using max_length=100000 by default and repeating the step if content is truncated"
           ]
         }
       },
@@ -79,8 +79,8 @@
         "fetch_url",
         //"news_search",
         //"deep_search",
-        "grokipedia_search",
-        "fetch_grokipedia_page"
+        "wiki_search",
+        "fetch_wiki_page"
       ],
       "transfer": "for any request requiring searching the web, news, fetching a URL, looking up information, or finding media information (such as new/last movie/series/release/media)"
     }
