@@ -1,0 +1,14 @@
+{
+  "url": "http://localhost:8006/sse",
+  "edit": {
+    "delete_torrent": { "name": "cancel_torrent" }
+  },
+  "disabled": [
+    "start_torrent",
+    "pause_torrent",
+    "forget_torrent",
+    "list_torrents",
+    "get_torrent_details",
+    "get_torrent_stats"
+  ]
+}

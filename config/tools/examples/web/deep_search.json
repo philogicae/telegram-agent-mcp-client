@@ -1,0 +1,11 @@
+{
+  //  Free: 1000 standard or 100 deep queries by month
+  "url": "https://mcp.linkup.so/mcp?apiKey=<add-your-key>",
+  "edit": {
+    "linkup-search": {
+      "name": "deep_search",
+      "description": "Deep search on the web using Linkup. Always use 'deep' depth by default. Returns comprehensive content from the most relevant sources. Only call this tool if `deep search` is explicitely requested by the user."
+    }
+  },
+  "disabled": ["linkup-fetch"]
+}

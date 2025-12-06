@@ -21,6 +21,8 @@ wheels/
 .venv
 *_config.json
 *_graph.png
+config/tools/*
+!config/tools/examples/
 docker-envs/*.txt
 data
 scripts/.*

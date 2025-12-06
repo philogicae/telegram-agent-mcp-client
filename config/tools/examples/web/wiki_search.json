@@ -1,0 +1,20 @@
+{
+  "command": "uvx grokipedia-mcp",
+  "edit": {
+    "search": {
+      "name": "wiki_search",
+      "description": "Search for articles in wiki with optional filtering and sorting"
+    },
+    "get_page_content": {
+      "name": "fetch_wiki_page",
+      "description": "Get article content from a wiki page"
+    }
+  },
+  "disabled": [
+    "get_page",
+    "get_page_citations",
+    "get_related_pages",
+    "get_page_section",
+    "get_page_sections"
+  ]
+}

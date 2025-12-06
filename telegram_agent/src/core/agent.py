@@ -17,7 +17,7 @@ from telebot.types import Message as TelegramMessage
 from ..utils import Timer
 from .config import get_agent_config
 from .graphiti import GraphRAG
-from .tools import MCP_CONFIG, get_tools
+from .tools import CONFIG_FOLDER, get_tools
 from .utils import (
     Flag,
     Usage,
@@ -72,7 +72,7 @@ class Agent:
             default_active_agent=default.config.active,
         ).compile(checkpointer=checkpointer(dev, persist), debug=debug)
         if generate_png:
-            graph_file = MCP_CONFIG + "/default_graph.png"
+            graph_file = CONFIG_FOLDER + "/default_graph.png"
             default.agent.get_graph().draw_mermaid_png(output_file_path=graph_file)
             print(f"Default Graph saved to {graph_file}")
 
@@ -86,7 +86,7 @@ class Agent:
             default_active_agent=documentalist.config.active,
         ).compile(checkpointer=checkpointer(dev, persist), debug=debug)
         if generate_png:
-            graph_file = MCP_CONFIG + "/documentalist_graph.png"
+            graph_file = CONFIG_FOLDER + "/documentalist_graph.png"
             documentalist.agent.get_graph().draw_mermaid_png(
                 output_file_path=graph_file
             )
@@ -345,7 +345,7 @@ class Agent:
                         if msg_type == "tools":  # Yield tool result
                             if (
                                 called_tool
-                                and called_tool not in ["think", "write_todos"]
+                                and called_tool not in ["think"]
                                 and not str(called_tool).startswith("transfer_to_")
                             ):
                                 step = "✅"
@@ -378,10 +378,7 @@ class Agent:
                             swarm.active[thread_id] = (
                                 str(called_tool)[12:].replace("_", " ").title().strip()
                             )
-                        elif called_tool in [
-                            "think",
-                            "write_todos",
-                        ]:  # Call think/todos tool
+                        elif called_tool in ["think"]:  # Call think tool
                             self.console.print(
                                 Panel(
                                     escape(tool_calls),

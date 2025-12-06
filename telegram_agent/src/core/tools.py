@@ -1,5 +1,4 @@
-from os import getenv, path
-from shutil import copyfile
+from os import getenv, mkdir, path, walk
 from typing import Any
 
 from dotenv import load_dotenv
@@ -10,27 +9,38 @@ from rich.console import Console
 
 load_dotenv()
 
-MCP_CONFIG = getenv("MCP_CONFIG", "./config")
+CONFIG_FOLDER = getenv("CONFIG_FOLDER") or "./config"
+TOOLS_FOLDER = CONFIG_FOLDER + "/tools"
 
 
-def get_tool_config() -> tuple[dict[str, Any], dict[str, Any]]:
-    config_file = MCP_CONFIG + "/mcp_config.json"
-    if not path.exists(config_file):
-        print("mcp_config.json file not found: creating from example")
-        copyfile("mcp_config.example.json", config_file)
+def get_tool_config() -> tuple[dict[str, Any], dict[str, Any], dict[str, list[str]]]:
+    if not path.exists(TOOLS_FOLDER):
+        mkdir(TOOLS_FOLDER)
 
-    config = load(open(config_file, "r", encoding="utf-8"))
-    mcp_servers = config.get("mcpServers", {})
-    langchain_config, edit_config = {}, {}
-    for server in mcp_servers:
-        settings = mcp_servers[server]
+    mcp_servers: dict[str, Any] = {}
+    for root, dirs, files in walk(TOOLS_FOLDER):
+        dirs[:] = [d for d in dirs if d != "examples"]
+        for filename in files:
+            if filename.endswith(".json") and not filename.startswith("_"):
+                file_path = path.join(root, filename)
+                key = filename[:-5]
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        mcp_servers[key] = load(f)
+                except Exception as e:
+                    print(f"Error loading {filename}: {e}")
+                    exit()
 
-        disabled: bool | None = settings.get("disabled")
-        if disabled is not None:
-            del settings["disabled"]
+    langchain_config, edit_config, disabled_config = {}, {}, {}
+    for server, settings in mcp_servers.items():
+        disabled = settings.get("disabled")
         if disabled:
-            # Ignore disabled servers
-            continue
+            del settings["disabled"]
+            if isinstance(disabled, list):
+                disabled_config[server] = disabled
+            elif isinstance(disabled, bool):
+                # Ignore disabled servers
+                continue
 
         # stdio
         if settings.get("command"):
@@ -40,9 +50,7 @@ def get_tool_config() -> tuple[dict[str, Any], dict[str, Any]]:
             settings["transport"] = "stdio"
 
         # sse or streamable_http
-        elif settings.get("serverUrl"):
-            settings["url"] = settings["serverUrl"]
-            del settings["serverUrl"]
+        elif settings.get("url"):
             if settings.get("url").endswith("/"):
                 settings["url"] = settings["url"][:-1]
             if "/sse" in settings["url"]:
@@ -56,42 +64,28 @@ def get_tool_config() -> tuple[dict[str, Any], dict[str, Any]]:
             del settings["edit"]
         langchain_config[server] = settings
 
-    return langchain_config, edit_config
+    return langchain_config, edit_config, disabled_config
 
 
 async def get_tools(display: bool = True) -> list[BaseTool]:
-    config, edit_config = get_tool_config()
+    config, edit_config, disabled_config = get_tool_config()
     if not config:
         return []
 
     client = MultiServerMCPClient(config)
-    # Set higher timeout and disable logging callback
-    for c in client.connections:
-        if client.connections[c]["transport"] in [
-            "sse",
-            "streamable_http",
-        ]:
-            client.connections[c]["timeout"] = 30.0  # type: ignore
-        client.connections[c]["session_kwargs"] = {
-            "logging_callback": lambda *args: None
-        }
-
     console = Console()
     tools: list[BaseTool] = []
     try:
         for server in config:
             console.print(f"[cyan]Loading tools from:[/cyan] [purple]{server}[/purple]")
             raw_tools = await client.get_tools(server_name=server)
-            # Override and filter tools
+            # Filter and override tools
             for tool in raw_tools:
-                item = edit_config.get(server)
-                if isinstance(item, dict):
-                    edits = item.get(tool.name)
+                if tool.name not in disabled_config.get(server, []):
+                    edits = edit_config.get(server, {}).get(tool.name)
                     if isinstance(edits, dict):
                         tool.name = edits.get("name") or tool.name
                         tool.description = edits.get("description") or tool.description
-                    elif edits is False:
-                        continue
                     tools.append(tool)
     except Exception:
         console.print_exception()
@@ -110,5 +104,5 @@ async def print_tools() -> None:
     console.print(f"Available tools: {len(tools)}")
     for tool in tools:
         console.print(
-            f"- [bright_cyan][bold]{tool.name}[/bold][/bright_cyan]:\n[orange3]{tool.description}[/orange3]"
+            f"* [bright_cyan][bold]{tool.name}[/bold][/bright_cyan]:\n[orange3]{tool.description}[/orange3]"
         )

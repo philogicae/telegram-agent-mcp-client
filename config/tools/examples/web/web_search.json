@@ -1,0 +1,13 @@
+{
+  "command": "uvx duckduckgo-mcp-server",
+  "edit": {
+    "search": {
+      "name": "web_search",
+      "description": "Search on the web and return formatted results. If failure, fallback to `deep_search` using 'standard' depth."
+    },
+    "fetch_content": {
+      "name": "fetch_url",
+      "description": "Fetch and parse content from a webpage URL always starting with https://"
+    }
+  }
+}

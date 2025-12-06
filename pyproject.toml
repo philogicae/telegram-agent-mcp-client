@@ -1,6 +1,6 @@
 [project]
 name = "telegram-agent-mcp-client"
-version = "0.10.0"
+version = "0.10.1"
 description = "Telegram Agent MCP Client"
 authors = [{ name = "philogicae" }]
 requires-python = ">=3.11,<4.0"
@@ -26,7 +26,7 @@ dependencies = [
     "nest-asyncio",
     "rqbit-mcp",
     "telegramify-markdown",
-    "langgraph-swarm @ git+https://github.com/philogicae/langgraph-swarm-py.git@langchain_v1.0",
+    "langgraph-swarm",
     "graphiti-core[google-genai]",
     "unidecode",
 ]

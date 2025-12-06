@@ -4,12 +4,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from langchain.agents import create_agent
-from langchain.agents.middleware import (
-    AgentMiddleware,
-    ClearToolUsesEdit,
-    ContextEditingMiddleware,
-    TodoListMiddleware,
-)
+from langchain.agents.middleware import AgentMiddleware
 from langchain.tools import BaseTool
 from langgraph_swarm import create_handoff_tool
 from pydantic import BaseModel
@@ -17,7 +12,7 @@ from pyjson5 import load  # pylint: disable=no-name-in-module
 from rich.console import Console
 
 from .llm import LLM
-from .tools import MCP_CONFIG, get_tools
+from .tools import CONFIG_FOLDER, get_tools
 from .utils import pre_agent_hook
 
 load_dotenv()
@@ -45,7 +40,7 @@ def get_agent_config(
     display: bool = True,
     verbose: bool = False,
 ) -> AgentConfig:
-    config_file = MCP_CONFIG + "/agent_config.json"
+    config_file = CONFIG_FOLDER + "/agent_config.json"
     if not path.exists(config_file):
         print("agent_config.json file not found: creating from example")
         copyfile("agent_config.example.json", config_file)
@@ -160,18 +155,7 @@ def get_agent_config(
 
         agent: Any = create_agent(
             model=model,
-            middleware=[
-                PruneHistory(),
-                ContextEditingMiddleware(
-                    edits=[
-                        ClearToolUsesEdit(
-                            trigger=100,
-                            keep=5,
-                        ),
-                    ],
-                ),
-                TodoListMiddleware(),
-            ],
+            middleware=[PruneHistory()],
             name=name,
             system_prompt=prompt
             or f"Missing system prompt for {name}. Signal it to the user.",
