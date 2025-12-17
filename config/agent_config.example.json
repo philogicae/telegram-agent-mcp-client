@@ -34,13 +34,20 @@
       "transfer": "for any request falling outside the scope of other specialized agents"
     },
     "Search Agent": {
-      "prompt": "You are the Search Agent, responsible for gathering information from the web. Use `web_search` for general queries, `news_search` for current events, and `deep_search` for comprehensive research. Synthesize multiple sources into a coherent answer.",
+      "prompt": "You are the Search Agent, responsible for gathering information from the web. Use `web_search` for general queries, `news_search` for current events, and `wiki_search` for comprehensive research. Synthesize multiple sources into a coherent answer.",
       "routines": {
-        "crawl": {
-          "trigger": "to dig into a topic when the user didn't explicitely mention `deep search`",
+        "crawl_topic": {
+          "trigger": "to dig into a topic",
           "steps": [
             "`web_search`",
             "Gather content sequentially from the most relevant URLs with `fetch_url`"
+          ]
+        },
+        "research_topic": {
+          "trigger": "for requests looking like 'Research <topic>'",
+          "steps": [
+            "`wiki_search` to get a list of articles about the topic",
+            "`fetch_wiki_page` for the most relevant articles, always using max_length=100000 by default and repeating the step if content is truncated"
           ]
         },
         "fact_check": {
@@ -65,13 +72,6 @@
             "`fetch_url` to identify the latest available episode in format 'sXXeYY'"
             //"Delegate to `Media Manager`, he will execute `find_media` routine for the identified episode"
           ]
-        },
-        "research_topic": {
-          "trigger": "for requests looking like 'Research <topic>'",
-          "steps": [
-            "`wiki_search` to get a list of articles about the topic",
-            "`fetch_wiki_page` for the most relevant articles, always using max_length=100000 by default and repeating the step if content is truncated"
-          ]
         }
       },
       "tools": [
@@ -93,7 +93,7 @@
             "`prepare_search_query`",
             "`search_torrents`",
             "If results are homogeneous (all the same item) always auto-pick the best option according to `search_torrents` priority rules (is 1080p > smaller file size > is x265 > max seeders+leechers)",
-            "`get_torrent_file`",
+            "`get_magnet_link_or_torrent_file`",
             "`download_torrent`",
             "Reply only saying '<media title> is now available on Emby.' in the proper user's language"
           ]
@@ -117,7 +117,7 @@
       "tools": [
         "prepare_search_query",
         "search_torrents",
-        "get_torrent_file",
+        "get_magnet_link_or_torrent_file",
         "download_torrent",
         "cancel_torrent"
       ],

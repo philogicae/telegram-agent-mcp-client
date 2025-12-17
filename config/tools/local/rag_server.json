@@ -1,0 +1,8 @@
+{
+  "url": "{ENV:RAG_SERVER_URL}/sse",
+  "edit": {
+    "ask": {
+      "name": "ask_to_docs"
+    }
+  }
+}

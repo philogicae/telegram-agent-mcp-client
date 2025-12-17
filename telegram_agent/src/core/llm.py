@@ -3,10 +3,12 @@ from typing import Any
 
 from dotenv import load_dotenv
 from langchain.chat_models import BaseChatModel
-from langchain_google_genai import ChatGoogleGenerativeAI as ChatGemini
-from langchain_google_genai import HarmBlockThreshold, HarmCategory
+from langchain_google_genai import (
+    ChatGoogleGenerativeAI,
+    HarmBlockThreshold,
+    HarmCategory,
+)
 from langchain_ollama import ChatOllama
-from langchain_openai import ChatOpenAI
 
 from ..utils import Singleton
 
@@ -42,58 +44,38 @@ class LLM(Singleton):
                     # num_predict=512,  # 512-1024-2048-4096 / -2
                 )
 
-            # OpenAI
-            api_key_openai: Any = getenv("OPENAI_API_KEY")
-            model_openai = getenv("OPENAI_API_MODEL")
-            if api_key_openai and model_openai:
-                obj.llm["openai"] = ChatOpenAI(
-                    api_key=api_key_openai,
-                    model=model_openai,
-                    disable_streaming="tool_calling",
-                    disabled_params={"parallel_tool_calls": False},
-                    temperature=0.7 if not model_openai.startswith("gpt-5") else None,
-                    reasoning_effort=(
-                        "high" if not model_openai.startswith("gpt-5") else None
-                    ),
-                    output_version="responses/v1",
-                )
-
             # Google Gemini
             api_key_gemini: Any = getenv("GEMINI_API_KEY")
             model_gemini = getenv("GEMINI_API_MODEL")
             model_gemini_small = getenv("GEMINI_API_MODEL_SMALL")
             if api_key_gemini and model_gemini:
-                obj.llm["gemini-openai"] = ChatOpenAI(
-                    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-                    api_key=api_key_gemini,
-                    model=model_gemini,
-                    disable_streaming="tool_calling",
-                    disabled_params={"parallel_tool_calls": False},
-                    temperature=0.7,
-                    reasoning_effort="low",  # low=1024, medium=8192, high=24576
-                )
+                common: dict[str, Any] = {
+                    "disable_streaming": "tool_calling",
+                    "safety_settings": {
+                        cat: HarmBlockThreshold.OFF
+                        for i, cat in enumerate(HarmCategory)
+                        if i > 0 and i < 5
+                    },
+                }
                 specifics: dict[str, Any] = (
                     {
                         "temperature": 0.7,
                         "thinking_budget": 512,
                     }
-                    if "pro" not in model_gemini
+                    if "3" not in model_gemini
                     else {"temperature": 1, "thinking_level": "low"}
                 )
-                obj.llm["gemini"] = ChatGemini(
+                obj.llm["gemini"] = ChatGoogleGenerativeAI(
                     api_key=api_key_gemini,
                     model=model_gemini,
-                    disable_streaming="tool_calling",
+                    **common,
                     **specifics,
-                    safety_settings={k: HarmBlockThreshold.OFF for k in HarmCategory},
                 )
-                obj.llm["gemini-small"] = ChatGemini(
+                obj.llm["gemini-small"] = ChatGoogleGenerativeAI(
                     api_key=api_key_gemini,
                     model=model_gemini_small,
-                    disable_streaming="tool_calling",
-                    temperature=0.7,
-                    thinking_budget=512,
-                    safety_settings={k: HarmBlockThreshold.OFF for k in HarmCategory},
+                    **common,
+                    **specifics,
                 )
 
         chosen_provider: str = provider or obj.provider

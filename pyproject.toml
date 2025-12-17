@@ -1,6 +1,6 @@
 [project]
 name = "telegram-agent-mcp-client"
-version = "0.10.2"
+version = "0.10.3"
 description = "Telegram Agent MCP Client"
 authors = [{ name = "philogicae" }]
 requires-python = ">=3.11,<4.0"
@@ -13,7 +13,6 @@ dependencies = [
     "python-dotenv",
     "pyjson5",
     "langchain",
-    "langchain-openai",
     "langchain-google-genai",
     "langchain-ollama",
     "langchain-core",

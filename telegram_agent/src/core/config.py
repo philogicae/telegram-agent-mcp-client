@@ -1,4 +1,4 @@
-from os import path
+from os import getenv, path
 from shutil import copyfile
 from typing import Any
 
@@ -12,10 +12,13 @@ from pyjson5 import load  # pylint: disable=no-name-in-module
 from rich.console import Console
 
 from .llm import LLM
-from .tools import CONFIG_FOLDER, get_tools
+from .tools import get_tools
 from .utils import pre_agent_hook
 
 load_dotenv()
+
+# Configuration
+CONFIG_DIR = getenv("CONFIG") or "./config"
 
 
 class PruneHistory(AgentMiddleware):
@@ -40,7 +43,7 @@ def get_agent_config(
     display: bool = True,
     verbose: bool = False,
 ) -> AgentConfig:
-    config_file = CONFIG_FOLDER + "/agent_config.json"
+    config_file = CONFIG_DIR + "/agent_config.json"
     if not path.exists(config_file):
         print("agent_config.json file not found: creating from example")
         copyfile("agent_config.example.json", config_file)

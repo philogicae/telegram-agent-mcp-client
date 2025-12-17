@@ -1,4 +1,5 @@
 {
+  // Free: 2000 queries by month. Create API KEY: https://brave.com/search/api/
   "command": "npx -y @modelcontextprotocol/server-brave-search",
   "edit": {
     "brave_web_search": {
@@ -7,8 +8,7 @@
     }
   },
   "env": {
-    // Free: 2000 queries by month
-    "BRAVE_API_KEY": "<add-your-key>"
+    "BRAVE_API_KEY": "{ENV:BRAVE_API_KEY}"
   },
   "disabled": ["brave_local_search"]
 }

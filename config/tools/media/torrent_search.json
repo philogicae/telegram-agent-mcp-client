@@ -1,0 +1,4 @@
+{
+  "url": "{ENV:TORRENT_SEARCH_URL}/sse",
+  "disabled": ["get_torrent_info"]
+}

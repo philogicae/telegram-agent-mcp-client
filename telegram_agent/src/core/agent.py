@@ -17,7 +17,7 @@ from telebot.types import Message as TelegramMessage
 from ..utils import Timer
 from .config import get_agent_config
 from .graphiti import GraphRAG
-from .tools import CONFIG_FOLDER, get_tools
+from .tools import get_tools
 from .utils import (
     Flag,
     Usage,
@@ -29,6 +29,9 @@ from .utils import (
 )
 
 load_dotenv()
+
+# Configuration
+CONFIG_DIR = getenv("CONFIG") or "./config"
 WHITELIST: set[str] = set(getenv("WHITELIST", "").lower().split(","))
 
 
@@ -72,7 +75,7 @@ class Agent:
             default_active_agent=default.config.active,
         ).compile(checkpointer=checkpointer(dev, persist), debug=debug)
         if generate_png:
-            graph_file = CONFIG_FOLDER + "/default_graph.png"
+            graph_file = CONFIG_DIR + "/default_graph.png"
             default.agent.get_graph().draw_mermaid_png(output_file_path=graph_file)
             print(f"Default Graph saved to {graph_file}")
 
@@ -86,7 +89,7 @@ class Agent:
             default_active_agent=documentalist.config.active,
         ).compile(checkpointer=checkpointer(dev, persist), debug=debug)
         if generate_png:
-            graph_file = CONFIG_FOLDER + "/documentalist_graph.png"
+            graph_file = CONFIG_DIR + "/documentalist_graph.png"
             documentalist.agent.get_graph().draw_mermaid_png(
                 output_file_path=graph_file
             )

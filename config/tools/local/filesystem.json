@@ -1,0 +1,14 @@
+{
+  "command": "npx -y fast-filesystem-mcp {ENV:FILESYSTEM_WORKSPACE}",
+  "env": {
+    "CREATE_BACKUP_FILES": "true"
+  },
+  /* "disabled": [
+    "fast_compress_files",
+    "fast_extract_archive",
+    "fast_sync_directories",
+    "fast_get_disk_usage",
+    "fast_list_allowed_directories"
+  ] */
+  "disabled": true
+}

@@ -3,7 +3,7 @@
   "edit": {
     "search": {
       "name": "web_search",
-      "description": "Search on the web and return formatted results. If failure, fallback to `deep_search` using 'standard' depth."
+      "description": "Search on the web and return formatted results."
     },
     "fetch_content": {
       "name": "fetch_url",

@@ -1,5 +1,5 @@
 {
-  "url": "http://localhost:8006/sse",
+  "url": "{ENV:TORRENT_CLIENT_URL}/sse",
   "edit": {
     "delete_torrent": { "name": "cancel_torrent" }
   },
@@ -7,7 +7,6 @@
     "start_torrent",
     "pause_torrent",
     "forget_torrent",
-    "list_torrents",
     "get_torrent_details",
     "get_torrent_stats"
   ]

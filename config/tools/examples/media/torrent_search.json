@@ -1,7 +1,0 @@
-{
-  "url": "http://localhost:8005/sse",
-  "edit": {
-    "get_magnet_link_or_torrent_file": { "name": "get_torrent_file" }
-  },
-  "disabled": ["get_torrent_info"]
-}
