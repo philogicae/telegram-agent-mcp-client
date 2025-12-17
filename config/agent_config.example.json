@@ -13,7 +13,7 @@
     "routines": {
       "guidelines": [
         "Routines are not callable tools, but higher‑level recipes to follow to perform complex tasks",
-        "Always follow routines when one is relevant or triggered, and reply with a summary of the operation"
+        "Always follow routines when one is relevant or triggered"
       ],
       "default": {
         "available_tools": {
