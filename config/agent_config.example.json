@@ -119,6 +119,7 @@
         "search_torrents",
         "get_magnet_link_or_torrent_file",
         "download_torrent",
+        "list_torrents",
         "cancel_torrent"
       ],
       "transfer": "for any request involving finding, downloading, or managing torrents for movies and series (to find info about movie/series/release/media, delegate to Search Agent instead)"
