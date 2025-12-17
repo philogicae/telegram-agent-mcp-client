@@ -75,14 +75,10 @@ class LLM(Singleton):
                 specifics: dict[str, Any] = (
                     {
                         "temperature": 0.7,
-                        "thinking_budget": 512,  # -1 for dynamic/unlimited
+                        "thinking_budget": 512,
                     }
                     if "pro" not in model_gemini
-                    else {
-                        "temperature": 1,
-                        "thinking_budget": 512,  # -1 for dynamic/unlimited
-                        # "thinking_level": "low",  # TODO: low / high
-                    }
+                    else {"temperature": 1, "thinking_level": "low"}
                 )
                 obj.llm["gemini"] = ChatGemini(
                     api_key=api_key_gemini,
