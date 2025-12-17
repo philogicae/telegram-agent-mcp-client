@@ -106,11 +106,18 @@ class DownloadManager(Manager):
                     )
                     await self.instance.bot.pin(message.obj)
                 elif message.prev != text:
-                    await self.instance.bot.edit(
-                        message.obj,
-                        self.instance.bot.logify(self.name, text),
-                        replace=True,
-                    )
+                    try:
+                        await self.instance.bot.edit(
+                            message.obj,
+                            self.instance.bot.logify(self.name, text),
+                            replace=True,
+                        )
+                    except Exception:
+                        self.instance.log.error("IGNORED: Editing message error")
+                        message.obj = await self.instance.bot.send(
+                            chat_id, self.instance.bot.logify(self.name, text)
+                        )
+                        await self.instance.bot.pin(message.obj)
                 message.prev = text
             if finished:
                 for torrent_id, torrent in finished:
