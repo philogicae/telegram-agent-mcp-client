@@ -78,16 +78,6 @@ services:
       - torrents:/torrents
     <<: [*default-logging, *default-networks]
 
-  sequential-thinking-mcp:
-    container_name: sequential-thinking-mcp
-    image: philogicae/sequential-thinking-mcp:latest
-    pull_policy: always
-    command: sequential-thinking-mcp --mode sse
-    restart: unless-stopped
-    ports:
-      - 8007:8000
-    <<: [*default-logging, *default-networks]
-
 networks:
   ai-agent:
     name: ai-agent
