@@ -25,8 +25,8 @@ jobs:
         run: uv run ruff format telegram_agent
       - name: Run ruff check
         run: uv run ruff check telegram_agent
-      - name: Run mypy
-        run: uv run mypy telegram_agent
+      - name: Run ty check
+        run: uv run ty check telegram_agent
 
   build:
     name: Build distribution 📦

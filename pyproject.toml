@@ -39,7 +39,10 @@ DeepWiki = "https://deepwiki.com/philogicae/telegram-agent-mcp-client"
 telegram-agent-mcp-client = "telegram_agent.__main__:cli"
 
 [dependency-groups]
-dev = ["ruff", "pytest", "pytest-asyncio", "mypy"]
+dev = ["ruff", "ty"]
+
+[tool.ty.rules]
+no-matching-overload = "ignore"
 
 [tool.hatch.build]
 include = ["telegram_agent"]

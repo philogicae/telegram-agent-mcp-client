@@ -8,7 +8,7 @@ from langchain.agents.middleware import AgentMiddleware
 from langchain.tools import BaseTool
 from langgraph_swarm import create_handoff_tool
 from pydantic import BaseModel
-from pyjson5 import load  # pylint: disable=no-name-in-module
+from pyjson5 import loads  # pylint: disable=no-name-in-module
 from rich.console import Console
 
 from .llm import LLM
@@ -48,7 +48,8 @@ def get_agent_config(
         print("agent_config.json file not found: creating from example")
         copyfile("agent_config.example.json", config_file)
 
-    configuration: dict[str, Any] = load(open(config_file, "r", encoding="utf-8"))
+    with open(config_file, "r", encoding="utf-8") as f:
+        configuration: dict[str, Any] = loads(f.read())
     agent_config: dict[str, Any] = {
         k: v
         for k, v in configuration.get("agents", {}).items()

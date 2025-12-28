@@ -2,11 +2,16 @@ from datetime import datetime, timezone
 from enum import Enum
 from os import makedirs
 from re import sub
-from typing import Any
+from typing import Any, cast
 
 from aiosqlite import connect
 from graphiti_core.edges import EntityEdge
-from langchain.messages import HumanMessage, RemoveMessage, trim_messages
+from langchain_core.messages import (
+    BaseMessage,
+    HumanMessage,
+    RemoveMessage,
+    trim_messages,
+)
 from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
@@ -61,14 +66,20 @@ def checkpointer(dev: bool = False, persist: bool = False) -> BaseCheckpointSave
 def pre_agent_hook(
     state: dict[str, Any] | Any, remove_all: bool = False, max_tokens: int = 50000
 ) -> dict[str, Any]:
-    trimmed_messages = trim_messages(
-        state.get("messages", []),
-        strategy="last",
-        token_counter=count_tokens_approximately,
-        max_tokens=max_tokens,
-        start_on="human",
-        allow_partial=True,
-        # end_on=("human", "tool"),
+    messages: list[BaseMessage] = cast(
+        list[BaseMessage], state.get("messages", []) if isinstance(state, dict) else []
+    )
+    trimmed_messages = cast(
+        list[BaseMessage],
+        trim_messages(
+            messages=messages,
+            strategy="last",
+            token_counter=count_tokens_approximately,
+            max_tokens=max_tokens,
+            start_on="human",
+            allow_partial=True,
+            # end_on=("human", "tool"),
+        ),
     )
     if remove_all:
         return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES)] + trimmed_messages}
@@ -134,7 +145,7 @@ Rephrased: "Bob: Download the complete season 1 of Dexter that you found"
     )
     llm: Any = LLM.get(provider)
     structured_llm = llm.with_structured_output(schema=ReContext)
-    result: ReContext = structured_llm.invoke(chat_history)
+    result = cast(ReContext, structured_llm.invoke(chat_history))
     return result
 
 
@@ -143,10 +154,12 @@ def filter_relevant_memories(
 ) -> str:
     llm: Any = LLM.get(provider)
     structured_llm = llm.with_structured_output(schema=FilteredMemories)
-    result: FilteredMemories = structured_llm.invoke(
-        [
-            HumanMessage(
-                f"""Analyze the provided episodic memories in relation to the current context and user message.
+    result = cast(
+        FilteredMemories,
+        structured_llm.invoke(
+            [
+                HumanMessage(
+                    f"""Analyze the provided episodic memories in relation to the current context and user message.
 Identify and return ONLY the memories that are directly relevant to the user's current intent.
 
 # Instructions
@@ -162,8 +175,9 @@ Identify and return ONLY the memories that are directly relevant to the user's c
 
 # User Message
 {user_msg}"""
-            )
-        ]
+                )
+            ]
+        ),
     )
     return (
         "\n".join(result.memories)
