@@ -4,7 +4,7 @@ from typing import Any, AsyncGenerator, Callable, Sequence
 
 from addict import Dict
 from dotenv import load_dotenv
-from langchain.messages import AIMessage, AnyMessage, HumanMessage
+from langchain.messages import AnyMessage, HumanMessage
 from langchain.tools import BaseTool
 from langgraph.prebuilt.tool_node import ToolNode
 from langgraph.types import StateSnapshot
@@ -182,7 +182,7 @@ class Agent:
                         remove_all=True,
                         max_tokens=2000,
                     ).get("messages", [])
-                    messages.append(AIMessage("# " + summary))
+                    messages.append(HumanMessage("# " + summary))
                 content = (
                     recontext.user_message
                     if ":" in recontext.user_message
@@ -209,7 +209,7 @@ class Agent:
                     )
                     if filtered_memories:
                         messages.append(
-                            AIMessage("# Episodic Memory:\n" + filtered_memories)
+                            HumanMessage("# Episodic Memory:\n" + filtered_memories)
                         )
                         # mem_stats["edges"] = filtered_memories.count("EDG<")
                         # mem_stats["nodes"] = filtered_memories.count("NOD<")

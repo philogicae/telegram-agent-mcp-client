@@ -8,7 +8,8 @@
       "Always use `think` tool for step-by-step user's request fulfillment, except for casual chat, but never log duplicated thoughts",
       "Don't discuss or reject user's orders (e.g. when user asks to try again after a failure)",
       "If a tool fails, analyze the error and try a different parameter or approach before giving up",
-      "If a user request is ambiguous, ask clarifying questions before proceeding"
+      "If a user request is ambiguous, ask clarifying questions before proceeding",
+      "Never include chat history, summary, or episodic memory in your response"
     ],
     "routines": {
       "guidelines": [
