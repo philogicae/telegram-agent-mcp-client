@@ -83,7 +83,7 @@ services:
     ports:
       - 8005:8000
     environment:
-      - YGG_BASE_URL=http://ygg-api:8715
+      - YGG_LOCAL_API=http://ygg-api:8715
     env_file:
       - docker-envs/torrent_search.env
     volumes:

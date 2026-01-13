@@ -478,7 +478,7 @@ wheels = [
 
 [[package]]
 name = "cyclopts"
-version = "4.4.4"
+version = "4.4.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
@@ -486,9 +486,9 @@ dependencies = [
     { name = "rich" },
     { name = "rich-rst" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/43/c4/60b6068e703c78656d07b249919754f8f60e9e7da3325560574ee27b4e39/cyclopts-4.4.4.tar.gz", hash = "sha256:f30c591c971d974ab4f223e099f881668daed72de713713c984ca41479d393dd", size = 160046, upload-time = "2026-01-05T03:40:18.438Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4f/31/0c2526868b1454f2e7aaac5b05f262df4513917942beef9c0040415c7664/cyclopts-4.4.5.tar.gz", hash = "sha256:02c2c9375c57bb7622a4aab3511cdeb9d762dd0579b13ab467535e34f6be3c54", size = 160428, upload-time = "2026-01-13T14:03:38.355Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/20/5b/0eceb9a5990de9025733a0d212ca43649ba9facd58b8552b6bf93c11439d/cyclopts-4.4.4-py3-none-any.whl", hash = "sha256:316f798fe2f2a30cb70e7140cfde2a46617bfbb575d31bbfdc0b2410a447bd83", size = 197398, upload-time = "2026-01-05T03:40:17.141Z" },
+    { url = "https://files.pythonhosted.org/packages/54/2a/662ac280907bb2ea378681b83528e54e3d4b24ed48f07d2d6b52d5cbd057/cyclopts-4.4.5-py3-none-any.whl", hash = "sha256:d0f7584282c33796614bbb5fe7f5c86520802f028453a2180ead68c8630635f8", size = 197794, upload-time = "2026-01-13T14:03:39.724Z" },
 ]
 
 [[package]]
@@ -761,7 +761,7 @@ wheels = [
 
 [[package]]
 name = "graphiti-core"
-version = "0.25.4"
+version = "0.25.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "diskcache" },
@@ -773,9 +773,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7e/fd/ce19aa75e50ec0b5c018938ddddbbbabbcafa1cecfa88c2cb2819ab468b2/graphiti_core-0.25.4.tar.gz", hash = "sha256:72795e68630527dbe1d10d0bc651e5a87d723706e1687d617d8983be5e8fda5c", size = 6637127, upload-time = "2026-01-12T20:44:24.485Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/5e/68967dfd0239378009df7d7f48f7e27a7c4cad73618b41842fbf925c3e4b/graphiti_core-0.25.5.tar.gz", hash = "sha256:b5790bf8efdb07ef608152880d6f951e8dcc4f351ecd1a798af0b57b9b8a384e", size = 6642249, upload-time = "2026-01-13T14:15:10.245Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e0/15/e8a61f5a9bd5e2e4b43c9faddb4a49e5637d1a5dfb90acad8a65509c565b/graphiti_core-0.25.4-py3-none-any.whl", hash = "sha256:8cc0fd58ffa498f1b7ad30ed06a281130901328365c5d7ef4b2f39b18113084d", size = 184325, upload-time = "2026-01-12T20:44:22.397Z" },
+    { url = "https://files.pythonhosted.org/packages/c0/17/3145f7eba39a180fc1db2f389b6ca66599db1c73fafac820076da3a779aa/graphiti_core-0.25.5-py3-none-any.whl", hash = "sha256:cbe0cd4f87878ef4256078a4eafcce36b6010100e4f9112106f1fd93f605c082", size = 186489, upload-time = "2026-01-13T14:15:08.12Z" },
 ]
 
 [package.optional-dependencies]
@@ -900,14 +900,14 @@ wheels = [
 
 [[package]]
 name = "jaraco-context"
-version = "6.0.2"
+version = "6.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "backports-tarfile", marker = "python_full_version < '3.12'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8d/7d/41acf8e22d791bde812cb6c2c36128bb932ed8ae066bcb5e39cb198e8253/jaraco_context-6.0.2.tar.gz", hash = "sha256:953ae8dddb57b1d791bf72ea1009b32088840a7dd19b9ba16443f62be919ee57", size = 14994, upload-time = "2025-12-24T19:21:35.784Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cb/9c/a788f5bb29c61e456b8ee52ce76dbdd32fd72cd73dd67bc95f42c7a8d13c/jaraco_context-6.1.0.tar.gz", hash = "sha256:129a341b0a85a7db7879e22acd66902fda67882db771754574338898b2d5d86f", size = 15850, upload-time = "2026-01-13T02:53:53.847Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/0c/1e0096ced9c55f9c6c6655446798df74165780375d3f5ab5f33751e087ae/jaraco_context-6.0.2-py3-none-any.whl", hash = "sha256:55fc21af4b4f9ca94aa643b6ee7fe13b1e4c01abf3aeb98ca4ad9c80b741c786", size = 6988, upload-time = "2025-12-24T19:21:34.557Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/48/aa685dbf1024c7bd82bede569e3a85f82c32fd3d79ba5fea578f0159571a/jaraco_context-6.1.0-py3-none-any.whl", hash = "sha256:a43b5ed85815223d0d3cfdb6d7ca0d2bc8946f28f30b6f3216bda070f68badda", size = 7065, upload-time = "2026-01-13T02:53:53.031Z" },
 ]
 
 [[package]]
@@ -1132,7 +1132,7 @@ wheels = [
 
 [[package]]
 name = "langchain-google-genai"
-version = "4.1.3"
+version = "4.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filetype" },
@@ -1140,9 +1140,9 @@ dependencies = [
     { name = "langchain-core" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ba/85/078d5aba488a82a53b8372ac1037dee4f64b020bac69e6a07e37a5059059/langchain_google_genai-4.1.3.tar.gz", hash = "sha256:28966c8fe58c9a401fdc37aeeeb0eb51744210803838ce050f022fc53d2f994e", size = 277024, upload-time = "2026-01-05T23:29:34.362Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d8/0b/eae2305e207574dc633983a8a82a745e0ede1bce1f3a9daff24d2341fadc/langchain_google_genai-4.2.0.tar.gz", hash = "sha256:9a8d9bfc35354983ed29079cefff53c3e7c9c2a44b6ba75cc8f13a0cf8b55c33", size = 277361, upload-time = "2026-01-13T20:41:17.63Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c9/aa/ca61dc2d202a23d7605a5c0ea24bd86a39a5c23c932a166b87c7797747c5/langchain_google_genai-4.1.3-py3-none-any.whl", hash = "sha256:5d710e2dcf449d49704bdbcd31729be90b386fa008395f9552a5c090241de1a5", size = 66262, upload-time = "2026-01-05T23:29:32.924Z" },
+    { url = "https://files.pythonhosted.org/packages/22/51/39942c0083139652494bb354dddf0ed397703a4882302f7b48aeca531c96/langchain_google_genai-4.2.0-py3-none-any.whl", hash = "sha256:856041aaafceff65a4ef0d5acf5731f2db95229ff041132af011aec51e8279d9", size = 66452, upload-time = "2026-01-13T20:41:16.296Z" },
 ]
 
 [[package]]
@@ -1231,15 +1231,15 @@ wheels = [
 
 [[package]]
 name = "langgraph-sdk"
-version = "0.3.2"
+version = "0.3.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "orjson" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/66/74/e1fa90bc6194f5409e37ce6d8174e45293b767fe7a11060a3c2a0e15c087/langgraph_sdk-0.3.2.tar.gz", hash = "sha256:3f2ed7b210c0748983b4596157ece9db2c5d6debd9d4878fad4683216a0b6fc4", size = 129502, upload-time = "2026-01-09T21:10:52.627Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c3/0f/ed0634c222eed48a31ba48eab6881f94ad690d65e44fe7ca838240a260c1/langgraph_sdk-0.3.3.tar.gz", hash = "sha256:c34c3dce3b6848755eb61f0c94369d1ba04aceeb1b76015db1ea7362c544fb26", size = 130589, upload-time = "2026-01-13T00:30:43.894Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/38/f3/253b46e87bc2cbbe69d71faec213465e01e9028bfa45d9b80a65b169b860/langgraph_sdk-0.3.2-py3-none-any.whl", hash = "sha256:0b0ab967eab59c20989d46f2020da439bd914ed8f4caf3326813be9b70d9037e", size = 66829, upload-time = "2026-01-09T21:10:51.739Z" },
+    { url = "https://files.pythonhosted.org/packages/6e/be/4ad511bacfdd854afb12974f407cb30010dceb982dc20c55491867b34526/langgraph_sdk-0.3.3-py3-none-any.whl", hash = "sha256:a52ebaf09d91143e55378bb2d0b033ed98f57f48c9ad35c8f81493b88705fc7b", size = 67021, upload-time = "2026-01-13T00:30:42.264Z" },
 ]
 
 [[package]]
@@ -2844,7 +2844,7 @@ wheels = [
 
 [[package]]
 name = "telegram-agent-mcp-client"
-version = "0.10.3"
+version = "0.10.4"
 source = { editable = "." }
 dependencies = [
     { name = "addict" },
