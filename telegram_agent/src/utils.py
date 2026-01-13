@@ -7,7 +7,7 @@ class Singleton:
     _instance: Any
     _lock = Lock()
 
-    def __new__(cls, *args, **kwargs) -> Any:  # type: ignore
+    def __new__(cls, *args, **kwargs) -> Any:
         with cls._lock:
             if not hasattr(cls, "_instance"):
                 cls._instance = super().__new__(cls, *args, **kwargs)

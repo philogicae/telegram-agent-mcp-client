@@ -8,10 +8,7 @@ from graphiti_core import Graphiti
 from graphiti_core.cross_encoder.gemini_reranker_client import GeminiRerankerClient
 from graphiti_core.edges import EntityEdge
 from graphiti_core.embedder.gemini import GeminiEmbedder, GeminiEmbedderConfig
-from graphiti_core.llm_client.gemini_client import (  # type: ignore
-    GeminiClient,
-    LLMConfig,
-)
+from graphiti_core.llm_client.gemini_client import GeminiClient, LLMConfig
 from graphiti_core.nodes import EntityNode, EpisodeType
 from graphiti_core.search.search_config import SearchConfig
 from graphiti_core.search.search_config_recipes import COMBINED_HYBRID_SEARCH_RRF

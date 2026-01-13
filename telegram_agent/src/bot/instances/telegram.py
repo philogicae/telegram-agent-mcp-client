@@ -66,7 +66,7 @@ class TelegramBot(Bot):
             or (m.reply_to_message and m.reply_to_message.from_user.id == me.id)
             or m.text.startswith(self.group_msg_trigger),
             content_types=["text"],
-        )  # type: ignore
+        )
         async def _handle_message(message: Message) -> None:
             """Handle message:
             # Private
@@ -82,7 +82,7 @@ class TelegramBot(Bot):
 
         @self.core.callback_query_handler(
             func=lambda call: call.data in self.pagination_action
-        )  # type: ignore
+        )
         async def _handle_page(call: CallbackQuery) -> None:
             if isinstance(call.message, Message):
                 await self.change_page(call.message, call.data)
@@ -93,7 +93,7 @@ class TelegramBot(Bot):
                 func=lambda m: m.chat.type == "private"
                 or (m.reply_to_message and m.reply_to_message.from_user.id == me.id),
                 content_types=["document"],
-            )  # type: ignore
+            )
             async def _handle_file(message: Message) -> None:
                 await handle_document(message)
 

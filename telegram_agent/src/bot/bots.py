@@ -13,7 +13,7 @@ load_dotenv()
 
 
 class AgenticTelegramBot(AgenticBot):
-    def __init__(  # type: ignore
+    def __init__(
         self,
         telegram_id: str,
         dev: bool = False,

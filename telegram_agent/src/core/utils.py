@@ -55,7 +55,7 @@ def format_called_tool(tool: Any) -> str:
     return sub("_|-", " ", str(tool)).title()
 
 
-def checkpointer(dev: bool = False, persist: bool = False) -> BaseCheckpointSaver:  # type: ignore
+def checkpointer(dev: bool = False, persist: bool = False) -> BaseCheckpointSaver:
     if dev or not persist:
         return InMemorySaver()
     data_folder = "/app/data"
@@ -69,17 +69,14 @@ def pre_agent_hook(
     messages: list[BaseMessage] = cast(
         list[BaseMessage], state.get("messages", []) if isinstance(state, dict) else []
     )
-    trimmed_messages = cast(
-        list[BaseMessage],
-        trim_messages(
-            messages=messages,
-            strategy="last",
-            token_counter=count_tokens_approximately,
-            max_tokens=max_tokens,
-            start_on="human",
-            allow_partial=True,
-            # end_on=("human", "tool"),
-        ),
+    trimmed_messages = trim_messages(
+        messages=messages,
+        strategy="last",
+        token_counter=count_tokens_approximately,
+        max_tokens=max_tokens,
+        start_on="human",
+        allow_partial=True,
+        # end_on=("human", "tool"),
     )
     if remove_all:
         return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES)] + trimmed_messages}

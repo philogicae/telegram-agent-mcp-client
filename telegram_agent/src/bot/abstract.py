@@ -208,7 +208,7 @@ class AgenticBot(ABC):
 
 def handler(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
     @wraps(func)
-    async def wrapper(instance: AgenticBot, *args, **kwargs) -> Any:  # type: ignore
+    async def wrapper(instance: AgenticBot, *args, **kwargs) -> Any:
         return await func(instance, *args, **kwargs)
 
     return wrapper

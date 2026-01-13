@@ -36,7 +36,7 @@ WHITELIST: set[str] = set(getenv("WHITELIST", "").lower().split(","))
 
 
 class Agent:
-    agents: Dict = Dict()  # type: ignore
+    agents: Dict = Dict()
     tools: Sequence[BaseTool | Callable[..., Any] | dict[str, Any]] | ToolNode | None
     graph: GraphRAG | Any
     console: Console
@@ -67,7 +67,7 @@ class Agent:
         self.debug = debug
 
         # Default Agents
-        default = self.agents.default = Dict()  # type: ignore
+        default = self.agents.default = Dict()
         default.config = get_agent_config(all_tools)
         default.active = {}
         default.agent = create_swarm(
@@ -80,7 +80,7 @@ class Agent:
             print(f"Default Graph saved to {graph_file}")
 
         # Only Documentalist
-        documentalist = self.agents.documentalist = Dict()  # type: ignore
+        documentalist = self.agents.documentalist = Dict()
         documentalist.config = get_agent_config(
             all_tools, only_agents=["Documentalist"], config_name="Restricted"
         )

@@ -49,6 +49,30 @@ services:
     <<: [*default-dns, *default-logging, *default-networks]
     #network_mode: host # required for UPnP
 
+  ygg-api:
+    image: uwucode/ygege:develop
+    container_name: ygg-api
+    restart: unless-stopped
+    ports:
+      - 8715:8715
+    volumes:
+      - ygg-config:/config
+    environment:
+      LOG_LEVEL: debug
+      BIND_IP: 0.0.0.0
+      BIND_PORT: 8715
+    env_file:
+      - docker-envs/torrent_search.env
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8715/health || exit 1"]
+      interval: 1m30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    <<: [*default-dns, *default-logging, *default-networks]
+    deploy:
+      replicas: ${YGG_ENABLE:-1}
+
   # MCP services
   torrent-search-mcp:
     container_name: torrent-search-mcp
@@ -58,6 +82,8 @@ services:
     restart: unless-stopped
     ports:
       - 8005:8000
+    environment:
+      - YGG_BASE_URL=http://ygg-api:8715
     env_file:
       - docker-envs/torrent_search.env
     volumes:
@@ -96,3 +122,4 @@ volumes:
   torrents:
   rqbit_db:
   rqbit_cache:
+  ygg-config:
