@@ -70,13 +70,18 @@ class DownloadManager(Manager):
         self.chats[chat_id].torrent_ids.add(torrent_hash)
         await self.refresh_media_lib()
 
-    async def refresh_media_lib(self) -> None:
+    async def refresh_media_lib(self, _count: int = 0) -> None:
         if MEDIA_LIB_REFRESH:
             try:
                 async with AsyncClient() as http:
                     await http.post(MEDIA_LIB_REFRESH)
             except Exception as e:
                 self.instance.log.error(f"Refreshing media lib: {e}")
+
+        # Run 3 times with 1 minute intervals
+        if _count < 2:
+            await sleep(60)
+            await self.refresh_media_lib(_count + 1)
 
     async def update_torrent_stats(self) -> None:
         if not self.torrents:
