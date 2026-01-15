@@ -39,7 +39,7 @@ async def run_telegram_bot(dev: bool = False) -> None:
 
     managers: dict[str, type] = {}
     handlers: dict[str, Any] = {"chat": telegram_chat}
-    if getenv("RQBIT_URL"):
+    if getenv("TRANSMISSION_URL"):
         managers["download_torrent"] = DownloadManager
     if getenv("RAG_URL"):
         managers["document"] = DocumentManager

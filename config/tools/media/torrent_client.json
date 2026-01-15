@@ -4,10 +4,21 @@
     "delete_torrent": { "name": "cancel_torrent" }
   },
   "disabled": [
-    "start_torrent",
-    "pause_torrent",
-    "forget_torrent",
+    "get_session",
+    "get_session_stats",
+    "free_space",
     "get_torrent_details",
-    "get_torrent_stats"
+    "get_torrent_stats",
+    "get_recently_active",
+    "add_torrent",
+    "remove_torrent",
+    "start_torrent",
+    "stop_torrent",
+    "verify_torrent",
+    "reannounce_torrent",
+    "move_torrent",
+    "set_torrent_labels",
+    "pause_torrent",
+    "forget_torrent"
   ]
 }

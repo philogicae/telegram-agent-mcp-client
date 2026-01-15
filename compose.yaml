@@ -52,6 +52,8 @@ services:
       - .env
     <<: [ *default-logging ]
     network_mode: host
+    deploy:
+      replicas: ${DOCS_UI_URL:+1}
 
 volumes:
   agent_data:

@@ -19,35 +19,28 @@ x-networks: &default-networks
     - ai-agent
 
 services:
-  # External services
-  # n8n:
-  #   container_name: n8n
-  #   image: docker.n8n.io/n8nio/n8n:next
-  #   restart: unless-stopped
-  #   ports:
-  #     - 5678:5678
-  #   env_file:
-  #     - docker-envs/n8n.env
-  #   volumes:
-  #     - n8n_data:/home/node/.n8n
-  #   <<: [*default-dns, *default-logging, *default-networks]
-
-  rqbit:
-    container_name: rqbit
-    image: ikatson/rqbit:main
-    pull_policy: always
+  transmission:
+    container_name: transmission
+    image: lscr.io/linuxserver/transmission:latest
     restart: unless-stopped
-    ports: # Not needed on host
-      - 3030:3030 # HTTP API port
-      - 4240:4240 # TCP/uTP BitTorrent port
+    #ports: # Not needed on host
+    #  - 9091:9091 # Web UI port
+    #  - 51413:51413 # Torrent port (TCP)
+    #  - 51413:51413/udp # Torrent port (UDP)
     env_file:
-      - docker-envs/rqbit.env
+      - docker-envs/transmission.env
+    environment:
+      - USER=${TRANSMISSION_USER:-}
+      - PASS=${TRANSMISSION_PASS:-}
+      - DOCKER_MODS=linuxserver/mods:transmission-floodui|linuxserver/mods:transmission-transmissionic
     volumes:
-      - rqbit_db:/home/rqbit/db
-      - rqbit_cache:/home/rqbit/cache
-      - /mnt/disk2/downloads:/home/rqbit/downloads
-    <<: [*default-dns, *default-logging, *default-networks]
-    #network_mode: host # required for UPnP
+      - transmission_config:/config
+      - transmission_watch:/watch # change to your watch directory
+      - /mnt/disk2/downloads:/downloads # change to your download directory
+    <<: [*default-dns, *default-logging]
+    network_mode: host # required for UPnP
+    deploy:
+      replicas: ${TRANSMISSION_ENABLE:-0}
 
   ygg-api:
     image: uwucode/ygege:develop
@@ -90,16 +83,16 @@ services:
       - torrents:/torrents
     <<: [*default-dns, *default-logging, *default-networks]
 
-  rqbit-mcp:
-    container_name: rqbit-mcp
-    image: philogicae/rqbit-mcp:latest
+  transmission-mcp:
+    container_name: transmission-mcp
+    image: philogicae/transmission-mcp:latest
     pull_policy: always
-    command: rqbit-mcp --mode sse
+    command: transmission-mcp --mode sse
     restart: unless-stopped
     ports:
       - 8006:8000
     env_file:
-      - docker-envs/rqbit.env
+      - docker-envs/transmission.env
     volumes:
       - torrents:/torrents
     <<: [*default-logging, *default-networks]
@@ -118,8 +111,7 @@ networks:
           gateway: fd28:489c:c1d1::1
 
 volumes:
-  n8n_data:
-  torrents:
-  rqbit_db:
-  rqbit_cache:
   ygg-config:
+  torrents:
+  transmission_config:
+  transmission_watch:
