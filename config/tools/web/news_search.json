@@ -1,14 +1,14 @@
 {
   // Free: 2000 queries by month. Create API KEY: https://brave.com/search/api/
   "command": "npx -y @modelcontextprotocol/server-brave-search",
+  "env": {
+    "BRAVE_API_KEY": "{ENV:BRAVE_API_KEY}"
+  },
+  "enable": ["brave_web_search"],
   "edit": {
     "brave_web_search": {
       "name": "news_search",
       "description": "Search news on the web using Brave Search, ideal for news and articles. Use this for broad information gathering and recent events. Always add 'news' keyword if missing. Only call this tool if the request is news-related."
     }
-  },
-  "env": {
-    "BRAVE_API_KEY": "{ENV:BRAVE_API_KEY}"
-  },
-  "disabled": ["brave_local_search"]
+  }
 }

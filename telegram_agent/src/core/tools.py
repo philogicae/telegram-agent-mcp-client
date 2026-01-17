@@ -19,9 +19,8 @@ load_dotenv()
 
 # Type aliases
 ServerConfig: TypeAlias = dict[str, Any]
-EditConfig: TypeAlias = dict[str, dict[str, str]]
-DisabledConfig: TypeAlias = dict[str, list[str]]
-ToolConfig: TypeAlias = tuple[ServerConfig, EditConfig, DisabledConfig]
+ToolFilterConfig: TypeAlias = dict[str, dict[str, Any]]
+ToolConfig: TypeAlias = tuple[ServerConfig, ToolFilterConfig]
 ENV_NOT_FOUND = "ENV_NOT_FOUND"
 
 # Configuration
@@ -81,22 +80,37 @@ def _configure_transport(settings: ServerConfig) -> None:
 def _process_server_configs(mcp_servers: ServerConfig) -> ToolConfig:
     """Process server configs into langchain format."""
     langchain_config: ServerConfig = {}
-    edit_config: EditConfig = {}
-    disabled_config: DisabledConfig = {}
+    filter_config: ToolFilterConfig = {}
 
     for server, settings in mcp_servers.items():
-        # Handle disabled servers/tools
-        disabled = settings.pop("disabled", None)
-        if disabled is True:
+        server_filters: dict[str, list[str] | bool] = {}
+
+        # Handle disable servers/tools
+        disable = settings.pop("disable", None)
+        if disable is True:
+            # Server completely disabled, skip adding to langchain_config
             continue
-        if isinstance(disabled, list):
-            disabled_config[server] = disabled
+        if disable and isinstance(disable, list):
+            server_filters["disable"] = disable
+
+        # Handle enable tools
+        enable = settings.pop("enable", None)
+        if enable and isinstance(enable, list):
+            server_filters["enable"] = enable
+
+        # Handle edit configuration
+        edit = settings.pop("edit", {})
+        if edit and isinstance(edit, dict):
+            server_filters["edit"] = edit
+
+        # Store filters if any exist
+        if server_filters:
+            filter_config[server] = server_filters
 
         _configure_transport(settings)
-        edit_config[server] = settings.pop("edit", {})
         langchain_config[server] = settings
 
-    return langchain_config, edit_config, disabled_config
+    return langchain_config, filter_config
 
 
 def _load_tool_config(only_file: str | None = None) -> ToolConfig:
@@ -160,7 +174,7 @@ async def get_tools(
     """Load and configure all available MCP tools."""
     tools: list[BaseTool] = []
     py_tools = _load_python_tools(only_file)
-    mcp_config, mcp_edit_config, mcp_disabled_config = _load_tool_config(only_file)
+    mcp_config, mcp_filter_config = _load_tool_config(only_file)
 
     if only_file:
         if only_file not in mcp_config and only_file not in py_tools:
@@ -185,11 +199,21 @@ async def get_tools(
                     f"[cyan]Loading tools from:[/cyan] [yellow]{server}[/yellow] [dim]({config['transport']})[/dim]"
                 )
                 raw_tools = await client.get_tools(server_name=server)
-                disabled_tools = mcp_disabled_config.get(server, [])
+
+                # Filter tools based on enable/disable/edit
+                server_filters = mcp_filter_config.get(server, {})
+                enabled_tools = server_filters.get("enable", [])
+                disabled_tools = server_filters.get("disable", [])
+                edit_config = server_filters.get("edit", {})
+                filtered_tools = []
+                for tool in raw_tools:
+                    if disabled_tools and tool.name in disabled_tools:
+                        continue
+                    if enabled_tools and tool.name not in enabled_tools:
+                        continue
+                    filtered_tools.append(tool)
                 tools.extend(
-                    _apply_tool_edits(tool, mcp_edit_config.get(server, {}))
-                    for tool in raw_tools
-                    if tool.name not in disabled_tools
+                    _apply_tool_edits(tool, edit_config) for tool in filtered_tools
                 )
             except Exception as e:
                 _console.print(f"{e}\n[red]Error loading tools from: {server}[/red]")

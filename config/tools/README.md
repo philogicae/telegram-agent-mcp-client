@@ -115,17 +115,28 @@ You can rename tools or rewrite their descriptions without modifying the underly
 }
 ```
 
-#### Disabling Tools
+#### Enabling Tools (Whitelist)
+
+When a server provides many tools but you only want to use a few, you can use the `enable` field to specify a whitelist. Only tools listed in `enable` will be loaded.
+
+```json
+// Only enable specific tools (whitelist approach)
+"enable": ["safe_tool", "useful_tool"]
+```
+
+#### Disabling Tools (Blacklist)
 
 You can disable specific tools from a server, or disable the entire server.
 
 ```json
-// Disable specific tools
-"disabled": ["dangerous_tool", "legacy_tool"]
+// Disable specific tools (blacklist approach)
+"disable": ["dangerous_tool", "legacy_tool"]
 
 // OR disable the whole server
-"disabled": true
+"disable": true
 ```
+
+**Note**: You cannot use both `enable` and `disable` for the same server. If both are provided, `disable` will take precedence for tools that appear in either list.
 
 ## 🚀 Adding a New Tool
 

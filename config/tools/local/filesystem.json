@@ -3,12 +3,12 @@
   "env": {
     "CREATE_BACKUP_FILES": "true"
   },
-  /* "disabled": [
+  /* "disable": [
     "fast_compress_files",
     "fast_extract_archive",
     "fast_sync_directories",
     "fast_get_disk_usage",
     "fast_list_allowed_directories"
   ] */
-  "disabled": true
+  "disable": true
 }

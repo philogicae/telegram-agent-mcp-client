@@ -1,5 +1,6 @@
 {
   "command": "uvx grokipedia-mcp",
+  "enable": ["search", "get_page_content"],
   "edit": {
     "search": {
       "name": "wiki_search",
@@ -9,12 +10,5 @@
       "name": "fetch_wiki_page",
       "description": "Get article content from a wiki page"
     }
-  },
-  "disabled": [
-    "get_page",
-    "get_page_citations",
-    "get_related_pages",
-    "get_page_section",
-    "get_page_sections"
-  ]
+  }
 }
