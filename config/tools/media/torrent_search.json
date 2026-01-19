@@ -1,3 +1,6 @@
 {
   "url": "{ENV:TORRENT_SEARCH_URL}/sse"
 }
+/* all found tools: 2
+get_torrent
+search_torrents */

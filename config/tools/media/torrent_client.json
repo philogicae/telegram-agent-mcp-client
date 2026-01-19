@@ -5,3 +5,23 @@
     "delete_torrent": { "name": "cancel_torrent" }
   }
 }
+/* all found tools: 19
+add_torrent
+delete_torrent
+download_torrent
+forget_torrent
+free_space
+get_recently_active
+get_session
+get_session_stats
+get_torrent_details
+get_torrent_stats
+list_torrents
+move_torrent
+pause_torrent
+reannounce_torrent
+remove_torrent
+set_torrent_labels
+start_torrent
+stop_torrent
+verify_torrent */

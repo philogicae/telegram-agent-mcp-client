@@ -4,6 +4,8 @@ from importlib.util import module_from_spec, spec_from_file_location
 from inspect import getmembers
 from os import getenv
 from pathlib import Path
+from re import DOTALL
+from re import compile as re_compile
 from re import sub
 from typing import Any, TypeAlias
 
@@ -40,10 +42,11 @@ def _load_server_configs(only_file: str | None = None) -> ServerConfig:
 
     for filepath in TOOL_DIR.rglob("*.json"):
         server_name = filepath.stem
-        if only_file and server_name != only_file:
+        server_path = f"{filepath.parent.name}/{server_name}"
+        if only_file and server_path != only_file:
             continue
         if server_name.startswith("_"):
-            _console.print(f"Ignored '{server_name}': Excluded", style="orange3")
+            _console.print(f"Ignored '{server_path}': Excluded", style="orange3")
             continue
         try:
             with filepath.open(encoding="utf-8") as f:
@@ -51,14 +54,14 @@ def _load_server_configs(only_file: str | None = None) -> ServerConfig:
                 content = sub(r"\{ENV:(\w+)\}", _replace_env_var, content)
                 if ENV_NOT_FOUND in content:
                     _console.print(
-                        f"Ignored '{server_name}': Missing environment variable",
+                        f"Ignored '{server_path}': Missing environment variable",
                         style="orange3",
                     )
                     continue
-                servers[server_name] = loads(content)
+                servers[server_path] = loads(content)
         except Exception:
             _console.print(
-                f"Ignored '{server_name}': Error loading file", style="orange3"
+                f"Ignored '{server_path}': Error loading file", style="orange3"
             )
 
     return servers
@@ -126,20 +129,21 @@ def _load_python_tools(only_file: str | None = None) -> dict[str, list[BaseTool]
 
     for filepath in TOOL_DIR.rglob("*.py"):
         filename = filepath.stem
-        if only_file and filename != only_file:
+        server_path = f"{filepath.parent.name}/{filename}"
+        if only_file and server_path != only_file:
             continue
         module_name = f"config_tools_{filename}"
         if filename == "_template":
             continue
         if filename.startswith("_"):
-            _console.print(f"Ignored '{filename}': Excluded", style="orange3")
+            _console.print(f"Ignored '{server_path}': Excluded", style="orange3")
             continue
 
         try:
             spec = spec_from_file_location(module_name, filepath)
             if spec is None or spec.loader is None:
                 _console.print(
-                    f"Ignored '{filename}': Could not create spec", style="orange3"
+                    f"Ignored '{server_path}': Could not create spec", style="orange3"
                 )
                 continue
 
@@ -149,12 +153,14 @@ def _load_python_tools(only_file: str | None = None) -> dict[str, list[BaseTool]
                 if isinstance(tool, BaseTool):
                     if filename not in py_tools:
                         _console.print(
-                            f"[cyan]Loading tools from:[/cyan] [yellow]{filename}[/yellow] [dim](pytool)[/dim]"
+                            f"[cyan]Loading tools from:[/cyan] [yellow]{server_path}[/yellow] [dim](pytool)[/dim]"
                         )
-                        py_tools[filename] = []
-                    py_tools[filename].append(tool)
-        except Exception:
-            _console.print(f"Ignored '{filename}': Error importing", style="orange3")
+                        py_tools[server_path] = []
+                    py_tools[server_path].append(tool)
+        except Exception as e:
+            _console.print(
+                f"Ignored '{server_path}': Error importing - {e}", style="orange3"
+            )
 
     return py_tools
 
@@ -168,11 +174,40 @@ def _apply_tool_edits(tool: BaseTool, edits: dict[str, str]) -> BaseTool:
     return tool
 
 
+def _update_tools_comment(server: str, tool_names: list[str]) -> None:
+    """Update <server>.json file with a comment listing all available tools."""
+    try:
+        filepath = TOOL_DIR / Path(f"{server}.json")
+        with filepath.open(encoding="utf-8") as f:
+            content = f.read()
+
+        # Check if tools comment already exists
+        tools_comment_pattern = r"/\*\s*all found tools:.*?\*/"
+        all_tools = "\n".join(sorted(tool_names))
+        new_comment = f"/* all found tools: {len(tool_names)}\n{all_tools} */"
+
+        if "all found tools:" in content:
+            # Replace existing comment - use a more precise pattern
+            pattern = re_compile(tools_comment_pattern, DOTALL)
+            content = pattern.sub(new_comment, content)
+        else:
+            # Add comment at the end
+            content = content.rstrip() + f"\n{new_comment}\n"
+
+        with filepath.open("w", encoding="utf-8") as f:
+            f.write(content)
+    except Exception as e:
+        _console.print(
+            f"[orange3]Warning: Could not update tools comment for {filepath.name}: {e}[/orange3]"
+        )
+
+
 async def get_tools(
     display: bool = True, only_file: str | None = None
 ) -> list[BaseTool]:
     """Load and configure all available MCP tools."""
     tools: list[BaseTool] = []
+    only_file = only_file.rstrip(".json").rstrip(".py") if only_file else None
     py_tools = _load_python_tools(only_file)
     mcp_config, mcp_filter_config = _load_tool_config(only_file)
 
@@ -199,6 +234,10 @@ async def get_tools(
                     f"[cyan]Loading tools from:[/cyan] [yellow]{server}[/yellow] [dim]({config['transport']})[/dim]"
                 )
                 raw_tools = await client.get_tools(server_name=server)
+
+                # Update server.json with tools list if needed
+                if server in mcp_config:
+                    _update_tools_comment(server, [tool.name for tool in raw_tools])
 
                 # Filter tools based on enable/disable/edit
                 server_filters = mcp_filter_config.get(server, {})
