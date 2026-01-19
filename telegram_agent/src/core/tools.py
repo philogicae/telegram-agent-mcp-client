@@ -151,7 +151,7 @@ def _load_python_tools(only_file: str | None = None) -> dict[str, list[BaseTool]
             spec.loader.exec_module(module)
             for _, tool in getmembers(module):
                 if isinstance(tool, BaseTool):
-                    if filename not in py_tools:
+                    if server_path not in py_tools:
                         _console.print(
                             f"[cyan]Loading tools from:[/cyan] [yellow]{server_path}[/yellow] [dim](pytool)[/dim]"
                         )
