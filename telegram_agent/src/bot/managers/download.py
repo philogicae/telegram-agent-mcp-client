@@ -1,4 +1,4 @@
-from asyncio import gather, sleep
+from asyncio import create_task, gather, sleep
 from json import loads
 from os import getenv
 from typing import Any
@@ -68,13 +68,14 @@ class DownloadManager(Manager):
                 await self.instance.bot.delete(old_message_obj)
             self.chats[chat_id].obj = None
         self.chats[chat_id].torrent_ids.add(torrent_hash)
-        await self.refresh_media_lib()
+        create_task(self.refresh_media_lib())
 
     async def refresh_media_lib(self, _count: int = 0) -> None:
         if MEDIA_LIB_REFRESH:
             try:
                 async with AsyncClient() as http:
                     await http.post(MEDIA_LIB_REFRESH)
+                self.instance.log.info("Media lib refreshed")
             except Exception as e:
                 self.instance.log.error(f"Refreshing media lib: {e}")
 

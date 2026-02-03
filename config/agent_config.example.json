@@ -78,6 +78,7 @@
       "tools": [
         "web_search",
         "fetch_url",
+        "fetch_urls",
         //"news_search",
         //"deep_search",
         "wiki_search",

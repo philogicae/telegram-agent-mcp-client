@@ -6,19 +6,16 @@ env:
 
 jobs:
   test:
-    name: Run ruff and mypy 🧪
+    name: Run ruff and ty 🧪
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install uv with cache
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
+          python-version: 3.13
           enable-cache: true
           cache-dependency-glob: uv.lock
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: pyproject.toml
       - name: Install dependencies
         run: uv sync --locked --dev
       - name: Run ruff format
@@ -34,24 +31,19 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
+      - uses: actions/checkout@v6
       - name: Install uv with cache
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
+          python-version: 3.13
           enable-cache: true
           cache-dependency-glob: uv.lock
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: pyproject.toml
       - name: Install dependencies
         run: uv sync --locked
       - name: Build a binary wheel and a source tarball
         run: uv build
       - name: Store the distribution packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: python-package-distributions
           path: dist/
@@ -66,7 +58,7 @@ jobs:
       id-token: write
     steps:
       - name: Download all the dists
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: python-package-distributions
           path: dist/

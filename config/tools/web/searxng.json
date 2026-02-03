@@ -1,0 +1,16 @@
+{
+  "command": "npx -y mcp-searxng",
+  "env": {
+    "SEARXNG_URL": "{ENV:SEARXNG_URL}"
+  },
+  "edit": {
+    "searxng_web_search": {
+      "name": "web_search",
+      "description": "Perform a web search across multiple search engines and receive detailed results including titles, URLs, and summaries."
+    }
+  },
+  "enable": ["searxng_web_search"]
+}
+/* all found tools: 2
+searxng_web_search
+web_url_read */

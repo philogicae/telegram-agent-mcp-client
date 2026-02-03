@@ -62,9 +62,11 @@ class TelegramBot(Bot):
         handle_document = kwargs.get("document")
 
         @self.core.message_handler(
-            func=lambda m: m.chat.type == "private"
-            or (m.reply_to_message and m.reply_to_message.from_user.id == me.id)
-            or m.text.startswith(self.group_msg_trigger),
+            func=lambda m: (
+                m.chat.type == "private"
+                or (m.reply_to_message and m.reply_to_message.from_user.id == me.id)
+                or m.text.startswith(self.group_msg_trigger)
+            ),
             content_types=["text"],
         )
         async def _handle_message(message: Message) -> None:
@@ -90,8 +92,10 @@ class TelegramBot(Bot):
         if handle_document:
 
             @self.core.message_handler(
-                func=lambda m: m.chat.type == "private"
-                or (m.reply_to_message and m.reply_to_message.from_user.id == me.id),
+                func=lambda m: (
+                    m.chat.type == "private"
+                    or (m.reply_to_message and m.reply_to_message.from_user.id == me.id)
+                ),
                 content_types=["document"],
             )
             async def _handle_file(message: Message) -> None:
