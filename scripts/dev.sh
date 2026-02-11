@@ -1,1 +1,13 @@
-uv lock && uv sync -U --link-mode=copy && uv run ruff format telegram_agent && uv run ruff check telegram_agent --fix && uv run ty check telegram_agent config/tools
+#!/bin/bash
+
+# Lock and sync dependencies
+uv lock && uv sync -U --link-mode=copy
+
+# Format code
+uv run ruff format
+
+# Check for linting errors
+uv run ruff check --fix
+
+# Run type checking
+uv run ty check
