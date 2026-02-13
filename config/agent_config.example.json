@@ -66,16 +66,11 @@
             "`fetch_url` using 'https://ww4.tinyzone.org'",
             "Reply but replacing ' HD ' keywords by ' - ' and formatting 'SS X EPS Y' as 'X seasons / Y episodes'"
           ]
-        },
-        "new_episode": {
-          "trigger": "for requests looking like 'Find new/last episode of <series>'",
-          "steps": [
-            "`check_betaseries_planning` to get the list of new episodes",
-            "If no info found, `web_search` for '<series> latest season episode'",
-            "`fetch_url` to identify the latest available episode in format 'sXXeYY'"
-            //"Delegate to `Media Manager`, he will execute `find_media` routine for the identified episode"
-          ]
         }
+        /* "new_episodes": {
+          "trigger": "for requests looking like 'Find new episodes...'",
+          "steps": ["Just delegate to `Media Manager`"]
+        } */
       },
       "tools": [
         "web_search",
@@ -84,8 +79,7 @@
         //"news_search",
         //"deep_search",
         "wiki_search",
-        "fetch_wiki_page",
-        "check_betaseries_planning"
+        "fetch_wiki_page"
       ],
       "transfer": "for any request requiring searching the web, news, fetching a URL, looking up information, or finding media information (such as new/last movie/series/release/media)"
     }
@@ -109,12 +103,12 @@
             "Delegate to `Search Agent`"
           ]
         },
-        "new_episode": {
-          "trigger": "for requests looking like 'Find new/last episode of <series>'",
+        "new_episodes": {
+          "trigger": "for requests looking like 'Download new episodes'",
           "steps": [
-            "`think` to log a thought about this routine",
-            "Delegate to `Search Agent`",
-            "After `Search Agent` delegates back to you, execute `find_media` routine for the identified episode"
+            "`check_series_planning` to get the list of new available episodes",
+            "If any new undownloaded available episodes, `find_media` routine for the identified episodes",
+            "`mark_episode_downloaded` for the downloaded episodes"
           ]
         }
       },
@@ -123,7 +117,9 @@
         "get_torrent",
         "download_torrent",
         "list_torrents",
-        "cancel_torrent"
+        "cancel_torrent",
+        "check_series_planning",
+        "mark_episode_downloaded"
       ],
       "transfer": "for any request involving finding, downloading, or managing torrents for movies and series (to find info about movie/series/release/media, delegate to Search Agent instead)"
     } */
