@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Lock and sync dependencies
 uv lock && uv sync -U --link-mode=copy
