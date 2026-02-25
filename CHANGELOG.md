@@ -179,6 +179,19 @@
 - Update tool filtering logic to handle both enable (whitelist) and disable (blacklist) approaches
 - Simplify torrent_client.json by using `enable` instead of long `disable` list
 - Apply whitelist approach to deep_search, news_search, and wiki_search configurations
+- Feat: add tool discovery comments to JSON configs and improve tool loading with server path tracking
+
+- Add automatic comments to tool JSON configs listing all available tools with count
+- Update tool loading to use full server paths (category/name) instead of just filenames
+- Add _update_tools_comment function to maintain tool lists in JSON files
+- Extend ty type checking to include config/tools directory in dev.sh
+- Remove disabled filesystem.json configuration file
+- Improve error messages with
+- Feat: fix Python tool loading to use server_path instead of filename for dictionary key
+- Feat: upgrade GitHub Actions and Python to 3.13, replace web_search with searxng and fetch tools
+- Feat: add BetaSeries planning integration for episode tracking and new releases
+- Feat: enhance BetaSeries integration with episode download tracking and improved authentication
+- Feat: upgrade searxng-mul-mcp and add Playwright driver auto-installation with stderr suppression
 
 ### 🐛 Bug Fixes
 
@@ -295,6 +308,8 @@
 - Refactor: improve HTML to Markdown conversion with proper image alt text and report ID quoting
 - Refactor: simplify agent handoff prompt template to be more direct
 - Refactor: clarify agent handoff message to prevent delegation behavior
+- Refactor: update CHANGELOG.md format and git-cliff configuration
+- Refactor: consolidate langchain dependencies using extras syntax and add error handling to dev.sh
 
 ### 📚 Documentation
 
@@ -378,3 +393,4 @@
 - Chore: deps
 - Chore: deps
 - Chore: update deps
+- Chore: update
