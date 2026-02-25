@@ -3,6 +3,7 @@
 from importlib.util import module_from_spec, spec_from_file_location
 from inspect import getmembers
 from os import getenv
+from os import name as os_name
 from pathlib import Path
 from re import DOTALL
 from re import compile as re_compile
@@ -75,6 +76,16 @@ def _configure_transport(settings: ServerConfig) -> None:
             settings["command"] = parts[0]
             settings["args"] = parts[1:]
         settings["transport"] = "stdio"
+
+        # Wrap command in shell to suppress output
+        if os_name != "nt":  # Unix-like systems
+            original_command = settings["command"]
+            original_args = settings.get("args", [])
+            settings["command"] = "sh"
+            settings["args"] = [
+                "-c",
+                f"{original_command} {' '.join(original_args)} 2>/dev/null",
+            ]
     elif url := settings.get("url"):
         settings["url"] = url.rstrip("/")
         settings["transport"] = "sse" if "/sse" in url else "streamable_http"

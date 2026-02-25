@@ -1,16 +1,11 @@
 {
-  "command": "npx -y mcp-searxng",
-  "env": {
-    "SEARXNG_URL": "{ENV:SEARXNG_URL}"
-  },
+  "command": "SEARXNG_URL={ENV:SEARXNG_URL} npx -y searxng-mul-mcp",
   "edit": {
-    "searxng_web_search": {
+    "search": {
       "name": "web_search",
-      "description": "Perform a web search across multiple search engines and receive detailed results including titles, URLs, and summaries."
+      "description": "Perform web search(es) across multiple search engines, support searching multiple queries in parallel, and return detailed results including titles, URLs, and summaries."
     }
-  },
-  "enable": ["searxng_web_search"]
+  }
 }
-/* all found tools: 2
-searxng_web_search
-web_url_read */
+/* all found tools: 1
+search */
