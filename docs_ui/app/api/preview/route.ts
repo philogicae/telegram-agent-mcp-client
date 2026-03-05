@@ -1,11 +1,11 @@
-import { type NextRequest, NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from "next/server"
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
-  const id = searchParams.get('id')
+  const id = searchParams.get("id")
 
   if (!id) {
-    return NextResponse.json({ error: 'ID is required' }, { status: 400 })
+    return NextResponse.json({ error: "ID is required" }, { status: 400 })
   }
 
   try {
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const html = await response.text()
     return new NextResponse(html, {
       headers: {
-        'Content-Type': 'text/html',
+        "Content-Type": "text/html",
       },
     })
   } catch (error: any) {

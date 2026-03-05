@@ -1,11 +1,11 @@
-'use client'
-import NotFound from '@components/NotFound'
-import Previewing from '@components/Previewing'
-import { Button } from '@heroui/react'
-import { CUSTOM_CSS } from '@utils/preview'
-import DOMPurify from 'dompurify'
-import { use, useCallback, useEffect, useRef, useState } from 'react'
-import { FiDownload } from 'react-icons/fi'
+"use client"
+import NotFound from "@components/NotFound"
+import Previewing from "@components/Previewing"
+import { Button } from "@heroui/react"
+import { CUSTOM_CSS } from "@utils/preview"
+import DOMPurify from "dompurify"
+import { use, useCallback, useEffect, useRef, useState } from "react"
+import { FiDownload } from "react-icons/fi"
 
 export default function Preview({
   params,
@@ -13,7 +13,7 @@ export default function Preview({
   params: Promise<{ id: string }>
 }) {
   const { id } = use(params)
-  const [htmlContent, setHtmlContent] = useState('')
+  const [htmlContent, setHtmlContent] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
@@ -29,7 +29,7 @@ export default function Preview({
       }
       const html = await response.text()
       const sanitizedHtml = DOMPurify.sanitize(html, {
-        FORBID_ATTR: ['style'],
+        FORBID_ATTR: ["style"],
       })
       const finalHtml = `<style>${CUSTOM_CSS}</style>${sanitizedHtml}`
       setHtmlContent(finalHtml)
@@ -50,19 +50,19 @@ export default function Preview({
     setDownloading(true)
     try {
       // Dynamically import html2pdf.js to avoid SSR issues
-      const html2pdf = (await import('html2pdf.js')).default
+      const html2pdf = (await import("html2pdf.js")).default
       const element = contentRef.current
       const opt = {
         margin: 10,
         filename: `report-${id}.pdf`,
-        image: { type: 'jpeg' as const, quality: 0.98 },
+        image: { type: "jpeg" as const, quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-        pagebreak: { mode: 'css', avoid: ['img', 'pre', 'table'] },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" as const },
+        pagebreak: { mode: "css", avoid: ["img", "pre", "table"] },
       }
       await html2pdf().set(opt).from(element).save()
     } catch (err: any) {
-      console.error('Failed to generate PDF:', err)
+      console.error("Failed to generate PDF:", err)
     } finally {
       setDownloading(false)
     }
@@ -85,13 +85,13 @@ export default function Preview({
         >
           <FiDownload className="text-md" />
           <span className="text-xs font-mono tracking-tighter">
-            {downloading ? 'Generating PDF...' : 'Export as PDF'}
+            {downloading ? "Generating PDF..." : "Export as PDF"}
           </span>
         </Button>
       </div>
       <div
         ref={contentRef}
-        className="flex flex-col h-full w-full max-w-full items-center justify-start p-8 overflow-x-hidden break-words"
+        className="flex flex-col h-full w-full max-w-full items-center justify-start p-8 overflow-x-hidden wrap-break-word"
         /* biome-ignore lint/security/noDangerouslySetInnerHtml: The HTML is sanitized with DOMPurify */
         dangerouslySetInnerHTML={{ __html: htmlContent }}
       />

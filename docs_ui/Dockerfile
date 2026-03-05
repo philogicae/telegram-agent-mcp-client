@@ -1,4 +1,4 @@
-FROM node:24-alpine AS base
+FROM platformatic/node-caged:25-alpine AS base
 WORKDIR /frontend
 RUN npm update -g npm && npm install -g pnpm@latest-10
 

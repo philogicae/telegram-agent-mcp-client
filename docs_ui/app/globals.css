@@ -1,9 +1,12 @@
 @import "tailwindcss";
-@config "../tailwind.config.ts";
+@plugin "./hero.ts";
+@source "../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";
+@custom-variant dark (&:is(.dark *));
 
 html {
   @apply flex w-full h-full antialiased text-black bg-white dark:bg-black dark:text-white;
 }
 body {
   @apply w-full h-full overflow-hidden;
+  contain: layout style paint;
 }

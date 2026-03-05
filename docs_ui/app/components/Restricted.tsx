@@ -1,4 +1,4 @@
-import { FaBan, FaCircleXmark } from 'react-icons/fa6'
+import { FaBan, FaCircleXmark } from "react-icons/fa6"
 
 export default function Restricted() {
   return (

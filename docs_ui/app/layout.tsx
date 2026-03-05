@@ -1,13 +1,13 @@
-import './globals.css'
-import HeroUI from '@layout/HeroUI'
-import Navbar from '@layout/Navbar'
-import { Roboto } from 'next/font/google'
-import { Suspense } from 'react'
-import Loading from './loading'
+import "./globals.css"
+import HeroUI from "@layout/HeroUI"
+import Navbar from "@layout/Navbar"
+import { Roboto } from "next/font/google"
+import { Suspense } from "react"
+import Loading from "./loading"
 
 const font = Roboto({
-  subsets: ['latin'],
-  weight: '400',
+  subsets: ["latin"],
+  weight: "400",
   preload: true,
 })
 

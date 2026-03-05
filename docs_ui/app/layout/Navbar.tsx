@@ -1,23 +1,23 @@
-'use client'
-import Image from 'next/image'
-import { useCallback, useEffect, useState } from 'react'
-import { FiMoon, FiSun } from 'react-icons/fi'
+"use client"
+import Image from "next/image"
+import { useCallback, useEffect, useState } from "react"
+import { FiMoon, FiSun } from "react-icons/fi"
 
 export default function Navbar({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState('light')
+  const [theme, setTheme] = useState("light")
 
   useEffect(() => {
-    if (localStorage.getItem('theme') === 'dark') {
-      document.documentElement.classList.add('dark')
-      setTheme('dark')
+    if (localStorage.getItem("theme") === "dark") {
+      document.documentElement.classList.add("dark")
+      setTheme("dark")
     }
   }, [])
 
   const toggleTheme = useCallback(() => {
-    const newTheme = theme === 'light' ? 'dark' : 'light'
+    const newTheme = theme === "light" ? "dark" : "light"
     setTheme(newTheme)
-    localStorage.setItem('theme', newTheme)
-    document.documentElement.classList.toggle('dark')
+    localStorage.setItem("theme", newTheme)
+    document.documentElement.classList.toggle("dark")
   }, [theme])
 
   return (
@@ -37,7 +37,7 @@ export default function Navbar({ children }: { children: React.ReactNode }) {
             onClick={toggleTheme}
             className="flex h-8 w-12 rounded-lg border dark:border-1.5 border-white ring-2 ring-black border-offset-1 bg-black text-white items-center justify-center rounded-l-none"
           >
-            {theme === 'light' ? (
+            {theme === "light" ? (
               <FiSun className="text-red-200" />
             ) : (
               <FiMoon className="text-cyan-200" />

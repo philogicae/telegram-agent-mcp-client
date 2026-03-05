@@ -1,4 +1,4 @@
-import { FiRefreshCw } from 'react-icons/fi'
+import { FiRefreshCw } from "react-icons/fi"
 
 export default function Previewing() {
   return (

@@ -1,14 +1,14 @@
-'use client'
-import Restricted from '@components/Restricted'
-import { Button, Card, CardBody, Progress } from '@heroui/react'
-import { cn } from '@utils/tw'
+"use client"
+import Restricted from "@components/Restricted"
+import { Button, Card, CardBody, Progress } from "@heroui/react"
+import { cn } from "@utils/tw"
 import {
   ACCEPTED_EXTENSIONS,
   ALLOWED_FILE_TYPES,
   MAX_FILE_SIZE,
-} from '@utils/upload'
-import { use, useCallback, useEffect, useRef, useState } from 'react'
-import { FaCircleCheck } from 'react-icons/fa6'
+} from "@utils/upload"
+import { use, useCallback, useEffect, useRef, useState } from "react"
+import { FaCircleCheck } from "react-icons/fa6"
 import {
   FiAlertCircle,
   FiCheckCircle,
@@ -17,14 +17,14 @@ import {
   FiRefreshCw,
   FiUpload,
   FiX,
-} from 'react-icons/fi'
+} from "react-icons/fi"
 
 interface UploadedFile {
   file: File
   id: string
 }
 
-type UploadStatus = 'idle' | 'uploading' | 'success' | 'error'
+type UploadStatus = "idle" | "uploading" | "success" | "error"
 
 interface UploadResultData {
   message: string
@@ -38,7 +38,7 @@ export default function Upload({
 }) {
   const { chat } = use(params)
   const [files, setFiles] = useState<UploadedFile[]>([])
-  const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle')
+  const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle")
   const [uploadResult, setUploadResult] = useState<UploadResultData | null>(
     null
   )
@@ -54,7 +54,7 @@ export default function Upload({
       const validFiles: File[] = []
       const errors: string[] = []
       fileList.forEach((file) => {
-        const fileExtension = `.${file.name.split('.').pop()?.toLowerCase()}`
+        const fileExtension = `.${file.name.split(".").pop()?.toLowerCase()}`
         const isValidType =
           allowedTypes.includes(file.type) ||
           allowedExtensions.includes(fileExtension)
@@ -86,7 +86,7 @@ export default function Upload({
       setSuccess(null)
       const { validFiles, errors } = validateFiles(fileList)
       if (errors.length > 0) {
-        setError(errors.join(', '))
+        setError(errors.join(", "))
       }
       if (validFiles.length > 0) {
         const newFiles = validFiles.map((file) => ({
@@ -136,23 +136,23 @@ export default function Upload({
   const removeFile = useCallback((id: string) => {
     setFiles((prev) => prev.filter((f) => f.id !== id))
     if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+      fileInputRef.current.value = ""
     }
   }, [])
 
   const clearAllFiles = useCallback(() => {
     setFiles([])
     if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+      fileInputRef.current.value = ""
     }
     setError(null)
     setSuccess(null)
   }, [])
 
   const formatFileSize = useCallback((bytes: number) => {
-    if (bytes === 0) return '0 Bytes'
+    if (bytes === 0) return "0 Bytes"
     const k = 1024
-    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const sizes = ["Bytes", "KB", "MB", "GB"]
     const i = Math.floor(Math.log(bytes) / Math.log(k))
     return `${Number.parseFloat((bytes / k ** i).toFixed(2))} ${sizes[i]}`
   }, [])
@@ -178,37 +178,37 @@ export default function Upload({
   const handleUpload = useCallback(async () => {
     if (files.length === 0) return
 
-    setUploadStatus('uploading')
+    setUploadStatus("uploading")
     setError(null)
     setSuccess(null)
 
     const formData = new FormData()
-    formData.append('chat', chat)
+    formData.append("chat", chat)
     files.forEach(({ file }) => {
       // Use the file's name as the key, per the backend API
       formData.append(file.name, file)
     })
 
     try {
-      const response = await fetch('/api/upload', {
-        method: 'POST',
+      const response = await fetch("/api/upload", {
+        method: "POST",
         body: formData,
       })
 
       const result = await response.json()
 
       if (!response.ok) {
-        throw new Error(result.error || 'Upload failed')
+        throw new Error(result.error || "Upload failed")
       }
 
-      setUploadStatus('success')
+      setUploadStatus("success")
       setUploadResult({ message: result.message, files: result.files })
     } catch (err) {
       const errorMessage =
         err instanceof Error
           ? err.message
-          : 'An unknown error occurred. Please try again.'
-      setUploadStatus('error')
+          : "An unknown error occurred. Please try again."
+      setUploadStatus("error")
       setUploadResult({ message: errorMessage })
     } finally {
       setFiles([])
@@ -217,20 +217,20 @@ export default function Upload({
 
   const resetState = () => {
     setFiles([])
-    setUploadStatus('idle')
+    setUploadStatus("idle")
     setUploadResult(null)
     setError(null)
     setSuccess(null)
     if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+      fileInputRef.current.value = ""
     }
   }
 
-  if (chat !== 'dev') {
+  if (chat !== "dev") {
     return <Restricted />
   }
 
-  if (uploadStatus === 'success' && uploadResult) {
+  if (uploadStatus === "success" && uploadResult) {
     return (
       <div className="flex flex-col w-full h-full items-center justify-center px-4 py-2">
         <Card className="flex flex-col w-full sm:w-4/5 md:w-3/4 lg:w-2/3 xl:w-1/2 h-full shadow-none items-center justify-center gap-3 bg-white dark:bg-black text-black dark:text-white">
@@ -241,7 +241,7 @@ export default function Upload({
               <div className="inline-flex items-center justify-center rounded-lg bg-gray-300 dark:bg-gray-700 px-5 py-0.5 text-sm font-bold text-black dark:text-white">
                 <span>
                   {uploadResult.files.length} valid file
-                  {uploadResult.files.length === 1 ? '' : 's'} found
+                  {uploadResult.files.length === 1 ? "" : "s"} found
                 </span>
               </div>
               <ul className="h-1/4 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-lg p-2 space-y-1.5 text-xs sm:text-sm">
@@ -278,7 +278,7 @@ export default function Upload({
     )
   }
 
-  if (uploadStatus === 'error' && uploadResult) {
+  if (uploadStatus === "error" && uploadResult) {
     return (
       <div className="flex flex-col w-full h-full items-center justify-center px-4 py-2">
         <Card className="flex flex-col w-full sm:w-4/5 md:w-3/4 lg:w-2/3 xl:w-1/2 h-full shadow-none items-center justify-center gap-4 bg-white dark:bg-black text-black dark:text-white">
@@ -338,18 +338,18 @@ export default function Upload({
         <CardBody className="p-4 items-center justify-center gap-3 dark:bg-black bg-white w-full h-full">
           <button
             className={cn(
-              'w-full border-2 border-dashed rounded-lg p-4 text-center transition-all duration-200 cursor-pointer',
+              "w-full border-2 border-dashed rounded-lg p-4 text-center transition-all duration-200 cursor-pointer",
               isDragOver
-                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                : 'border-gray-500 hover:border-gray-400 dark:hover:border-gray-500 hover:bg-gray-100 dark:hover:bg-gray-900',
-              !files.length ? 'h-full' : ''
+                ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                : "border-gray-500 hover:border-gray-400 dark:hover:border-gray-500 hover:bg-gray-100 dark:hover:bg-gray-900",
+              !files.length ? "h-full" : ""
             )}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
+              if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault()
                 fileInputRef.current?.click()
               }
@@ -383,12 +383,12 @@ export default function Upload({
                 <Button
                   size="md"
                   onPress={handleUpload}
-                  disabled={files.length === 0 || uploadStatus === 'uploading'}
+                  disabled={files.length === 0 || uploadStatus === "uploading"}
                   className="inline-flex cursor-pointer rounded-lg text-white bg-black px-8 py-4 text-md font-bold disabled:bg-gray-300 disabled:text-gray-500 border border-black ring-2 ring-black border-offset-1 hover:text-green-400 w-full"
                 >
-                  {uploadStatus === 'uploading'
-                    ? 'Uploading...'
-                    : `Upload ${files.length} File${files.length === 1 ? '' : 's'}`}
+                  {uploadStatus === "uploading"
+                    ? "Uploading..."
+                    : `Upload ${files.length} File${files.length === 1 ? "" : "s"}`}
                 </Button>
               </div>
               <div className="flex flex-row items-center justify-between mb-2 p-1 gap-2">
@@ -402,20 +402,20 @@ export default function Upload({
                     size="md"
                     onPress={handleUpload}
                     disabled={
-                      files.length === 0 || uploadStatus === 'uploading'
+                      files.length === 0 || uploadStatus === "uploading"
                     }
                     className="inline-flex cursor-pointer rounded-lg text-white bg-black px-8 py-4 text-md font-bold disabled:bg-gray-300 disabled:text-gray-500 border border-black ring-2 ring-black border-offset-1 hover:text-green-400"
                   >
-                    {uploadStatus === 'uploading'
-                      ? 'Uploading...'
-                      : `Upload ${files.length} File${files.length === 1 ? '' : 's'}`}
+                    {uploadStatus === "uploading"
+                      ? "Uploading..."
+                      : `Upload ${files.length} File${files.length === 1 ? "" : "s"}`}
                   </Button>
                 </div>
                 <div className="flex items-center w-32">
                   <Button
                     size="sm"
                     onPress={clearAllFiles}
-                    disabled={uploadStatus === 'uploading'}
+                    disabled={uploadStatus === "uploading"}
                     className="text-white text-sm hover:text-red-500 w-full bg-black border border-black ring-2 ring-black border-offset-1"
                   >
                     Clear All
@@ -442,7 +442,7 @@ export default function Upload({
                         type="button"
                         onClick={() => removeFile(id)}
                         className="text-gray-700 hover:text-red-700 dark:text-gray-300 dark:hover:text-red-300 transition-colors rounded hover:bg-red-50 dark:hover:bg-red-900/20 border"
-                        disabled={uploadStatus === 'uploading'}
+                        disabled={uploadStatus === "uploading"}
                         aria-label={`Remove ${file.name}`}
                       >
                         <FiX className="h-5 w-5" />
@@ -453,7 +453,7 @@ export default function Upload({
               </div>
             </div>
           )}
-          {uploadStatus === 'uploading' && (
+          {uploadStatus === "uploading" && (
             <div className="w-full pt-4">
               <Progress
                 isIndeterminate
