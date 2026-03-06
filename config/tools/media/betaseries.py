@@ -63,7 +63,7 @@ def _find_user_id(username: str) -> int | None:
 
 def _fetch_planning(user_id: int, undownloaded: bool, month: str | None) -> list[Any]:
     """Fetch episode planning for a given user."""
-    params = {"id": user_id}
+    params: dict[str, Any] = {"id": user_id}
     if undownloaded:
         params["unseen"] = "true"
     if month:

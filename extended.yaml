@@ -19,6 +19,32 @@ x-networks: &default-networks
     - ai-agent
 
 services:
+  ygg-api:
+    image: ghcr.io/djerayane/ygege:docker-publish
+    container_name: ygg-api
+    restart: unless-stopped
+    ports:
+      - 8715:8715
+    volumes:
+      - ygg-config:/config
+    #environment:
+    # BIND_IP: "0.0.0.0"                   # Optional: IP to bind (default: 0.0.0.0)
+    # BIND_PORT: "8715"                    # Optional: Internal port (default: 8715)
+    # LOG_LEVEL: "info"                    # Optional: Log level (default: info)
+    # TMDB_TOKEN: "your_token"             # Optional: TMDB API token for IMDB/TMDB lookups
+    # RELAY_URL: "wss://relay.ygg.gratis"  # Optional: Nostr relay URL (default: wss://relay.ygg.gratis)
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8715/health || exit 1"]
+      interval: 1m30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    <<: [*default-dns, *default-logging, *default-networks]
+    deploy:
+      replicas: ${YGG_ENABLE:-1}
+
   transmission:
     container_name: transmission
     image: lscr.io/linuxserver/transmission:latest
@@ -65,6 +91,8 @@ services:
     restart: unless-stopped
     ports:
       - 8005:8000
+    environment:
+      - YGG_LOCAL_API=http://ygg-api:8715
     env_file:
       - docker-envs/torrent_search.env
     volumes:
@@ -85,6 +113,7 @@ networks:
           gateway: fd28:489c:c1d1::1
 
 volumes:
+  ygg-config:
   torrents:
   transmission_config:
   transmission_watch:
