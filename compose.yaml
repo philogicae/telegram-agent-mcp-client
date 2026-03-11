@@ -18,8 +18,11 @@ services:
       - neo4j-community
     env_file:
       - .env
+    environment:
+      - DATA_DIR=/app/data
+      - CONFIG_DIR=/app/config
     volumes:
-      - agent_data:/app/data
+      - ${DATA_DIR:-./data}:/app/data
       - ${CONFIG_DIR:-./config}:/app/config
     <<: [ *default-logging ]
     network_mode: host
@@ -35,7 +38,7 @@ services:
       - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD}
       - NEO4J_PLUGINS=["apoc"]
     volumes:
-      - neo4j_data:/data
+      - ${DATA_DIR:-./data}/neo4j:/data
     <<: [ *default-logging ]
     network_mode: host
 
@@ -54,7 +57,3 @@ services:
     network_mode: host
     deploy:
       replicas: ${DOCS_UI_URL:+1}
-
-volumes:
-  agent_data:
-  neo4j_data:
