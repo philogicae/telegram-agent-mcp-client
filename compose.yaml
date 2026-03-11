@@ -37,6 +37,7 @@ services:
     environment:
       - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD}
       - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_server_jvm_additional="--add-modules=jdk.incubator.vector"
     volumes:
       - ${DATA_DIR:-./data}/neo4j:/data
     <<: [ *default-logging ]
