@@ -62,7 +62,7 @@ services:
     volumes:
       - transmission_config:/config
       - transmission_watch:/watch # change to your watch directory (Optional)
-      - ${TRANSMISSION_DOWNLOAD_DIR:-/downloads}:/downloads # Set via environment variable TRANSMISSION_DOWNLOAD_DIR
+      - ${TRANSMISSION_DOWNLOAD_DIR:-/downloads}:/downloads # Set via env var TRANSMISSION_DOWNLOAD_DIR
     <<: [*default-dns, *default-logging]
     network_mode: host # required for UPnP
     deploy:
