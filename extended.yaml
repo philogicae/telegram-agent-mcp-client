@@ -47,7 +47,7 @@ services:
 
   transmission:
     container_name: transmission
-    image: lscr.io/linuxserver/transmission:latest
+    image: lscr.io/linuxserver/transmission:4.0.6
     restart: unless-stopped
     #ports: # Not needed on host
     #  - 9091:9091 # Web UI port
@@ -58,15 +58,15 @@ services:
     environment:
       - USER=${TRANSMISSION_USER:-}
       - PASS=${TRANSMISSION_PASS:-}
-      - DOCKER_MODS=linuxserver/mods:transmission-floodui|linuxserver/mods:transmission-transmissionic
+      - DOCKER_MODS="linuxserver/mods:transmission-floodui|linuxserver/mods:transmission-transmissionic"
     volumes:
       - transmission_config:/config
-      - transmission_watch:/watch # change to your watch directory
-      - /mnt/disk2/downloads:/downloads # change to your download directory
+      - transmission_watch:/watch # change to your watch directory (Optional)
+      - ${TRANSMISSION_DOWNLOAD_DIR:-/downloads}:/downloads # Set via environment variable TRANSMISSION_DOWNLOAD_DIR
     <<: [*default-dns, *default-logging]
     network_mode: host # required for UPnP
     deploy:
-      replicas: ${TRANSMISSION_ENABLE:-0}
+      replicas: ${TRANSMISSION_ENABLE:-1}
 
   # MCP services
   transmission-mcp:
