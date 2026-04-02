@@ -3,6 +3,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from langchain.chat_models import BaseChatModel
+from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import (
     ChatGoogleGenerativeAI,
     HarmBlockThreshold,
@@ -76,6 +77,18 @@ class LLM(Singleton):
                     model=model_gemini_small,
                     **common,
                     **specifics,
+                )
+
+            # Fire Pass
+            api_key_fireworks = getenv("FIREWORKS_API_KEY")
+            model_fireworks = getenv("FIREWORKS_API_MODEL")
+            if api_key_fireworks and model_fireworks:
+                obj.llm["fireworks"] = ChatAnthropic(
+                    anthropic_api_url="https://api.fireworks.ai/inference",
+                    anthropic_api_key=api_key_fireworks,  # ty:ignore[invalid-argument-type]
+                    model_name=model_fireworks,
+                    thinking={"type": "enabled"},
+                    disable_streaming="tool_calling",
                 )
 
         chosen_provider: str = provider or obj.provider
