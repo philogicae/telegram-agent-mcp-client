@@ -104,7 +104,7 @@
 - Feat: restructure MCP configuration to individual tool files and simplify agent setup
 
 - Migrate from single mcp_config.json to individual tool configuration files in config/tools/ directory
-- Add .gitignore rules for config/tools/* while preserving examples/ subdirectory
+- Add .gitignore rules for config/tools/\* while preserving examples/ subdirectory
 - Create example tool configurations organized by category (web, media, utils)
 - Remove write_todos tool from common agent tools and related middleware (TodoListMiddleware, ContextEditingMiddleware)
 - Simplify agent middleware
@@ -118,7 +118,7 @@
 - Feat: reorganize tools configuration with README, templates, and environment variable support
 
 - Add comprehensive README.md documenting native Python tools and MCP server configurations
-- Create _template.py for easy native tool creation
+- Create \_template.py for easy native tool creation
 - Move example tools from examples/ to active config directories (local/, media/, web/, utils/)
 - Implement environment variable substitution with {ENV:VAR_NAME} syntax across all tool configs
 - Convert sequential_thinking from MCP server to native Python tool
@@ -183,7 +183,7 @@
 
 - Add automatic comments to tool JSON configs listing all available tools with count
 - Update tool loading to use full server paths (category/name) instead of just filenames
-- Add _update_tools_comment function to maintain tool lists in JSON files
+- Add \_update_tools_comment function to maintain tool lists in JSON files
 - Extend ty type checking to include config/tools directory in dev.sh
 - Remove disabled filesystem.json configuration file
 - Improve error messages with
@@ -192,6 +192,16 @@
 - Feat: add BetaSeries planning integration for episode tracking and new releases
 - Feat: enhance BetaSeries integration with episode download tracking and improved authentication
 - Feat: upgrade searxng-mul-mcp and add Playwright driver auto-installation with stderr suppression
+- Feat: update default Gemini model to gemini-3.1-pro-preview-customtools
+- Feat: remove YGGTorrent support and switch LaCale to API key authentication
+- Feat: upgrade docs-ui
+- Feat: re-add YGGTorrent support with ygege API service and update torrent_search configuration
+- Feat: update ygege API image source and bump version to 0.12.0
+- Feat: neo4j activate jdk incubator vector
+- Feat: update Gemini small model and pin Transmission version with configurable download directory
+- Feat: add Transmission configuration management with auto-deployment scripts and DOCKER_HOST support
+- Feat: add Fireworks AI provider support with Anthropic-compatible API integration
+- Feat: update Transmission tracker list and switch ygg-api to develop-noupx image
 
 ### 🐛 Bug Fixes
 
@@ -271,6 +281,9 @@
 - Add try-except block around message edit operation in download progress updates
 - On edit failure, send new message and pin it instead of failing silently
 - Log ignored editing errors for debugging purposes
+- Fix: mapped volumes
+- Fix: update deps + markdownify
+- Fix: remove standalone output mode from docs-ui Next.js config
 
 ### 💼 Changes
 
@@ -381,7 +394,7 @@
 - Chore: add NEXT_PUBLIC_API_URL to environment variables example
 - Chore: migrate next.config from mjs to ts and update output mode to export
 - Chore: remove static export config from Next.js settings
-- Chore: add .env.* pattern to gitignore file
+- Chore: add .env.\* pattern to gitignore file
 - Chore: update Gemini model names and disable thinking budget in GraphRAG
 - Chore: switch default Gemini model to flash-preview in example config
 - Chore: update deps
@@ -394,3 +407,8 @@
 - Chore: deps
 - Chore: update deps
 - Chore: update
+- Chore: update CHANGELOG.md with recent commit history
+- Chore: update deps
+- Chore: update deps
+- Chore: update deps
+- Chore: update deps
