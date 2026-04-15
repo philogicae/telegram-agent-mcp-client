@@ -1,5 +1,8 @@
-# pylint: disable=arguments-differ
-from typing import Any, Awaitable, Callable
+"""Telegram bot instance implementation."""
+
+from collections.abc import Awaitable, Callable
+from contextlib import suppress
+from typing import Any, ClassVar
 
 from telebot.async_telebot import AsyncTeleBot
 from telebot.types import CallbackQuery, LinkPreviewOptions, Message
@@ -14,12 +17,14 @@ msg_params: dict[str, Any] = {
 
 
 class TelegramBot(Bot):
+    """Telegram bot implementation using AsyncTeleBot."""
+
     core: AsyncTeleBot
     fixed: Callable[..., str] = fixed_telegram
     logify: Callable[..., str] = logify_telegram
     max_msg_length: int = 1000
     extra_msg_length: int = 500
-    pagination_action: list[str] = ["first", "prev", "next", "last"]
+    pagination_action: ClassVar[list[str]] = ["first", "prev", "next", "last"]
 
     def _dynamic_length(self, text: str) -> tuple[int, int]:
         include_quote = text.split("||\n", maxsplit=1)
@@ -44,7 +49,7 @@ class TelegramBot(Bot):
         retries: int | None = None,
         max_msg_length: int | None = None,
     ):
-        """Must call initialize() and start() after"""
+        """Initialize the Telegram bot. Must call initialize() and start() after."""
         super().__init__(delay, group_msg_trigger, waiting, retries)
         if max_msg_length:
             self.max_msg_length = max_msg_length
@@ -52,6 +57,7 @@ class TelegramBot(Bot):
         self.edit_cache: dict[int, Any] = {}
 
     async def initialize(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
+        """Set up message handlers for the bot."""
         await self.core.set_my_commands([])
         me = await self.core.get_me()
 
@@ -70,12 +76,11 @@ class TelegramBot(Bot):
             content_types=["text"],
         )
         async def _handle_message(message: Message) -> None:
-            """Handle message:
-            # Private
-                - Every message
-            # Group
-                - If it's a reply to the bot
-                - If it starts with group_msg_trigger
+            """
+            Handle message.
+
+            Private: Every message.
+            Group: If it's a reply to the bot or starts with group_msg_trigger.
             """
             text = str(message.text).strip()
             if text.startswith(self.group_msg_trigger):
@@ -102,6 +107,7 @@ class TelegramBot(Bot):
                 await handle_document(message)
 
     async def start(self) -> None:
+        """Start the bot's polling loop."""
         await self.core.infinity_polling(skip_pending=True, timeout=300)
 
     async def send(
@@ -109,6 +115,7 @@ class TelegramBot(Bot):
         message_or_chat_id: Message | int | str,
         text: str | None = None,
     ) -> Message:
+        """Send a message to a chat."""
         ref: Message | int | str = (
             message_or_chat_id.chat.id
             if isinstance(message_or_chat_id, Message)
@@ -134,6 +141,7 @@ class TelegramBot(Bot):
         to_message: Message,
         text: str | None = None,
     ) -> Message:
+        """Reply to a specific message."""
         if text and len(text) > self._dynamic_length(text)[0]:
             paginated_msg: Message = await self.paginated(
                 self.core.reply_to, to_message, self.fixed(text)
@@ -157,6 +165,7 @@ class TelegramBot(Bot):
         final: bool = False,
         agent: str | None = None,
     ) -> Message | bool:
+        """Edit an existing message."""
         if not replace and message.id not in self.edit_cache:
             return False
         orig, edited = "", text
@@ -205,6 +214,7 @@ class TelegramBot(Bot):
         text: str,
         page: int = 0,
     ) -> Any:
+        """Send or edit a paginated message."""
         max_length, quote_length = self._dynamic_length(text)
         pages: list[str] = []
         if quote_length:
@@ -240,6 +250,7 @@ class TelegramBot(Bot):
         return msg
 
     async def change_page(self, message: Message, action: str | None = None) -> None:
+        """Change the page of a paginated message."""
         cache = self.edit_cache.get(message.id)
         if cache and "pages" in cache and action in self.pagination_action:
             move = -1 if action == "prev" else 1
@@ -248,7 +259,7 @@ class TelegramBot(Bot):
                 new_index = ((len(cache["pages"]) + cache["current"]) + move) % len(
                     cache["pages"]
                 )
-            if action in ["last"]:
+            if action == "last":
                 new_index = len(cache["pages"]) - 1
             if cache["current"] != new_index:
                 cache["current"] = new_index
@@ -262,31 +273,31 @@ class TelegramBot(Bot):
                 )
 
     async def pin(self, message: Message) -> bool:
+        """Pin a message in a chat."""
         success: bool = False
-        try:
+        with suppress(Exception):
             success = await self._exec(
-                self.core.pin_chat_message, message.chat.id, message.id, True
+                self.core.pin_chat_message,
+                message.chat.id,
+                message.id,
+                disable_notification=True,
             )
-        except Exception:
-            pass
         return success
 
     async def unpin(self, message: Message) -> bool:
+        """Unpin a message in a chat."""
         success: bool = False
-        try:
+        with suppress(Exception):
             success = await self._exec(
                 self.core.unpin_chat_message, message.chat.id, message.id
             )
-        except Exception:
-            pass
         return success
 
     async def delete(self, message: Message) -> bool:
+        """Delete a message from a chat."""
         success: bool = False
-        try:
+        with suppress(Exception):
             success = await self._exec(
                 self.core.delete_message, message.chat.id, message.id
             )
-        except Exception:
-            pass
         return success

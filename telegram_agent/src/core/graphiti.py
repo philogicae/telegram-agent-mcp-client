@@ -1,4 +1,6 @@
-from datetime import datetime
+"""GraphRAG integration for episodic memory using Graphiti."""
+
+from datetime import UTC, datetime
 from os import environ, getenv
 from typing import Any
 
@@ -27,10 +29,12 @@ api_key = getenv("GEMINI_API_KEY")
 
 
 class GraphRAG(Singleton):
+    """GraphRAG singleton for managing episodic memory with Graphiti."""
+
     graphiti: Graphiti | Any
     api_key = api_key
     model = "gemini-3-flash-preview"
-    small_model = "gemini-flash-lite-latest"
+    small_model = "gemini-3.1-flash-lite-preview"
     temperature = 0
     thinking_budget = 512
     embedding_model = "gemini-embedding-001"
@@ -38,6 +42,7 @@ class GraphRAG(Singleton):
 
     @staticmethod
     async def init(think: bool = True, clear: bool = False) -> "GraphRAG":
+        """Initialize the GraphRAG instance."""
         obj = GraphRAG()
         if not hasattr(obj, "graphiti"):
             llm_config = LLMConfig(
@@ -80,9 +85,11 @@ class GraphRAG(Singleton):
 
     # Utils
     async def init_graph(self) -> None:
+        """Initialize the graph indices and constraints."""
         await self.graphiti.build_indices_and_constraints()
 
     async def clear(self) -> None:
+        """Clear all data from the graph."""
         await clear_data(self.graphiti.driver)
         await self.init_graph()
 
@@ -129,7 +136,8 @@ class GraphRAG(Singleton):
         chat_id: Any,
         source: str = "Group Chat",
     ) -> dict[str, Any]:
-        date = datetime.now()
+        """Add a conversation episode to the graph."""
+        date = datetime.now(UTC)
         results = await self.graphiti.add_episode(
             name=f"{source.lower().replace(' ', '_')}_{chat_id}_on_{date.strftime('%Y-%m-%d_%H-%M-%S')}",
             episode_body="\n".join([f"{user}: {message}" for user, message in content]),
@@ -152,6 +160,7 @@ class GraphRAG(Singleton):
     async def search_memories(
         self, content: str, user: str, chat_id: Any, limit: int = 10
     ) -> list[EntityEdge]:
+        """Search for relevant memories."""
         return await self.graphiti.search(
             query=f"{user}: {content}",
             group_ids=[str(chat_id)],
@@ -161,9 +170,10 @@ class GraphRAG(Singleton):
     async def search(
         self, content: str, user: str, chat_id: Any, limit: int = 10
     ) -> str:
+        """Search for relevant memories and return formatted results."""
         memories = await self.search_memories(content, user, chat_id, limit)
         formatted_edges = self._format_mem_edges(memories)
-        return formatted_edges if formatted_edges else ""
+        return formatted_edges or ""
 
     async def full_search_memories(
         self,
@@ -174,6 +184,7 @@ class GraphRAG(Singleton):
         min_score: float = 0.1,
         config: SearchConfig = COMBINED_HYBRID_SEARCH_RRF,
     ) -> dict[str, Any]:
+        """Perform a full search with all result types."""
         config.limit = limit
         config.reranker_min_score = min_score
         results = await self.graphiti.search_(
@@ -200,6 +211,7 @@ class GraphRAG(Singleton):
         min_score: float = 0.1,
         config: SearchConfig = COMBINED_HYBRID_SEARCH_RRF,
     ) -> dict[str, Any]:
+        """Perform a full search and return formatted results."""
         results = await self.full_search_memories(
             content, user, chat_id, limit, min_score, config
         )
@@ -210,8 +222,9 @@ class GraphRAG(Singleton):
         }
 
     async def recent_messages(self, chat_id: Any, limit: int = 10) -> list[Any]:
+        """Retrieve recent messages from the graph."""
         messages: list[Any] = await self.graphiti.retrieve_episodes(
-            reference_time=datetime.now(),
+            reference_time=datetime.now(UTC),
             last_n=limit,
             group_ids=[str(chat_id)],
             source=EpisodeType.text,
@@ -219,6 +232,7 @@ class GraphRAG(Singleton):
         return messages
 
     async def recent(self, chat_id: Any, limit: int = 10) -> str:
+        """Retrieve and format recent messages."""
         messages = await self.recent_messages(chat_id, limit)
         if messages:
             return "\n".join([node.fact for node in messages])

@@ -5,15 +5,14 @@ from inspect import getmembers
 from os import getenv
 from os import name as os_name
 from pathlib import Path
-from re import DOTALL
+from re import DOTALL, sub
 from re import compile as re_compile
-from re import sub
-from typing import Any, TypeAlias
+from typing import Any
 
 from dotenv import load_dotenv
 from langchain.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from pyjson5 import loads  # pylint: disable=no-name-in-module
+from pyjson5 import loads
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -21,9 +20,9 @@ from rich.text import Text
 load_dotenv()
 
 # Type aliases
-ServerConfig: TypeAlias = dict[str, Any]
-ToolFilterConfig: TypeAlias = dict[str, dict[str, Any]]
-ToolConfig: TypeAlias = tuple[ServerConfig, ToolFilterConfig]
+type ServerConfig = dict[str, Any]
+type ToolFilterConfig = dict[str, dict[str, Any]]
+type ToolConfig = tuple[ServerConfig, ToolFilterConfig]
 ENV_NOT_FOUND = "ENV_NOT_FOUND"
 
 # Configuration
@@ -228,7 +227,7 @@ async def get_tools(
                 f"Error: Server '{only_file}' not found in configuration", style="red"
             )
             return []
-        elif only_file in mcp_config:
+        if only_file in mcp_config:
             mcp_config = {only_file: mcp_config[only_file]}
 
     if not mcp_config and not py_tools:

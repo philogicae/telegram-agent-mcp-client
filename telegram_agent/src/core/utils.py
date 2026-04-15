@@ -1,6 +1,8 @@
-from datetime import datetime, timezone
+"""Core utilities for agent and memory management."""
+
+from datetime import UTC, datetime
 from enum import Enum
-from os import makedirs
+from pathlib import Path
 from re import sub
 from typing import Any, cast
 
@@ -24,6 +26,8 @@ from .llm import LLM
 
 
 class Flag(Enum):
+    """Flags for detecting error states in tool results."""
+
     ERROR = "error:"
     _ERROR = " error"
     ERROR_ = "error "
@@ -32,6 +36,8 @@ class Flag(Enum):
 
 
 class Usage:
+    """Track and accumulate LLM usage statistics."""
+
     def __init__(self) -> None:
         self.total: dict[str, Any] = {}
 
@@ -45,6 +51,7 @@ class Usage:
                 dict1[k] = dict1.get(k, 0) + v
 
     def add_usage(self, usage: dict[str, Any]) -> None:
+        """Add usage stats to the total."""
         self._add_usage(self.total, usage)
 
     def __str__(self) -> str:
@@ -52,22 +59,26 @@ class Usage:
 
 
 def format_called_tool(tool: Any) -> str:
+    """Format a tool name for display."""
     return sub("_|-", " ", str(tool)).title()
 
 
 def checkpointer(dev: bool = False, persist: bool = False) -> BaseCheckpointSaver:
+    """Create a checkpoint saver for the graph."""
     if dev or not persist:
         return InMemorySaver()
-    data_folder = "/app/data"
-    makedirs(data_folder, exist_ok=True)
-    return AsyncSqliteSaver(connect(f"{data_folder}/checkpointer.sqlite"))
+    data_folder = Path("/app/data")
+    data_folder.mkdir(parents=True, exist_ok=True)
+    return AsyncSqliteSaver(connect(str(data_folder / "checkpointer.sqlite")))
 
 
 def pre_agent_hook(
     state: dict[str, Any] | Any, remove_all: bool = False, max_tokens: int = 50000
 ) -> dict[str, Any]:
+    """Pre-process messages before agent execution."""
     messages: list[BaseMessage] = cast(
-        list[BaseMessage], state.get("messages", []) if isinstance(state, dict) else []
+        "list[BaseMessage]",
+        state.get("messages", []) if isinstance(state, dict) else [],
     )
     trimmed_messages = trim_messages(
         messages=messages,
@@ -79,24 +90,26 @@ def pre_agent_hook(
         # end_on=("human", "tool"),
     )
     if remove_all:
-        return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES)] + trimmed_messages}
+        return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES), *trimmed_messages]}
     return {"messages": trimmed_messages}
 
 
-dt_min_aware = datetime.min.replace(tzinfo=timezone.utc)
-dt_max_aware = datetime.max.replace(tzinfo=timezone.utc)
+dt_min_aware = datetime.min.replace(tzinfo=UTC)
+dt_max_aware = datetime.max.replace(tzinfo=UTC)
 
 
 def sort_edges(edge: EntityEdge) -> tuple[datetime, datetime]:
+    """Sort edges by start and end time."""
     start_time = edge.valid_at or edge.created_at
     end_time = edge.expired_at or edge.invalid_at
     return (
-        start_time if start_time else dt_min_aware,
-        end_time if end_time else dt_max_aware,
+        start_time or dt_min_aware,
+        end_time or dt_max_aware,
     )
 
 
 def format_date(date: datetime) -> str:
+    """Format a datetime for display, removing time and date when appropriate."""
     return (
         date.strftime("%Y-%m-%d %H:%M:%S")
         .replace(" 00:00:00", "")
@@ -105,17 +118,22 @@ def format_date(date: datetime) -> str:
 
 
 class ReContext(BaseModel):
+    """Model for recontextualized user messages."""
+
     summary: str = Field(description="Summary of the chat history")
     user_message: str = Field(description="Rephrased user message")
 
 
 class FilteredMemories(BaseModel):
+    """Model for filtered episodic memories."""
+
     memories: list[str] = Field(description="Filtered memories")
 
 
 def summarize_and_rephrase(
-    state: StateSnapshot, user_msg: str, provider: str = "gemini-small"
+    state: StateSnapshot, user_msg: str, provider: str = "fireworks"
 ) -> ReContext:
+    """Summarize chat history and rephrase the user message."""
     chat_history: list[Any] = []
     if state.values.get("messages"):
         chat_history = pre_agent_hook(state.values).get("messages", [])
@@ -142,17 +160,17 @@ Rephrased: "Bob: Download the complete season 1 of Dexter that you found"
     )
     llm: Any = LLM.get(provider)
     structured_llm = llm.with_structured_output(schema=ReContext)
-    result = cast(ReContext, structured_llm.invoke(chat_history))
-    return result
+    return cast("ReContext", structured_llm.invoke(chat_history))
 
 
 def filter_relevant_memories(
-    memories: str, context: str, user_msg: str, provider: str = "gemini-small"
+    memories: str, context: str, user_msg: str, provider: str = "fireworks"
 ) -> str:
+    """Filter episodic memories for relevance to the current context."""
     llm: Any = LLM.get(provider)
     structured_llm = llm.with_structured_output(schema=FilteredMemories)
     result = cast(
-        FilteredMemories,
+        "FilteredMemories",
         structured_llm.invoke(
             [
                 HumanMessage(

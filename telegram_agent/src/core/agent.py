@@ -1,6 +1,10 @@
-from datetime import datetime
+"""Agent implementation for orchestrating LLM interactions."""
+
+import sys
+from collections.abc import AsyncGenerator, Callable, Sequence
+from datetime import UTC, datetime
 from os import getenv
-from typing import Any, AsyncGenerator, Callable, Sequence
+from typing import Any, Self
 
 from addict import Dict
 from dotenv import load_dotenv
@@ -36,6 +40,8 @@ WHITELIST: set[str] = set(getenv("WHITELIST", "").lower().split(","))
 
 
 class Agent:
+    """Agent class for managing LLM interactions and tool execution."""
+
     agents: Dict = Dict()
     tools: Sequence[BaseTool | Callable[..., Any] | dict[str, Any]] | ToolNode | None
     graph: GraphRAG | Any
@@ -96,12 +102,17 @@ class Agent:
             print(f"Documentalist Graph saved to {graph_file}")
 
         if generate_png:
-            exit()
+            sys.exit()
 
-    def __enter__(self) -> "Agent":
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: object,
+    ) -> None:
         pass
 
     @staticmethod
@@ -133,9 +144,9 @@ class Agent:
 
     async def chat(
         self, content: str | TelegramMessage | Any
-    ) -> AsyncGenerator[tuple[str, str, bool, dict[str, str]], None]:
+    ) -> AsyncGenerator[tuple[str, str, bool, dict[str, str]]]:
         thread_id, user = "test", "User"
-        date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        date = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
         if isinstance(content, str):
             content = content.strip()
         elif isinstance(content, TelegramMessage):
@@ -165,37 +176,38 @@ class Agent:
         else:
             content = f"{user}: {content}"
             messages: list[AnyMessage] = []
-            filtered_memories: str = ""
+
+            # ReContext
+            mem_timer = Timer()
+            recontext = summarize_and_rephrase(self.state(swarm, thread_id), content)
+            summary = (
+                f"Chat Summary: {recontext.summary}"
+                if recontext.summary and recontext.summary != "None"
+                else ""
+            )
+            if summary:
+                messages = pre_agent_hook(
+                    self.state(swarm, thread_id).values,
+                    remove_all=True,
+                    max_tokens=2000,
+                ).get("messages", [])
+                messages.append(HumanMessage("# " + summary))
+            content = (
+                recontext.user_message
+                if ":" in recontext.user_message
+                else f"{user}: {recontext.user_message}"
+            )
+            recontext_logs = f"{summary}\n{content}" if summary else content
+            self.console.print(
+                Panel(
+                    escape(recontext_logs),
+                    title=f"💡 ReContext ({mem_timer.done()})",
+                    border_style="light_steel_blue1",
+                )
+            )
+
+            # Memories
             if self.graph:
-                mem_timer = Timer()
-                recontext = summarize_and_rephrase(
-                    self.state(swarm, thread_id), content
-                )
-                summary = (
-                    f"Chat Summary: {recontext.summary}"
-                    if recontext.summary and recontext.summary != "None"
-                    else ""
-                )
-                if summary:
-                    messages = pre_agent_hook(
-                        self.state(swarm, thread_id).values,
-                        remove_all=True,
-                        max_tokens=2000,
-                    ).get("messages", [])
-                    messages.append(HumanMessage("# " + summary))
-                content = (
-                    recontext.user_message
-                    if ":" in recontext.user_message
-                    else f"{user}: {recontext.user_message}"
-                )
-                recontext_logs = f"{summary}\n{content}" if summary else content
-                self.console.print(
-                    Panel(
-                        escape(recontext_logs),
-                        title=f"💡 ReContext ({mem_timer.done()})",
-                        border_style="light_steel_blue1",
-                    )
-                )
                 mem_timer = Timer()
                 found_memories = await self.graph.full_search(
                     content, user, thread_id, limit=10
@@ -203,7 +215,6 @@ class Agent:
                 mem_stats = found_memories["stats"]
                 memories = f"{found_memories['nodes']}{found_memories['edges']}".strip()
                 if memories:
-                    mem_timer = Timer()
                     filtered_memories = filter_relevant_memories(
                         memories, recontext.summary, content
                     )
@@ -234,7 +245,7 @@ class Agent:
             called_tool: str | None = None
             called_tool_timer: Timer | None = None
             ignore_tool_result: bool = False
-            start_time = end_time = datetime.now().timestamp()
+            start_time = end_time = datetime.now(UTC).timestamp()
             usage: Usage = Usage()
             forced_messages: list[AnyMessage] = []
             final, retry = False, 0
@@ -268,13 +279,6 @@ class Agent:
                                 text = item.strip()
                             elif isinstance(item, dict) and "text" in item:
                                 text = item["text"].strip()
-
-                    """ if "</think>" in text:  # Ollama Qwen3
-                        splitted = text.split("<think>", 1)[1].split("</think>", 1)
-                        think, text = splitted[0].strip(), splitted[1].strip()
-                        self.console.print(
-                            Panel(escape(think), title="💭 Think", border_style="white")
-                        ) """
 
                     # Tools
                     tool_calls: Any = None
@@ -348,7 +352,7 @@ class Agent:
                         if msg_type == "tools":  # Yield tool result
                             if (
                                 called_tool
-                                and called_tool not in ["think"]
+                                and called_tool != "think"
                                 and not str(called_tool).startswith("transfer_to_")
                             ):
                                 step = "✅"
@@ -381,15 +385,11 @@ class Agent:
                             swarm.active[thread_id] = (
                                 str(called_tool)[12:].replace("_", " ").title().strip()
                             )
-                        elif called_tool in ["think"]:  # Call think tool
+                        elif called_tool == "think":  # Call think tool
                             self.console.print(
                                 Panel(
                                     escape(tool_calls),
-                                    title=(
-                                        "💭 Think"
-                                        if called_tool == "think"
-                                        else "📝 Todos"
-                                    ),
+                                    title="💭 Think",
                                     border_style="hot_pink",
                                 )
                             )
@@ -405,7 +405,7 @@ class Agent:
 
                     # Usage
                     if hasattr(msg, "usage_metadata") and msg.usage_metadata:
-                        timer = datetime.now().timestamp() - end_time
+                        timer = datetime.now(UTC).timestamp() - end_time
                         end_time += timer
                         usage.add_usage(msg.usage_metadata)
                         self.console.print(
@@ -452,7 +452,7 @@ class Agent:
                 if retry < 3:
                     retry += 1
                     forced_messages = []
-                    end_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    end_date = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
                     state_values = self.state(swarm, thread_id).values
                     if not state_values.get("messages"):
                         state_values["messages"] = []
@@ -537,8 +537,11 @@ class Agent:
 
 
 async def run_agent(dev: bool = False, generate_png: bool = False) -> None:
+    """Run the agent in CLI mode."""
     content = ""
-    with await Agent.init(dev=True, generate_png=generate_png) as agent:
+    with await Agent.init(
+        dev=True, enable_graph=False, generate_png=generate_png
+    ) as agent:
         if content:
             print(f"> {content}")
         while True:

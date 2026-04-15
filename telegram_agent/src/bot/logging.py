@@ -1,3 +1,5 @@
+"""Logging implementation for Telegram bot."""
+
 from telebot.types import Message
 
 from ..utils import Timer
@@ -6,6 +8,8 @@ from .utils import unpack_user
 
 
 class TelegramLogger(Logger):
+    """Logger implementation for Telegram bot."""
+
     instance: str = "TELEGRAM"
 
     def received(self, msg: Message) -> Timer:

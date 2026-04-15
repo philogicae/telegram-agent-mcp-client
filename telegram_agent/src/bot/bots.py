@@ -1,3 +1,5 @@
+"""Bot implementations for Telegram Agent MCP Client."""
+
 from os import getenv
 from typing import Any
 
@@ -13,12 +15,14 @@ load_dotenv()
 
 
 class AgenticTelegramBot(AgenticBot):
+    """Agentic Telegram bot with managers."""
+
     def __init__(
         self,
         telegram_id: str,
         dev: bool = False,
         managers: dict[str, type] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         super().__init__(dev, managers)
         self.log = TelegramLogger()
@@ -26,6 +30,7 @@ class AgenticTelegramBot(AgenticBot):
 
 
 async def run_telegram_bot(dev: bool = False) -> None:
+    """Run the Telegram bot with the configured managers and handlers."""
     telegram_id: str | None = getenv("TELEGRAM_BOT_ID")
     telegram_id_dev: str | None = getenv("TELEGRAM_BOT_ID_DEV")
     if dev:
@@ -33,9 +38,8 @@ async def run_telegram_bot(dev: bool = False) -> None:
             telegram_id = telegram_id_dev
         else:
             raise ValueError("TELEGRAM_BOT_ID_DEV is not set")
-    else:
-        if not telegram_id:
-            raise ValueError("TELEGRAM_BOT_ID is not set")
+    elif not telegram_id:
+        raise ValueError("TELEGRAM_BOT_ID is not set")
 
     managers: dict[str, type] = {}
     handlers: dict[str, Any] = {"chat": telegram_chat}

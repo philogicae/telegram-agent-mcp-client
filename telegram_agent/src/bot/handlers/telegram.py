@@ -1,3 +1,5 @@
+"""Telegram bot handlers."""
+
 import traceback
 from asyncio import sleep
 from os import getenv
@@ -16,6 +18,7 @@ TELEGRAM_CHAT_DEV = getenv("TELEGRAM_CHAT_DEV")
 async def telegram_report_issue(
     instance: AgenticBot, orig_msg: Message, reply_msg: Message, e: Exception | str
 ) -> None:
+    """Report an issue to the admin and notify the user."""
     cause = "Agent" if isinstance(e, str) else "Telegram"
     error = f"\n{e}"
     instance.log.error(f"{cause} -> Exception: {e}")
@@ -28,7 +31,7 @@ async def telegram_report_issue(
                 f"⚠️ {cause} issue detected on chat:\n[{orig_msg.chat.id}] {orig_msg.chat.title or 'Private'}\n[@{user}] {name}{error}",
             ),
         )
-    if TELEGRAM_CHAT_DEV != str(orig_msg.chat.id):  # Notify user
+    if str(orig_msg.chat.id) != TELEGRAM_CHAT_DEV:  # Notify user
         await instance.bot.reply(
             reply_msg,
             instance.bot.logify(
@@ -40,6 +43,7 @@ async def telegram_report_issue(
 
 @handler
 async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
+    """Handle chat messages and orchestrate agent responses."""
     timer = instance.log.received(msg)
     if msg.text in ["/start", "/help"]:
         await instance.bot.send(msg, "🌟 Welcome! How can I help you?")
@@ -75,6 +79,7 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
 
 @handler
 async def telegram_file(instance: AgenticBot, msg: Message) -> None:
+    """Handle file/document uploads from users."""
     try:
         if msg.document:
             file_name = msg.document.file_name
@@ -93,7 +98,7 @@ async def telegram_file(instance: AgenticBot, msg: Message) -> None:
             await instance.managers["document"].file_too_large(
                 msg.chat.id, str(file_name)
             )
-            instance.log.warn("File: too big. Redirected to Docs UI.")
+            instance.log.warning("File: too big. Redirected to Docs UI.")
         else:
             await telegram_report_issue(instance, msg, msg, e)
-            instance.log.exception(f"File: {e}")
+            instance.log.exception("File handling error")

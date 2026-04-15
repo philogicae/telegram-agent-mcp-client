@@ -1,3 +1,5 @@
+"""Telegram Agent MCP Client package."""
+
 from .src import (
     Agent,
     AgenticBot,

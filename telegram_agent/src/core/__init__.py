@@ -1,3 +1,5 @@
+"""Core module for Telegram Agent MCP Client."""
+
 from logging import WARNING, getLogger
 
 from .agent import Agent, run_agent

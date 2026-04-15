@@ -1,3 +1,5 @@
+"""LLM provider configuration and management."""
+
 from os import getenv
 from typing import Any
 
@@ -17,6 +19,8 @@ load_dotenv()
 
 
 class LLM(Singleton):
+    """Singleton for managing LLM providers."""
+
     provider: Any
     llm: dict[str, BaseChatModel]
 
@@ -26,6 +30,7 @@ class LLM(Singleton):
 
     @staticmethod
     def get(provider: str | None = None) -> BaseChatModel:
+        """Get the LLM for the specified provider."""
         obj = LLM()
         if not obj.llm:
             # Ollama
@@ -55,7 +60,7 @@ class LLM(Singleton):
                     "safety_settings": {
                         cat: HarmBlockThreshold.OFF
                         for i, cat in enumerate(HarmCategory)
-                        if i > 0 and i < 5
+                        if 0 < i < 5
                     },
                 }
                 specifics: dict[str, Any] = (
@@ -87,7 +92,7 @@ class LLM(Singleton):
                     anthropic_api_url="https://api.fireworks.ai/inference",
                     anthropic_api_key=api_key_fireworks,  # ty:ignore[invalid-argument-type]
                     model_name=model_fireworks,
-                    thinking={"type": "enabled"},
+                    thinking={"type": "enabled", "budget_tokens": 1024},
                     disable_streaming="tool_calling",
                 )
 

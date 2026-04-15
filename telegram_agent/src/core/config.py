@@ -1,4 +1,7 @@
-from os import getenv, path
+"""Agent configuration and management."""
+
+from os import getenv
+from pathlib import Path
 from shutil import copyfile
 from typing import Any
 
@@ -8,7 +11,7 @@ from langchain.agents.middleware import AgentMiddleware
 from langchain.tools import BaseTool
 from langgraph_swarm import create_handoff_tool
 from pydantic import BaseModel
-from pyjson5 import loads  # pylint: disable=no-name-in-module
+from pyjson5 import loads
 from rich.console import Console
 
 from .llm import LLM
@@ -22,14 +25,18 @@ CONFIG_DIR = getenv("CONFIG") or "./config"
 
 
 class PruneHistory(AgentMiddleware):
-    def before_agent(self, state: Any, runtime: Any) -> dict[str, Any] | None:
+    """Middleware to prune conversation history before agent execution."""
+
+    def before_agent(self, state: Any, runtime: Any) -> dict[str, Any] | None:  # noqa: ARG002
         return pre_agent_hook(state)
 
-    async def abefore_agent(self, state: Any, runtime: Any) -> dict[str, Any] | None:
+    async def abefore_agent(self, state: Any, runtime: Any) -> dict[str, Any] | None:  # noqa: ARG002
         return pre_agent_hook(state)
 
 
 class AgentConfig(BaseModel):
+    """Configuration for agents and their tools."""
+
     agents: list[Any]
     active: str
     tools_by_agent: dict[str, list[str]]
@@ -43,12 +50,13 @@ def get_agent_config(
     display: bool = True,
     verbose: bool = False,
 ) -> AgentConfig:
-    config_file = CONFIG_DIR + "/agent_config.json"
-    if not path.exists(config_file):
+    """Load and configure agents from the configuration file."""
+    config_file = Path(CONFIG_DIR) / "agent_config.json"
+    if not config_file.exists():
         print("agent_config.json file not found: creating from example")
-        copyfile("agent_config.example.json", config_file)
+        copyfile("agent_config.example.json", str(config_file))
 
-    with open(config_file, "r", encoding="utf-8") as f:
+    with config_file.open(encoding="utf-8") as f:
         configuration: dict[str, Any] = loads(f.read())
     agent_config: dict[str, Any] = {
         k: v
@@ -177,16 +185,16 @@ def get_agent_config(
                 else ""
             )
             console.print(
-                f"* [bright_cyan][bold]{name}[/bold][/bright_cyan]:\n# Tools: [bright_yellow]{all_tools if all_tools else 'None'}[/bright_yellow]\n# Transfer: [purple]{transfer_instructions.get(name)}[/purple]\n# Prompt:\n[orange3]{prompt}[/orange3]{routines}"
+                f"* [bright_cyan][bold]{name}[/bold][/bright_cyan]:\n# Tools: [bright_yellow]{all_tools or 'None'}[/bright_yellow]\n# Transfer: [purple]{transfer_instructions.get(name)}[/purple]\n# Prompt:\n[orange3]{prompt}[/orange3]{routines}"
             )
         elif display:
             all_tools = ", ".join(tools_for_agent)
             console.print(
-                f"* [bright_cyan][bold]{name}[/bold][/bright_cyan]:\n[orange3]{all_tools if all_tools else 'None'}[/orange3]"
+                f"* [bright_cyan][bold]{name}[/bold][/bright_cyan]:\n[orange3]{all_tools or 'None'}[/orange3]"
             )
         agents.append(agent)
 
-    active: str = str(list(agent_config.keys())[0])
+    active: str = str(next(iter(agent_config.keys())))
     if display:
         console.print(
             f"[bold][red]Active agent:[/red] [bright_cyan]{active}[/bright_cyan][/bold]"
@@ -200,5 +208,6 @@ def get_agent_config(
 
 
 async def print_agents() -> None:
+    """Display all configured agents and their tools."""
     tools = await get_tools(display=False)
     get_agent_config(tools, verbose=True)

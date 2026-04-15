@@ -1,3 +1,5 @@
+"""Utility functions for Telegram bot."""
+
 from re import sub
 from typing import Any
 
@@ -9,6 +11,7 @@ from unidecode import unidecode
 
 
 def unpack_user(msg: Message) -> tuple[str, str]:
+    """Extract username and display name from a message."""
     if msg.from_user:
         return (
             msg.from_user.username or str(msg.from_user.id),
@@ -18,6 +21,7 @@ def unpack_user(msg: Message) -> tuple[str, str]:
 
 
 def fixed_telegram(_: Any, text: str) -> str:
+    """Fix Telegram markdown formatting."""
     include_quote = text.split("||\n", maxsplit=1)
     if len(include_quote) > 1:
         return include_quote[0] + "||\n" + fixed_telegram(_, include_quote[1])
@@ -30,6 +34,7 @@ def fixed_telegram(_: Any, text: str) -> str:
 def logify_telegram(
     _: Any, agent: str | None = "Logs", content: list[str] | str = ""
 ) -> str:
+    """Format log content for Telegram display."""
     logs = [content] if content and isinstance(content, str) else content
     return (
         (
@@ -43,12 +48,13 @@ def logify_telegram(
 
 
 def quotify_telegram(_: Any, text: str) -> str:
+    """Format text as a Telegram quote."""
     return mcite(text, escape=True, expandable=True)
 
 
-def progress_bar(current: int | float, total: int | float, size: int = 15) -> str:
-    if total < 1:
-        total = 1
+def progress_bar(current: float, total: float, size: int = 15) -> str:
+    """Create a text-based progress bar."""
+    total = max(total, 1)
     ratio = current / total
     scaled_percent = int(size * ratio)
     progress = "▓" * scaled_percent + "░" * (size - scaled_percent)
@@ -57,6 +63,7 @@ def progress_bar(current: int | float, total: int | float, size: int = 15) -> st
 
 
 def reply_markup(index: int, total: int) -> InlineKeyboardMarkup:
+    """Create pagination reply markup."""
     return quick_markup(
         {
             "⏮️": {"callback_data": "first"},
@@ -70,6 +77,7 @@ def reply_markup(index: int, total: int) -> InlineKeyboardMarkup:
 
 
 def str_size(size: int) -> str:
+    """Format file size in human-readable format."""
     return (
         f"{size / 1024 / 1024:.2f}MB"
         if size > 1024 * 1024
@@ -80,6 +88,7 @@ def str_size(size: int) -> str:
 
 
 def sanitize_filename(filename: str) -> str:
+    """Sanitize a filename for safe storage."""
     filename = unidecode(filename)
     splitted = filename.rsplit(".", maxsplit=1)
     try:
@@ -95,6 +104,7 @@ def sanitize_filename(filename: str) -> str:
 
 
 def transform_urls(html_text: str) -> str:
+    """Transform HTML anchor tags to Markdown links."""
     # <a href="URL">TEXT</a> -> [TEXT](URL)
     pattern = r'<a[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>'
     replacement = r"[\2](\1)"
@@ -102,6 +112,7 @@ def transform_urls(html_text: str) -> str:
 
 
 def transform_images(html_text: str) -> str:
+    """Transform HTML img tags to Markdown image links."""
     # <img src="URL" ...> -> [](URL)
     pattern = r'<img[^>]*src="([^"]+)"[^>]*alt="([^"]+)"[^>]*\/>'
     replacement = r"> [IMG: \2](\1)"
@@ -109,6 +120,7 @@ def transform_images(html_text: str) -> str:
 
 
 def transform_linked_images(html_text: str) -> str:
+    """Transform HTML linked images to Markdown."""
     # <a ...><img src="URL" ...></a> -> [](URL)
     pattern = r'<a[^>]*>\s*<img[^>]*src="([^"]+)"[^>]*alt="([^"]+)"[^>]*\/>\s*<\/a>'
     replacement = r"> [IMG: \2](\1)"
@@ -116,10 +128,12 @@ def transform_linked_images(html_text: str) -> str:
 
 
 def quote_report_id(html_text: str) -> str:
+    """Quote report IDs in the text."""
     return html_text.replace("```\nReport", "```\n> Report")
 
 
 def html_to_markdown(html_text: str) -> str:
+    """Convert HTML text to Markdown format."""
     return quote_report_id(
         transform_urls(transform_images(transform_linked_images(html_text)))
     )

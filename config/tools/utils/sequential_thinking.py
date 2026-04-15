@@ -1,15 +1,18 @@
+"""Sequential thinking tool for agentic problem-solving."""
+
 from langchain.tools import tool
 
 
 @tool
 def think(
     thread_purpose: str,
-    thought: str,  #  pylint: disable=unused-argument
+    thought: str,  # noqa: ARG001
     thought_index: int,
     tool_recommendation: str | None = "None",
-    left_to_be_done: str | None = "None",  #  pylint: disable=unused-argument
+    left_to_be_done: str | None = "None",  # noqa: ARG001
 ) -> str:
-    """Logs a thought step for agentic problem-solving, tracking reasoning, tools, and future plans.
+    """
+    Logs a thought step for agentic problem-solving, tracking reasoning, tools, and future plans.
     Start a new thread for each user message.
 
     # Capabilities
@@ -45,6 +48,7 @@ def think(
     )
     5) call create_graph(data=...)
     6) Final Response: "Here is an explanation of central banks..." (Task complete, no further think call needed).
+
     """
     log = f"Thread purpose: {thread_purpose}\nThought {thought_index} logged."
     if tool_recommendation and tool_recommendation.lower() != "none":

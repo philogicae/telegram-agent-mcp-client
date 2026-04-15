@@ -1,3 +1,5 @@
+"""Bot module for Telegram Agent MCP Client."""
+
 from .abstract import AgenticBot, Bot, Logger, Manager, handler
 from .bots import AgenticTelegramBot, run_telegram_bot
 from .handlers import telegram_chat, telegram_report_issue

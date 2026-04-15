@@ -1,11 +1,13 @@
+"""Abstract base classes for bot architecture."""
+
 from abc import ABC, abstractmethod
 from asyncio import gather, sleep
+from collections.abc import Awaitable, Callable
 from functools import partial, wraps
-from logging import INFO, WARNING
+from logging import INFO, WARNING, basicConfig, getLogger
 from logging import Logger as Logging
-from logging import basicConfig, getLogger
 from time import time
-from typing import Any, Awaitable, Callable
+from typing import Any, Self
 
 from rich.logging import RichHandler
 
@@ -14,6 +16,8 @@ from ..utils import Timer
 
 
 class Logger(ABC):
+    """Abstract base class for logging."""
+
     instance: str = "BOT"
     level: Any = INFO
 
@@ -37,6 +41,9 @@ class Logger(ABC):
     def warn(self, log: str) -> None:
         self.logger.warning(log)
 
+    def warning(self, log: str) -> None:
+        self.logger.warning(log)
+
     def error(self, err: Exception | str) -> None:
         self.logger.error(err)
 
@@ -56,18 +63,22 @@ class Logger(ABC):
 
 
 def fixed_default(_: Any, text: str) -> str:
+    """Return text unchanged."""
     return text
 
 
 def logify_default(
     _: Any, agent: str | None = "Logs", content: list[str] | str = ""
 ) -> str:
+    """Format log message with agent name and content."""
     return f"{agent.replace(' ', '-') if agent else 'Logs'}:\n" + "\n".join(
         [content] if content and isinstance(content, str) else content
     )
 
 
 class Bot(ABC):
+    """Abstract base class for bot implementations."""
+
     core: Any
     last_call: float = 0
     delay: float = 0.2
@@ -117,10 +128,10 @@ class Bot(ABC):
                     result: Any = await method(*args, **kwargs)
                     self._called()
                     return result
-                except Exception as e:
+                except Exception:
                     retry += 1
                     if retry > self.retries:
-                        raise e
+                        raise
             else:
                 await sleep(self.delay)
 
@@ -150,6 +161,8 @@ class Bot(ABC):
 
 
 class Manager(ABC):
+    """Abstract base class for managers."""
+
     name: str
 
     @abstractmethod
@@ -168,6 +181,8 @@ class Manager(ABC):
 
 
 class AgenticBot(ABC):
+    """Abstract base class for agentic bots with managers."""
+
     dev: bool = False
     bot: Bot
     log: Logger
@@ -180,11 +195,17 @@ class AgenticBot(ABC):
         self.dev = dev
         self.managers = {k: v(self) for k, v in managers.items()} if managers else {}
 
-    def __enter__(self) -> "AgenticBot":
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
-        pass
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: object,
+    ) -> None:
+        """Exit context manager - subclasses may override."""
+        return
 
     def prepare_handlers(
         self, **kwargs: Callable[..., Awaitable[Any]]
@@ -198,17 +219,19 @@ class AgenticBot(ABC):
             self.log.info(f"{self.bot.__class__.__name__} is ready!")
             await gather(
                 self.bot.start(),
-                *map(lambda manager: manager.start(), self.managers.values()),
+                *(manager.start() for manager in self.managers.values()),
             )
         except KeyboardInterrupt:
             self.log.info(f"{self.bot.__class__.__name__} killed by KeyboardInterrupt")
-        except Exception as e:
-            self.log.exception(e)
+        except Exception:
+            self.log.exception("Error running bot")
 
 
 def handler(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
+    """Decorator for handler functions."""
+
     @wraps(func)
-    async def wrapper(instance: AgenticBot, *args, **kwargs) -> Any:
+    async def wrapper(instance: AgenticBot, *args: Any, **kwargs: Any) -> Any:
         return await func(instance, *args, **kwargs)
 
     return wrapper

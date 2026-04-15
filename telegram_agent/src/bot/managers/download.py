@@ -1,3 +1,5 @@
+"""Download manager for Transmission torrent client."""
+
 from asyncio import create_task, gather, sleep
 from json import loads
 from os import getenv
@@ -17,17 +19,23 @@ SEPARATOR = "___________________________________"
 
 
 class Torrent(BaseModel):
+    """Torrent data model."""
+
     name: str
     stats: dict[str, Any] | bool
 
 
 class Message(BaseModel):
+    """Chat message tracking model for downloads."""
+
     obj: Any
     prev: str
     torrent_ids: set[str]
 
 
 class DownloadManager(Manager):
+    """Manager for torrent downloads via Transmission."""
+
     instance: AgenticBot
     client: TransmissionClient
     torrents: dict[str, Torrent]
@@ -44,6 +52,7 @@ class DownloadManager(Manager):
             self.delay = delay
 
     async def start(self) -> None:
+        """Start the torrent status monitoring loop."""
         while True:
             if self.torrents:
                 await self.update_torrent_stats()
@@ -51,6 +60,7 @@ class DownloadManager(Manager):
             await sleep(self.delay)
 
     async def notify(self, chat_id: int, data: str) -> None:
+        """Handle a new torrent notification."""
         torrent = loads(data)
         torrent_hash = torrent.get("hashString") or torrent.get("infoHash")
         if not torrent_hash:
@@ -68,16 +78,17 @@ class DownloadManager(Manager):
                 await self.instance.bot.delete(old_message_obj)
             self.chats[chat_id].obj = None
         self.chats[chat_id].torrent_ids.add(torrent_hash)
-        create_task(self.refresh_media_lib())
+        self._refresh_task = create_task(self.refresh_media_lib())
 
     async def refresh_media_lib(self, _count: int = 0) -> None:
+        """Refresh media library after download."""
         if MEDIA_LIB_REFRESH:
             try:
                 async with AsyncClient() as http:
                     await http.post(MEDIA_LIB_REFRESH)
                 self.instance.log.info("Media lib refreshed")
-            except Exception as e:
-                self.instance.log.error(f"Refreshing media lib: {e}")
+            except Exception:
+                self.instance.log.exception("Refreshing media lib failed")
 
         # Run 3 times with 1 minute intervals
         if _count < 2:
@@ -85,6 +96,7 @@ class DownloadManager(Manager):
             await self.refresh_media_lib(_count + 1)
 
     async def update_torrent_stats(self) -> None:
+        """Update statistics for all tracked torrents."""
         if not self.torrents:
             return
         results = await gather(
@@ -107,6 +119,7 @@ class DownloadManager(Manager):
                 self.torrents[torrent_id].stats = False
 
     async def update_chats(self) -> None:
+        """Update chat messages with current torrent status."""
         to_delete = []
         for chat_id, message in self.chats.items():
             active: list[Torrent] = []
@@ -134,7 +147,7 @@ class DownloadManager(Manager):
                             replace=True,
                         )
                     except Exception:
-                        self.instance.log.error("IGNORED: Editing message error")
+                        self.instance.log.exception("Editing message error")
                         message.obj = await self.instance.bot.send(
                             chat_id, self.instance.bot.logify(self.name, text)
                         )
@@ -159,14 +172,19 @@ class DownloadManager(Manager):
                 del self.chats[chat_id]
 
     def create_message(self, torrents: list[Torrent]) -> str:
-        current, total, total_count, hidden_count, files = 0, 0, 0, 0, []
-        for torrent in sorted(
-            torrents,
-            key=lambda x: (
-                (x.stats if isinstance(x.stats, dict) else {}).get("rateDownload", 0)
-                > 0
-            ),
-            reverse=True,
+        """Create a status message for active torrents."""
+        current, total, hidden_count, files = 0, 0, 0, []
+        for total_count, torrent in enumerate(
+            sorted(
+                torrents,
+                key=lambda x: (
+                    (x.stats if isinstance(x.stats, dict) else {}).get(
+                        "rateDownload", 0
+                    )
+                    > 0
+                ),
+                reverse=True,
+            )
         ):
             if total_count < 3:
                 stats = torrent.stats if isinstance(torrent.stats, dict) else {}
@@ -191,7 +209,6 @@ class DownloadManager(Manager):
                 total += total_bytes
             else:
                 hidden_count += 1
-            total_count += 1
         header = (
             f"🌊 [{len(torrents)}] {progress_bar(current, total, size=11)}\n{SEPARATOR}"
         )
@@ -201,16 +218,16 @@ class DownloadManager(Manager):
         )
         return f"{header}\n{content}{hidden}"
 
-    def _format_speed(self, bytes_per_sec: int | float) -> str:
+    def _format_speed(self, bytes_per_sec: float) -> str:
+        """Format download speed for display."""
         try:
             speed = float(bytes_per_sec)
             if speed < 1024:
                 return f"{speed:.0f}B/s"
-            elif speed < 1024 * 1024:
+            if speed < 1024 * 1024:
                 return f"{speed / 1024:.1f}KB/s"
-            elif speed < 1024 * 1024 * 1024:
+            if speed < 1024 * 1024 * 1024:
                 return f"{speed / (1024 * 1024):.1f}MB/s"
-            else:
-                return f"{speed / (1024 * 1024 * 1024):.1f}GB/s"
+            return f"{speed / (1024 * 1024 * 1024):.1f}GB/s"
         except (ValueError, TypeError):
             return "0B/s"

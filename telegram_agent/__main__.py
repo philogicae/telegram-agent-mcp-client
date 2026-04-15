@@ -1,3 +1,9 @@
+"""Main entry point for Telegram Agent MCP Client."""
+
+from .patch_pydantic_v1 import _PYDANTIC_V1_ANCHOR
+
+_PYDANTIC_V1_ANCHOR  # noqa: B018
+
 import argparse
 import subprocess
 from asyncio import run
@@ -50,6 +56,7 @@ def install_playwright_drivers() -> None:
 
 
 def cli() -> None:
+    """Parse CLI arguments and run the appropriate command."""
     parser = argparse.ArgumentParser(description="Run Telegram Agent MCP Client")
     parser.add_argument(
         "--telegram",
@@ -100,7 +107,5 @@ def cli() -> None:
 
 
 if __name__ == "__main__":
-    try:
+    with suppress(KeyboardInterrupt):
         cli()
-    except KeyboardInterrupt:
-        pass

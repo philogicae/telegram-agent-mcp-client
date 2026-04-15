@@ -1,5 +1,7 @@
+"""Document management for RAG integration."""
+
 from asyncio import sleep
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from os import getenv
 from typing import Any
 
@@ -17,6 +19,8 @@ SEPARATOR = "___________________________________"
 
 
 class Document(BaseModel):
+    """Document processing status model."""
+
     status: str
     percent: str
     created_at: str
@@ -27,12 +31,16 @@ class Document(BaseModel):
 
 
 class Message(BaseModel):
+    """Chat message tracking model."""
+
     obj: Any
     prev: str
     filenames: set[str]
 
 
 class DocumentManager(Manager):
+    """Manager for document uploads and processing."""
+
     instance: AgenticBot
     documents: dict[str, Document]
     chats: dict[int, Message]
@@ -47,16 +55,18 @@ class DocumentManager(Manager):
             self.delay = delay
 
     async def start(self) -> None:
+        """Start the document status monitoring loop."""
         while True:
             if self.documents:
                 try:
                     await self.update_document_status()
                     await self.update_chats()
                 except Exception:
-                    self.instance.log.error("Could not update document status")
+                    self.instance.log.exception("Could not update document status")
             await sleep(self.delay)
 
     async def notify(self, chat_id: int, data: dict[str, str]) -> None:
+        """Handle a new document upload notification."""
         source = data["filename"]
         res = await self.upload_document(source, data["path"])
         source = sanitize_filename(source) or source
@@ -64,7 +74,7 @@ class DocumentManager(Manager):
         if not documents:
             await self.no_file(chat_id, source, data["size"])
         else:
-            now = datetime.now()
+            now = datetime.now(UTC)
             for filename in documents:
                 self.documents[filename] = Document(
                     status="in queue",
@@ -85,6 +95,7 @@ class DocumentManager(Manager):
                 self.chats[chat_id].filenames.add(filename)
 
     async def no_file(self, chat_id: int, filename: str, size: str) -> None:
+        """Notify user that no valid files were found."""
         await self.instance.bot.send(
             chat_id,
             self.instance.bot.logify(
@@ -93,6 +104,7 @@ class DocumentManager(Manager):
         )
 
     async def file_too_large(self, chat_id: int, filename: str) -> None:
+        """Notify user that the file is too large."""
         await self.instance.bot.send(
             chat_id,
             self.instance.bot.logify(
@@ -103,6 +115,7 @@ class DocumentManager(Manager):
         )
 
     async def upload_document(self, file_name: str, file_path: str) -> Any:
+        """Upload a document to the RAG service."""
         try:
             file = await self.instance.bot.core.download_file(file_path)
             try:
@@ -112,26 +125,28 @@ class DocumentManager(Manager):
                         files={"file": (file_name, file)},
                     )
                     return res.json()
-            except Exception as e:
-                self.instance.log.exception(f"Uploading document: {e}")
-        except Exception as e:
-            self.instance.log.exception(f"Downloading file: {e}")
+            except Exception:
+                self.instance.log.exception("Uploading document failed")
+        except Exception:
+            self.instance.log.exception("Downloading file failed")
         return {"files": []}
 
     async def all_document_status(self) -> Any:
+        """Get the status of all documents from the RAG service."""
         try:
             async with AsyncClient() as http:
                 res = await http.get(f"{RAG_URL}/status")
                 return res.json()
-        except Exception as e:
-            self.instance.log.error(f"Getting document statuses: {e}")
-            raise e
+        except Exception:
+            self.instance.log.exception("Getting document statuses failed")
+            raise
 
     async def update_document_status(self) -> None:
+        """Update the status of all tracked documents."""
         if not self.documents:
             return
         documents = await self.all_document_status()
-        now = datetime.now()
+        now = datetime.now(UTC)
         if documents:
             queue = documents.get("queue", {})
             failed = documents.get("failed", {})
@@ -162,6 +177,7 @@ class DocumentManager(Manager):
                 self.documents[filename].done = True
 
     async def update_chats(self) -> None:
+        """Update chat messages with current document status."""
         to_delete = []
         for chat_id, message in self.chats.items():
             active: list[tuple[str, Document]] = []
@@ -202,6 +218,7 @@ class DocumentManager(Manager):
                 del self.chats[chat_id]
 
     def create_message(self, documents: list[tuple[str, Document]]) -> str:
+        """Create a status message for active documents."""
         current, total_count, hidden_count, files = 0, 0, 0, []
         for filename, document in sorted(
             documents,
