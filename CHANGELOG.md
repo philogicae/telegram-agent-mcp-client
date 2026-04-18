@@ -284,6 +284,7 @@
 - Fix: mapped volumes
 - Fix: update deps + markdownify
 - Fix: remove standalone output mode from docs-ui Next.js config
+- Fix: add ruff linting config and resolve code quality issues
 
 ### 💼 Changes
 
@@ -411,4 +412,7 @@
 - Chore: update deps
 - Chore: update deps
 - Chore: update deps
+- Chore: update deps
+- Chore: update changelog
+- Chore: disable Neo4j service and graph database integration
 - Chore: update deps
