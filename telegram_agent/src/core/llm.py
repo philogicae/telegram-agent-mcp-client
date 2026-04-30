@@ -85,12 +85,12 @@ class LLM(Singleton):
                 )
 
             # Fire Pass
-            api_key_fireworks = getenv("FIREWORKS_API_KEY")
+            api_key_fireworks: Any = getenv("FIREWORKS_API_KEY")
             model_fireworks = getenv("FIREWORKS_API_MODEL")
             if api_key_fireworks and model_fireworks:
                 obj.llm["fireworks"] = ChatAnthropic(
-                    anthropic_api_url="https://api.fireworks.ai/inference",
-                    anthropic_api_key=api_key_fireworks,  # ty:ignore[invalid-argument-type]
+                    base_url="https://api.fireworks.ai/inference",
+                    api_key=api_key_fireworks,
                     model_name=model_fireworks,
                     thinking={"type": "enabled", "budget_tokens": 1024},
                     disable_streaming="tool_calling",
