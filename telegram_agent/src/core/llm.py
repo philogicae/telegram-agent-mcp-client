@@ -12,10 +12,15 @@ from langchain_google_genai import (
     HarmCategory,
 )
 from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
 
 from ..utils import Singleton
 
 load_dotenv()
+
+LLM_CHOICE = getenv("LLM_CHOICE", "opencode")
+LLM_UTILS = getenv("LLM_UTILS") or LLM_CHOICE
+SUPPORT_STRUCTURED_OUTPUT = {"ollama", "gemini", "gemini-small", "fireworks"}
 
 
 class LLM(Singleton):
@@ -25,7 +30,7 @@ class LLM(Singleton):
     llm: dict[str, BaseChatModel]
 
     def __init__(self) -> None:
-        self.provider = getenv("LLM_CHOICE", "gemini")
+        self.provider = LLM_CHOICE
         self.llm = {}
 
     @staticmethod
@@ -93,6 +98,18 @@ class LLM(Singleton):
                     api_key=api_key_fireworks,
                     model_name=model_fireworks,
                     thinking={"type": "enabled", "budget_tokens": 1024},
+                    disable_streaming="tool_calling",
+                )
+
+            # Opencode
+            api_key_opencode: Any = getenv("OPENCODE_API_KEY")
+            model_opencode = getenv("OPENCODE_API_MODEL")
+            if api_key_opencode and model_opencode:
+                obj.llm["opencode"] = ChatOpenAI(
+                    base_url="https://opencode.ai/zen/go/v1",
+                    api_key=api_key_opencode,
+                    model=model_opencode,
+                    reasoning_effort="low",
                     disable_streaming="tool_calling",
                 )
 

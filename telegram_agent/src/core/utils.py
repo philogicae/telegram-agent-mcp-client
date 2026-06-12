@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from enum import Enum
+from json import dumps
 from pathlib import Path
 from re import sub
 from typing import Any, cast
@@ -9,9 +10,11 @@ from typing import Any, cast
 from aiosqlite import connect
 from graphiti_core.edges import EntityEdge
 from langchain_core.messages import (
+    AIMessage,
     BaseMessage,
     HumanMessage,
     RemoveMessage,
+    SystemMessage,
     trim_messages,
 )
 from langchain_core.messages.utils import count_tokens_approximately
@@ -22,7 +25,7 @@ from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.types import StateSnapshot
 from pydantic import BaseModel, Field
 
-from .llm import LLM
+from .llm import LLM, LLM_UTILS, SUPPORT_STRUCTURED_OUTPUT
 
 
 class Flag(Enum):
@@ -130,16 +133,33 @@ class FilteredMemories(BaseModel):
     memories: list[str] = Field(description="Filtered memories")
 
 
+def append_structured_output(model: type[BaseModel]) -> str:
+    """Append JSON output format instructions to a prompt for a given Pydantic model."""
+    schema = model.model_json_schema()
+    return f"\n\n# JSON Output Schema\n```json\n{dumps(schema)}\n```"
+
+
+def parse_structured_output(raw: str | AIMessage, model: type[BaseModel]) -> BaseModel:
+    """Parse a JSON string from an LLM output into the given Pydantic model."""
+    text = raw.strip() if isinstance(raw, str) else raw.content.strip()  # type: ignore
+    if text.startswith("```"):
+        text = text.strip("`").strip()
+        if text.lower().startswith("json"):
+            text = text[4:].strip()
+    return model.model_validate_json(text)
+
+
 def summarize_and_rephrase(
-    state: StateSnapshot, user_msg: str, provider: str = "fireworks"
+    state: StateSnapshot, user_msg: str, provider: str | None = LLM_UTILS
 ) -> ReContext:
     """Summarize chat history and rephrase the user message."""
     chat_history: list[Any] = []
     if state.values.get("messages"):
         chat_history = pre_agent_hook(state.values).get("messages", [])
-    chat_history.append(
-        HumanMessage(
-            f"""Analyze the chat history and the latest user message to provide:
+    chat_history.extend(
+        [
+            HumanMessage(
+                """Analyze the chat history and the latest user message to provide:
 1. An exhaustive compressed summary of the conversation so far (return 'None' if empty).
 2. A rephrased version of the latest user message that incorporates context to make it self-contained.
 
@@ -151,30 +171,33 @@ def summarize_and_rephrase(
 
 # Example
 History: Bob asked to find Dexter S01E01. Agent only found the complete season.
-Input: "Bob: Take it"
-Rephrased: "Bob: Download the complete season 1 of Dexter that you found"
-
-# User Message
-{user_msg}"""
-        )
+Input: 'Bob: Take it'
+Rephrased: 'Bob: Download the complete season 1 of Dexter that you found'"""
+                + (
+                    append_structured_output(ReContext)
+                    if provider not in SUPPORT_STRUCTURED_OUTPUT
+                    else ""
+                )
+            ),
+            HumanMessage(f"# User Message\n{user_msg}"),
+        ]
     )
     llm: Any = LLM.get(provider)
-    structured_llm = llm.with_structured_output(schema=ReContext)
-    return cast("ReContext", structured_llm.invoke(chat_history))
+    if provider in SUPPORT_STRUCTURED_OUTPUT:
+        raw_result = llm.with_structured_output(schema=ReContext).invoke(chat_history)
+    else:
+        raw_result = parse_structured_output(llm.invoke(chat_history), ReContext)
+    return cast("ReContext", raw_result)
 
 
 def filter_relevant_memories(
-    memories: str, context: str, user_msg: str, provider: str = "fireworks"
+    memories: str, context: str, user_msg: str, provider: str | None = LLM_UTILS
 ) -> str:
     """Filter episodic memories for relevance to the current context."""
     llm: Any = LLM.get(provider)
-    structured_llm = llm.with_structured_output(schema=FilteredMemories)
-    result = cast(
-        "FilteredMemories",
-        structured_llm.invoke(
-            [
-                HumanMessage(
-                    f"""Analyze the provided episodic memories in relation to the current context and user message.
+    chat_history: list[Any] = [
+        SystemMessage(
+            f"""Analyze the provided episodic memories in relation to the current context and user message.
 Identify and return ONLY the memories that are directly relevant to the user's current intent.
 
 # Instructions
@@ -186,14 +209,22 @@ Identify and return ONLY the memories that are directly relevant to the user's c
 {memories}
 
 # Context
-{context}
-
-# User Message
-{user_msg}"""
-                )
-            ]
+{context}"""
+            + (
+                append_structured_output(FilteredMemories)
+                if provider not in SUPPORT_STRUCTURED_OUTPUT
+                else ""
+            )
         ),
-    )
+        HumanMessage(f"# User Message\n{user_msg}"),
+    ]
+    if provider in SUPPORT_STRUCTURED_OUTPUT:
+        raw_result = llm.with_structured_output(schema=FilteredMemories).invoke(
+            chat_history
+        )
+    else:
+        raw_result = parse_structured_output(llm.invoke(chat_history), FilteredMemories)
+    result = cast("FilteredMemories", raw_result)
     return (
         "\n".join(result.memories)
         if hasattr(result, "memories")

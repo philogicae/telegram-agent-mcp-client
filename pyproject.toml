@@ -13,7 +13,7 @@ dependencies = [
     "python-dotenv",
     "pyjson5",
     "langchain",
-    "langchain[google-genai,anthropic,ollama]",
+    "langchain[google-genai,anthropic,ollama,openai]",
     "langchain-core",
     "langchain-mcp-adapters",
     "langgraph",
