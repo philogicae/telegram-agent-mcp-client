@@ -74,7 +74,9 @@ class Agent:
 
         # Default Agents
         default = self.agents.default = Dict()
-        default.config = get_agent_config(all_tools)
+        default.config = get_agent_config(
+            all_tools, only_agents=["Geppetto", "Search Agent", "Media Manager"]
+        )
         default.active = {}
         default.agent = create_swarm(
             agents=default.config.agents,
