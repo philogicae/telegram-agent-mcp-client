@@ -366,7 +366,7 @@ class Agent:
                                 if called_tool_timer:
                                     step += f" {called_tool_timer.done()}"
                                 extra = {"tool": called_tool, "output": text}
-                        else:  # Final result
+                        elif not tool_calls:  # Final result
                             step, done = text, True
 
                     if tool_calls:

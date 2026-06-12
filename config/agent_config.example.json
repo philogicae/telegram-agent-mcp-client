@@ -26,7 +26,7 @@
       }
     },
     "tools": ["think"],
-    "handoff": "You become {agent} without delegating and immediately continue the current task without interruption"
+    "handoff": "Call it to switch to {agent} without delegating and immediately continue the current task without interruption"
   },
   "agents": {
     "Friendly Agent": {
@@ -69,7 +69,7 @@
         }
         /* "new_episodes": {
           "trigger": "for requests looking like 'Find new episodes...'",
-          "steps": ["Just delegate to `Media Manager`"]
+          "steps": ["Just switch to `Media Manager`"]
         } */
       },
       "tools": [
@@ -87,7 +87,7 @@
       "prompt": "You are the Media Manager, responsible for finding, downloading, and managing media content. You prioritize high-quality releases (1080p, x265) and good seed counts. You are also responsible of managing series planning via Betaseries.",
       "routines": {
         "find_media": {
-          "trigger": "for requests looking like 'Find <movie/series>' or 'Check series planning'",
+          "trigger": "for requests looking like 'Find <movie/series>'",
           "steps": [
             "`search_torrents`",
             "If results are homogeneous (all the same item) always auto-pick the best option according to `search_torrents` priority rules (is 1080p > smaller file size > is x265 > max seeders+leechers)",
@@ -100,7 +100,7 @@
           "trigger": "for requests looking like 'Any new <movie/series/release/media>?'",
           "steps": [
             "`think` to log a thought about this routine",
-            "Delegate to `Search Agent`"
+            "Just switch to `Search Agent`"
           ]
         },
         "new_episodes": {
@@ -121,7 +121,7 @@
         "check_series_planning",
         "mark_episode_downloaded"
       ],
-      "transfer": "for any request involving finding, downloading, or managing torrents for movies and series (to find info about movie/series/release/media, delegate to Search Agent instead)"
+      "transfer": "for any request involving finding, downloading, or managing torrents for movies and series (to find info about movie/series/release/media, see Search Agent instead) or managing series planning"
     } */
   }
 }
