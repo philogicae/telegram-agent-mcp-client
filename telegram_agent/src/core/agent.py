@@ -1,9 +1,11 @@
 """Agent implementation for orchestrating LLM interactions."""
 
+import json
 import sys
 from collections.abc import AsyncGenerator, Callable, Sequence
 from datetime import UTC, datetime
 from os import getenv
+from pathlib import Path
 from typing import Any, Self
 
 from addict import Dict
@@ -34,9 +36,7 @@ from .utils import (
 
 load_dotenv()
 
-# Configuration
 CONFIG_DIR = getenv("CONFIG") or "./config"
-WHITELIST: set[str] = set(getenv("WHITELIST", "").lower().split(","))
 
 
 class Agent:
@@ -48,6 +48,7 @@ class Agent:
     console: Console
     dev: bool
     debug: bool
+    user_config: dict[str, Any]
 
     def __init__(
         self,
@@ -72,36 +73,48 @@ class Agent:
         self.dev = dev
         self.debug = debug
 
-        # Default Agents
-        default = self.agents.default = Dict()
-        default.config = get_agent_config(
-            all_tools, only_agents=["Geppetto", "Search Agent", "Media Manager"]
-        )
-        default.active = {}
-        default.agent = create_swarm(
-            agents=default.config.agents,
-            default_active_agent=default.config.active,
-        ).compile(checkpointer=checkpointer(dev, persist), debug=debug)
-        if generate_png:
-            graph_file = CONFIG_DIR + "/default_graph.png"
-            default.agent.get_graph().draw_mermaid_png(output_file_path=graph_file)
-            print(f"Default Graph saved to {graph_file}")
+        # Load user config
+        user_config_path = Path(CONFIG_DIR) / "user_config.json"
+        self.user_config = {}
+        if user_config_path.exists():
+            with user_config_path.open() as f:
+                self.user_config = json.loads(f.read())
 
-        # Only Documentalist
-        documentalist = self.agents.documentalist = Dict()
-        documentalist.config = get_agent_config(
+        # Pre-create restricted as the universal fallback
+        restricted = self.agents.restricted = Dict()
+        restricted.config = get_agent_config(
             all_tools, only_agents=["Documentalist"], config_name="Restricted"
         )
-        documentalist.agent = create_swarm(
-            agents=documentalist.config.agents,
-            default_active_agent=documentalist.config.active,
+        restricted.active = {}
+        restricted.agent = create_swarm(
+            agents=restricted.config.agents,
+            default_active_agent=restricted.config.active,
         ).compile(checkpointer=checkpointer(dev, persist), debug=debug)
         if generate_png:
-            graph_file = CONFIG_DIR + "/documentalist_graph.png"
-            documentalist.agent.get_graph().draw_mermaid_png(
-                output_file_path=graph_file
+            graph_file = CONFIG_DIR + "/restricted_graph.png"
+            restricted.agent.get_graph().draw_mermaid_png(output_file_path=graph_file)
+            print(f"Restricted Graph saved to {graph_file}")
+
+        # Create swarm per group from user config
+        for group_name, group_config in self.user_config.items():
+            if group_name in self.agents:
+                continue
+            group_agents = group_config.get("agents") or []
+            swarm = self.agents[group_name] = Dict()
+            swarm.config = get_agent_config(
+                all_tools,
+                only_agents=group_agents or None,
+                config_name=group_name.title(),
             )
-            print(f"Documentalist Graph saved to {graph_file}")
+            swarm.active = {}
+            swarm.agent = create_swarm(
+                agents=swarm.config.agents,
+                default_active_agent=swarm.config.active,
+            ).compile(checkpointer=checkpointer(dev, persist), debug=debug)
+            if generate_png:
+                graph_file = f"{CONFIG_DIR}/{group_name}_graph.png"
+                swarm.agent.get_graph().draw_mermaid_png(output_file_path=graph_file)
+                print(f"{group_name} Graph saved to {graph_file}")
 
         if generate_png:
             sys.exit()
@@ -147,7 +160,7 @@ class Agent:
     async def chat(
         self, content: str | TelegramMessage | Any
     ) -> AsyncGenerator[tuple[str, str, bool, dict[str, str]]]:
-        thread_id, user = "test", "User"
+        thread_id, user = "test", "Developer"
         date = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
         if isinstance(content, str):
             content = content.strip()
@@ -160,11 +173,18 @@ class Agent:
                 Panel(escape(content), title="👤 User", border_style="white")
             )
 
-        swarm = (
-            self.agents.default
-            if not WHITELIST or user.lower() in WHITELIST
-            else self.agents.documentalist  # Restricted to Documentalist for public tests
-        )
+        # Determine user group from config (default: restricted)
+        user_lower = user.lower()
+        group = "restricted"
+        for name, group_cfg in self.user_config.items():
+            for u in group_cfg.get("users", []):
+                if u.lower() == user_lower:
+                    group = name
+                    break
+            if group != "restricted":
+                break
+
+        swarm = getattr(self.agents, group, self.agents.restricted)
         if thread_id not in swarm.active:
             swarm.active[thread_id] = swarm.config.active
 
@@ -363,8 +383,9 @@ class Agent:
                                     if flag.value in sample:
                                         step = "❌"
                                         break
+                                step += f" {format_called_tool(called_tool)}"
                                 if called_tool_timer:
-                                    step += f" {called_tool_timer.done()}"
+                                    step += f": {called_tool_timer.done()}"
                                 extra = {"tool": called_tool, "output": text}
                         elif not tool_calls:  # Final result
                             step, done = text, True
@@ -403,7 +424,11 @@ class Agent:
                                     border_style="red",
                                 )
                             )
-                            step = f"🛠️ {format_called_tool(called_tool)}..."
+                            tools_display = ", ".join(
+                                format_called_tool(t.get("name"))
+                                for t in msg.tool_calls
+                            )
+                            step = f"🛠️ {tools_display}..."
 
                     # Usage
                     if hasattr(msg, "usage_metadata") and msg.usage_metadata:

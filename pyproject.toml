@@ -22,7 +22,6 @@ dependencies = [
     "aiosqlite",
     "langgraph-checkpoint-sqlite",
     "nest-asyncio",
-    "telegramify-markdown",
     "langgraph-swarm",
     "graphiti-core[google-genai]",
     "unidecode",

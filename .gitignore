@@ -19,7 +19,9 @@ wheels/
 .env.*
 **/*.env
 .venv
+user_config.json
 *_config.json
+!user_config.example.json
 *_graph.png
 data
 scripts/.*

@@ -1,0 +1,11 @@
+{
+  "admin": {
+    "users": ["Developer"]
+  },
+  "allowed": {
+    "agents": ["Friendly Agent", "Search Agent"]
+  },
+  "restricted": {
+    "agents": ["Documentalist"]
+  }
+}

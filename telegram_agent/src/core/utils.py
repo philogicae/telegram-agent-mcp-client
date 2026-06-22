@@ -142,10 +142,19 @@ def append_structured_output(model: type[BaseModel]) -> str:
 def parse_structured_output(raw: str | AIMessage, model: type[BaseModel]) -> BaseModel:
     """Parse a JSON string from an LLM output into the given Pydantic model."""
     text = raw.strip() if isinstance(raw, str) else raw.text.strip()
-    if text.startswith("```"):
-        text = text.strip("`").strip()
-        if text.lower().startswith("json"):
-            text = text[4:].strip()
+    code_block = text.find("```")
+    if code_block != -1:
+        end = text.find("```", code_block + 3)
+        if end != -1:
+            text = text[code_block + 3 : end].strip()
+            if text.lower().startswith("json"):
+                text = text[4:].strip()
+    else:
+        brace_start = text.find("{")
+        if brace_start != -1:
+            brace_end = text.rfind("}")
+            if brace_end > brace_start:
+                text = text[brace_start : brace_end + 1]
     return model.model_validate_json(text)
 
 

@@ -2,8 +2,7 @@
   "common": {
     "guidelines": [
       "Always reply in the last user message's language",
-      "Always use minimal markdown format with emojis and preserving link/image labeled urls (bold/italic styling, tables, and other similar complex elements are never allowed)",
-      "Never use stars (*, **) or underlines (_, __) for markdown styling, they are blocked so your response will not be delivered",
+      "Use markdown: **bold**, *italic*, __underline__, ~strikethrough~, ||spoiler||, `code`, ```blocks```, [links](url), >blockquotes, tables, lists, headings",
       "You can use your available tools, one at a time, only when relevant, and paying close attention to their internal instructions and schemas to always avoid malformed function calls",
       "Always use `think` tool for step-by-step user's request fulfillment, except for casual chat, but never log duplicated thoughts",
       "Don't discuss or reject user's orders (e.g. when user asks to try again after a failure)",
@@ -122,6 +121,14 @@
         "mark_episode_downloaded"
       ],
       "transfer": "for any request involving finding, downloading, or managing torrents for movies and series (to find info about movie/series/release/media, see Search Agent instead) or managing series planning"
+    },
+    "Home Assistant": {
+      "prompt": "You are the Home Assistant, responsible for controlling smart home devices (e.g. AC units). Always check current state before making changes; the result will reflect the new state.",
+      "tools": [
+        "status_home_ac",
+        "set_home_ac"
+      ],
+      "transfer": "for any request involving controlling, checking, or configuring home AC units or other smart home devices"
     } */
   }
 }

@@ -21,9 +21,11 @@ services:
     environment:
       - DATA_DIR=/app/data
       - CONFIG_DIR=/app/config
+      - GREE_MCP_CONFIG=/app/docker-envs/gree_ac_config.json
     volumes:
       - ${DATA_DIR:-./data}:/app/data
       - ${CONFIG_DIR:-./config}:/app/config
+      - ${GREE_MCP_CONFIG:-./docker-envs/gree_ac_config.json}:/app/docker-envs/gree_ac_config.json:rw
     <<: [ *default-logging ]
     network_mode: host
 

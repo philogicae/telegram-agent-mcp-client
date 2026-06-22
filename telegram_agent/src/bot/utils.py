@@ -1,12 +1,10 @@
 """Utility functions for Telegram bot."""
 
-from re import sub
+import re
 from typing import Any
 
-from telebot.formatting import mcite
 from telebot.types import InlineKeyboardMarkup, Message
 from telebot.util import quick_markup
-from telegramify_markdown import markdownify
 from unidecode import unidecode
 
 
@@ -21,14 +19,93 @@ def unpack_user(msg: Message) -> tuple[str, str]:
 
 
 def fixed_telegram(_: Any, text: str) -> str:
-    """Fix Telegram markdown formatting."""
-    include_quote = text.split("||\n", maxsplit=1)
-    if len(include_quote) > 1:
-        return include_quote[0] + "||\n" + fixed_telegram(_, include_quote[1])
-    fixed = markdownify(html_to_markdown(text))
-    fixed = sub(r"\n{2,}", "\n\n", fixed)  # Remove extra newlines
-    fixed = sub(r"\n[\t ]+", "\n", fixed)  # Remove leading tabs and spaces
-    return fixed.strip().replace("\\\\", "\\")  # Remove double backslashes
+    """Convert markdown text to Telegram HTML format (supports rich messages)."""
+    text = text.replace("&", "&amp;")
+
+    def _code_block(m: re.Match) -> str:
+        lang = m.group(1) or ""
+        code = m.group(2).strip()
+        if lang:
+            return f'<pre><code class="language-{lang}">\n{code}\n</code></pre>'
+        return f"<pre>\n{code}\n</pre>"
+
+    text = re.sub(r"```(\w+)?\n?(.*?)```", _code_block, text, flags=re.DOTALL)
+    text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', text)
+    text = re.sub(r"\|\|(.+?)\|\|", r"<tg-spoiler>\1</tg-spoiler>", text)
+    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+    text = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"<i>\1</i>", text)
+    text = re.sub(r"__(.+?)__", r"<u>\1</u>", text)
+    text = re.sub(r"~(.+?)~", r"<s>\1</s>", text)
+
+    # Divider: ---
+    text = re.sub(r"(?m)^(-{3,}|\*{3,}|_{3,})\s*$", r"<hr>", text)
+
+    # Heading: ### text -> <h3>text</h3>
+    def _heading(m: re.Match) -> str:
+        level = len(m.group(1))
+        return f"<h{level}>{m.group(2).strip()}</h{level}>"
+
+    text = re.sub(r"(?m)^(#{1,6})\s+(.+)$", _heading, text)
+
+    # Pipe tables: | ... | -> <table><tr><td>...</td></tr></table>
+    def _table(m: re.Match) -> str:
+        rows_html = []
+        for raw in m.group(0).strip().split("\n"):
+            line = raw.strip()
+            if not line.startswith("|"):
+                continue
+            cells = line.strip("|").split("|")
+            if all(set(c.strip()) <= set(" -:|") for c in cells):
+                continue
+            tag = "th" if not rows_html else "td"
+            row = "".join(f"<{tag}>{c.strip()}</{tag}>" for c in cells)
+            rows_html.append(f"<tr>{row}</tr>")
+        return f"<table>\n{chr(10).join(rows_html)}\n</table>" if rows_html else ""
+
+    text = re.sub(r"(?m)^\|.+\|\s*$(\n\|.+\|\s*$)*", _table, text)
+
+    # Unordered list: - or * items
+    def _ulist(m: re.Match) -> str:
+        items = "".join(
+            f"<li>{re.sub(r'^[\-\*]\s+', '', line).strip()}</li>"
+            for line in m.group(0).split("\n")
+            if line.strip()
+        )
+        return f"<ul>{items}</ul>"
+
+    text = re.sub(r"(?m)^[\-\*]\s.*(\n[\-\*]\s.*)*", _ulist, text)
+
+    # Ordered list: 1. items
+    def _olist(m: re.Match) -> str:
+        items = "".join(
+            f"<li>{re.sub(r'^\d+\.\s+', '', line).strip()}</li>"
+            for line in m.group(0).split("\n")
+            if line.strip()
+        )
+        return f"<ol>{items}</ol>"
+
+    text = re.sub(r"(?m)^\d+\.\s.*(\n\d+\.\s.*)*", _olist, text)
+
+    # Blockquote
+    text = re.sub(r"(?m)^>\s?(.*)$", r"<blockquote>\1</blockquote>", text)
+
+    result, in_tag = [], False
+    for char in text:
+        if char == "<":
+            in_tag = True
+            result.append(char)
+        elif char == ">":
+            in_tag = False
+            result.append(char)
+        elif in_tag:
+            result.append(char)
+        elif char in "<>":
+            result.append(f"&#{ord(char)};")
+        else:
+            result.append(char)
+    result_str = "".join(result)
+    return re.sub(r"\n{3,}", "\n\n", result_str.strip())
 
 
 def logify_telegram(
@@ -36,20 +113,11 @@ def logify_telegram(
 ) -> str:
     """Format log content for Telegram display."""
     logs = [content] if content and isinstance(content, str) else content
-    return (
-        (
-            f"```{agent.replace(' ', '-') if agent else 'Logs'}\n"
-            + "\n".join(logs)
-            + "\n```"
-        )
-        if logs
-        else ""
-    )
-
-
-def quotify_telegram(_: Any, text: str) -> str:
-    """Format text as a Telegram quote."""
-    return mcite(text, escape=True, expandable=True)
+    if not logs:
+        return ""
+    label = agent.replace(" ", "-") if agent else "Logs"
+    inner = "\n".join(logs)
+    return f'<pre><code class="language-{label}">{inner}\n</code></pre>'
 
 
 def progress_bar(current: float, total: float, size: int = 15) -> str:
@@ -101,39 +169,3 @@ def sanitize_filename(filename: str) -> str:
         ).lower()
     except Exception:
         return ""
-
-
-def transform_urls(html_text: str) -> str:
-    """Transform HTML anchor tags to Markdown links."""
-    # <a href="URL">TEXT</a> -> [TEXT](URL)
-    pattern = r'<a[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>'
-    replacement = r"[\2](\1)"
-    return sub(pattern, replacement, html_text)
-
-
-def transform_images(html_text: str) -> str:
-    """Transform HTML img tags to Markdown image links."""
-    # <img src="URL" ...> -> [](URL)
-    pattern = r'<img[^>]*src="([^"]+)"[^>]*alt="([^"]+)"[^>]*\/>'
-    replacement = r"> [IMG: \2](\1)"
-    return sub(pattern, replacement, html_text)
-
-
-def transform_linked_images(html_text: str) -> str:
-    """Transform HTML linked images to Markdown."""
-    # <a ...><img src="URL" ...></a> -> [](URL)
-    pattern = r'<a[^>]*>\s*<img[^>]*src="([^"]+)"[^>]*alt="([^"]+)"[^>]*\/>\s*<\/a>'
-    replacement = r"> [IMG: \2](\1)"
-    return sub(pattern, replacement, html_text)
-
-
-def quote_report_id(html_text: str) -> str:
-    """Quote report IDs in the text."""
-    return html_text.replace("```\nReport", "```\n> Report")
-
-
-def html_to_markdown(html_text: str) -> str:
-    """Convert HTML text to Markdown format."""
-    return quote_report_id(
-        transform_urls(transform_images(transform_linked_images(html_text)))
-    )

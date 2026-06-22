@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from typing import Any, ClassVar
 
+import aiohttp
 from telebot.async_telebot import AsyncTeleBot
 from telebot.types import CallbackQuery, LinkPreviewOptions, Message
 from telebot.util import smart_split
@@ -26,18 +27,12 @@ class TelegramBot(Bot):
     extra_msg_length: int = 500
     pagination_action: ClassVar[list[str]] = ["first", "prev", "next", "last"]
 
-    def _dynamic_length(self, text: str) -> tuple[int, int]:
-        include_quote = text.split("||\n", maxsplit=1)
-        if len(include_quote) > 1:
-            return self._dynamic_length(include_quote[1])[0], len(include_quote[0]) + 3
+    def _dynamic_length(self, text: str) -> int:
         return (
-            (
-                self.max_msg_length
-                if len(text) % self.max_msg_length
-                > len(text) % (self.max_msg_length + self.extra_msg_length)
-                else self.max_msg_length + self.extra_msg_length
-            ),
-            0,
+            self.max_msg_length
+            if len(text) % self.max_msg_length
+            > len(text) % (self.max_msg_length + self.extra_msg_length)
+            else self.max_msg_length + self.extra_msg_length
         )
 
     def __init__(
@@ -53,8 +48,19 @@ class TelegramBot(Bot):
         super().__init__(delay, group_msg_trigger, waiting, retries)
         if max_msg_length:
             self.max_msg_length = max_msg_length
-        self.core = AsyncTeleBot(token=telegram_id, parse_mode="MarkdownV2")
+        self.core = AsyncTeleBot(token=telegram_id, parse_mode="HTML")
         self.edit_cache: dict[int, Any] = {}
+
+    async def _rich_request(self, method: str, params: dict) -> dict[str, Any]:
+        url = f"https://api.telegram.org/bot{self.core.token}/{method}"
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(url, json=params) as resp,
+        ):
+            result: dict[str, Any] = await resp.json()
+            if not result.get("ok"):
+                raise RuntimeError(f"Telegram API error: {result}")
+            return result["result"]
 
     async def initialize(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
         """Set up message handlers for the bot."""
@@ -116,16 +122,13 @@ class TelegramBot(Bot):
         text: str | None = None,
     ) -> Message:
         """Send a message to a chat."""
-        ref: Message | int | str = (
+        ref: int = (
             message_or_chat_id.chat.id
             if isinstance(message_or_chat_id, Message)
-            else message_or_chat_id
+            else int(message_or_chat_id)
         )
-        if text and len(text) > self._dynamic_length(text)[0]:
-            paginated_msg: Message = await self.paginated(
-                self.core.send_message, ref, self.fixed(text)
-            )
-            return paginated_msg
+        if text and len(text) > self._dynamic_length(text):
+            return await self.paginated(self.core.send_message, ref, self.fixed(text))
         msg: Message = await self._exec(
             self.core.send_message,
             ref,
@@ -142,11 +145,10 @@ class TelegramBot(Bot):
         text: str | None = None,
     ) -> Message:
         """Reply to a specific message."""
-        if text and len(text) > self._dynamic_length(text)[0]:
-            paginated_msg: Message = await self.paginated(
+        if text and len(text) > self._dynamic_length(text):
+            return await self.paginated(
                 self.core.reply_to, to_message, self.fixed(text)
             )
-            return paginated_msg
         msg: Message = await self._exec(
             self.core.reply_to,
             to_message,
@@ -179,8 +181,7 @@ class TelegramBot(Bot):
                 edited = (self.logify(agent, content[:-1]) + f"\n{text}").strip()
             else:
                 if "🛠️" in content[-1] and text[0] in "✅❌":  # Tool result edit
-                    timer: str = text.split(" ", 1)[1]
-                    content[-1] = f"{text[0]}{content[-1][1:-3]}: {timer}"
+                    content[-1] = text
                 else:  # Tool call init or logs
                     content[-1] = text
                 if not content[-1].endswith("..."):
@@ -188,23 +189,35 @@ class TelegramBot(Bot):
                 edited = self.logify(agent, content)
         msg: Message | bool = False
         if edited != orig:
-            if edited and len(edited) > self._dynamic_length(edited)[0]:  # Paginated
+            content_html = self.fixed(edited)
+            if final:
+                await self.delete(message)
+                result = await self._exec(
+                    self._rich_request,
+                    "sendRichMessage",
+                    {
+                        "chat_id": message.chat.id,
+                        "rich_message": {"html": content_html},
+                    },
+                )
+                msg = Message.de_json(result)
+            elif len(content_html) > self._dynamic_length(content_html):
                 msg = await self.paginated(
                     self.core.edit_message_text,
                     (message.chat.id, message.id),
-                    self.fixed(edited),
+                    content_html,
                     cache.get("current"),
                 )
-            else:  # Single message
+            else:
                 msg = await self._exec(
                     self.core.edit_message_text,
-                    self.fixed(edited),
+                    content_html,
                     message.chat.id,
                     message.id,
                     **msg_params,
                 )
-                if (replace or final) and message.id in self.edit_cache:
-                    del self.edit_cache[message.id]
+            if (replace or final) and message.id in self.edit_cache:
+                del self.edit_cache[message.id]
         return msg
 
     async def paginated(
@@ -215,13 +228,8 @@ class TelegramBot(Bot):
         page: int = 0,
     ) -> Any:
         """Send or edit a paginated message."""
-        max_length, quote_length = self._dynamic_length(text)
-        pages: list[str] = []
-        if quote_length:
-            pages = smart_split(text[quote_length:], max_length)
-            pages[0] = text[:quote_length] + pages[0]
-        else:
-            pages = smart_split(text, max_length)
+        max_length = self._dynamic_length(text)
+        pages = smart_split(text, max_length)
         msg: Any = None
         if isinstance(ref, tuple):  # Edit
             msg = await self._exec(
