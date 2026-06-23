@@ -20,7 +20,12 @@ load_dotenv()
 
 LLM_CHOICE = getenv("LLM_CHOICE", "opencode")
 LLM_UTILS = getenv("LLM_UTILS") or LLM_CHOICE
-SUPPORT_STRUCTURED_OUTPUT = {"ollama", "gemini", "gemini-small", "fireworks"}
+SUPPORT_STRUCTURED_OUTPUT = {
+    "ollama",
+    "gemini",
+    "gemini-small",
+    "fireworks",
+}
 
 
 class LLM(Singleton):

@@ -194,6 +194,7 @@ class AgenticBot(ABC):
     ) -> None:
         self.dev = dev
         self.managers = {k: v(self) for k, v in managers.items()} if managers else {}
+        self.pending_media: dict[int, list[bytes]] = {}
 
     def __enter__(self) -> Self:
         return self

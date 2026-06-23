@@ -6,7 +6,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 from .abstract import AgenticBot
-from .handlers import telegram_chat, telegram_file
+from .handlers import telegram_chat, telegram_file, telegram_image, telegram_voice
 from .instances import TelegramBot
 from .logging import TelegramLogger
 from .managers import DocumentManager, DownloadManager
@@ -48,6 +48,9 @@ async def run_telegram_bot(dev: bool = False) -> None:
     if getenv("RAG_URL"):
         managers["document"] = DocumentManager
         handlers["document"] = telegram_file
+    if getenv("GEMINI_API_KEY"):
+        handlers["voice"] = telegram_voice
+        handlers["image"] = telegram_image
 
     with AgenticTelegramBot(telegram_id, dev, managers) as bot:
         await bot.run(**handlers)

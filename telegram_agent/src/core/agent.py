@@ -6,12 +6,14 @@ from collections.abc import AsyncGenerator, Callable, Sequence
 from datetime import UTC, datetime
 from os import getenv
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, ClassVar, Self
+from uuid import uuid4
 
 from addict import Dict
 from dotenv import load_dotenv
 from langchain.messages import AnyMessage, HumanMessage
 from langchain.tools import BaseTool
+from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.prebuilt.tool_node import ToolNode
 from langgraph.types import StateSnapshot
 from langgraph_swarm import create_swarm
@@ -49,6 +51,7 @@ class Agent:
     dev: bool
     debug: bool
     user_config: dict[str, Any]
+    thread_mappings: ClassVar[dict[str, str]] = {}
 
     def __init__(
         self,
@@ -162,16 +165,22 @@ class Agent:
     ) -> AsyncGenerator[tuple[str, str, bool, dict[str, str]]]:
         thread_id, user = "test", "Developer"
         date = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        media: list[dict] = []
         if isinstance(content, str):
             content = content.strip()
         elif isinstance(content, TelegramMessage):
             thread_id = str(content.chat.id)
             if content.from_user:
                 user = content.from_user.first_name
+            media = getattr(content, "media", [])
             content = (content.text or "").strip()
             self.console.print(
                 Panel(escape(content), title="👤 User", border_style="white")
             )
+
+        # Resolve thread_id mapping (for checkpoint jumps after ReContext)
+        base_thread_id = thread_id
+        thread_id = self.thread_mappings.get(base_thread_id, base_thread_id)
 
         # Determine user group from config (default: restricted)
         user_lower = user.lower()
@@ -188,7 +197,7 @@ class Agent:
         if thread_id not in swarm.active:
             swarm.active[thread_id] = swarm.config.active
 
-        if not content:
+        if not content and not media:
             yield (
                 swarm.active[thread_id],
                 "...?",
@@ -196,49 +205,64 @@ class Agent:
                 {},
             )  # Avoid empty reply
         else:
-            content = f"{user}: {content}"
+            content = f"{user}: {content}" if content else f"{user}: [media]"
             messages: list[AnyMessage] = []
 
-            # ReContext
-            mem_timer = Timer()
-            recontext = summarize_and_rephrase(self.state(swarm, thread_id), content)
-            summary = (
-                f"Chat Summary: {recontext.summary}"
-                if recontext.summary and recontext.summary != "None"
-                else ""
-            )
-            if summary:
-                messages = pre_agent_hook(
-                    self.state(swarm, thread_id).values,
-                    remove_all=True,
-                    max_tokens=2000,
-                ).get("messages", [])
-                messages.append(HumanMessage("# " + summary))
-            content = (
-                recontext.user_message
-                if ":" in recontext.user_message
-                else f"{user}: {recontext.user_message}"
-            )
-            recontext_logs = f"{summary}\n{content}" if summary else content
-            self.console.print(
-                Panel(
-                    escape(recontext_logs),
-                    title=f"💡 ReContext ({mem_timer.done()})",
-                    border_style="light_steel_blue1",
+            # ReContext — skip for media-only messages or short conversations
+            # Threshold 200k: Gemini 3.x has 1M context, implicit caching makes
+            # old tokens 75-90% cheaper, so keep history intact as long as possible
+            state = self.state(swarm, thread_id)
+            history_msgs = state.values.get("messages", [])
+            history_tokens = count_tokens_approximately(history_msgs)
+            is_media_only = content.endswith(("[media]", "[voice message]"))
+            recontext_summary = ""
+            if is_media_only or history_tokens < 100000:
+                recontext_logs = content
+            else:
+                mem_timer = Timer()
+                recontext = summarize_and_rephrase(state, content)
+                recontext_summary = recontext.summary
+                summary = (
+                    f"Chat Summary: {recontext.summary}"
+                    if recontext.summary and recontext.summary != "None"
+                    else ""
                 )
-            )
+                if summary:
+                    # Jump to new thread_id for clean checkpoint + fresh LLM cache prefix
+                    messages = pre_agent_hook(
+                        state.values,
+                        max_tokens=2000,
+                    ).get("messages", [])
+                    messages.append(HumanMessage("# " + summary))
+                    new_thread_id = f"{thread_id}:{uuid4().hex[:8]}"
+                    self.thread_mappings[base_thread_id] = new_thread_id
+                    swarm.active[new_thread_id] = swarm.active.pop(thread_id)
+                    thread_id = new_thread_id
+                content = (
+                    recontext.user_message
+                    if ":" in recontext.user_message
+                    else f"{user}: {recontext.user_message}"
+                )
+                recontext_logs = f"{summary}\n{content}" if summary else content
+                self.console.print(
+                    Panel(
+                        escape(recontext_logs),
+                        title=f"💡 ReContext ({mem_timer.done()})",
+                        border_style="light_steel_blue1",
+                    )
+                )
 
-            # Memories
+            # Memories — use base_thread_id for consistent memory association
             if self.graph:
                 mem_timer = Timer()
                 found_memories = await self.graph.full_search(
-                    content, user, thread_id, limit=10
+                    content, user, base_thread_id, limit=10
                 )
                 mem_stats = found_memories["stats"]
                 memories = f"{found_memories['nodes']}{found_memories['edges']}".strip()
                 if memories:
                     filtered_memories = filter_relevant_memories(
-                        memories, recontext.summary, content
+                        memories, recontext_summary, content
                     )
                     if filtered_memories:
                         messages.append(
@@ -255,7 +279,17 @@ class Agent:
                             )
                         )
 
-            messages.append(HumanMessage(f"[{date}] {content}"))
+            if media:
+                messages.append(
+                    HumanMessage(
+                        content=[
+                            {"type": "text", "text": f"[{date}] {content}"},
+                            *media,
+                        ]
+                    )
+                )
+            else:
+                messages.append(HumanMessage(f"[{date}] {content}"))
             config: Any = {
                 "configurable": {"thread_id": thread_id},
                 "max_concurrency": 1,
@@ -548,7 +582,7 @@ class Agent:
                             ),
                             (swarm.active[thread_id], step),
                         ],
-                        chat_id=thread_id,
+                        chat_id=base_thread_id,
                     )
                     self.console.print(
                         Panel(

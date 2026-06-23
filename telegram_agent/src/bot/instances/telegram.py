@@ -72,12 +72,19 @@ class TelegramBot(Bot):
         if not handle_chat:
             raise ValueError("Chat handler is required")
         handle_document = kwargs.get("document")
+        handle_voice = kwargs.get("voice")
+        handle_image = kwargs.get("image")
+
+        def _is_private_or_reply(m: Message) -> bool:
+            return m.chat.type == "private" or (
+                m.reply_to_message is not None
+                and m.reply_to_message.from_user is not None
+                and m.reply_to_message.from_user.id == me.id
+            )
 
         @self.core.message_handler(
             func=lambda m: (
-                m.chat.type == "private"
-                or (m.reply_to_message and m.reply_to_message.from_user.id == me.id)
-                or m.text.startswith(self.group_msg_trigger)
+                _is_private_or_reply(m) or m.text.startswith(self.group_msg_trigger)
             ),
             content_types=["text"],
         )
@@ -103,14 +110,29 @@ class TelegramBot(Bot):
         if handle_document:
 
             @self.core.message_handler(
-                func=lambda m: (
-                    m.chat.type == "private"
-                    or (m.reply_to_message and m.reply_to_message.from_user.id == me.id)
-                ),
+                func=_is_private_or_reply,
                 content_types=["document"],
             )
             async def _handle_file(message: Message) -> None:
                 await handle_document(message)
+
+        if handle_voice:
+
+            @self.core.message_handler(
+                func=_is_private_or_reply,
+                content_types=["voice"],
+            )
+            async def _handle_voice(message: Message) -> None:
+                await handle_voice(message)
+
+        if handle_image:
+
+            @self.core.message_handler(
+                func=_is_private_or_reply,
+                content_types=["photo"],
+            )
+            async def _handle_photo(message: Message) -> None:
+                await handle_image(message)
 
     async def start(self) -> None:
         """Start the bot's polling loop."""
