@@ -1,5 +1,6 @@
 """GREE AC control: EWPE/UDP protocol, telemetry, and graphing."""
 
+import logging
 from atexit import register
 from base64 import b64decode, b64encode
 from bisect import bisect_left
@@ -13,6 +14,8 @@ from signal import SIGTERM, signal
 from socket import AF_INET, SO_BROADCAST, SO_REUSEADDR, SOCK_DGRAM, SOL_SOCKET, socket
 from threading import Event, Lock, RLock, Thread
 from typing import Annotated, Any
+
+logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
 import matplotlib.pyplot as plt
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -311,7 +314,7 @@ class GREEACClient:
                         "port": UDP_PORT,
                         "version": ver,
                         "status": {},
-                        "last_seen": datetime.now().astimezone().timestamp(),
+                        "last_seen": datetime.now(_local_tz()).timestamp(),
                         "info": device.get("info", {}),
                     }
             except Exception:
@@ -430,14 +433,14 @@ class GREEACClient:
             cache
             and cache.get("key")
             and not refresh
-            and datetime.now().astimezone().timestamp() - cache.get("last_seen", 0) < 60
+            and datetime.now(_local_tz()).timestamp() - cache.get("last_seen", 0) < 60
         ):
             return (device, cache)
         if cache and cache.get("key"):
             st = self._status(mac_n, cache)
             if st is not None:
                 cache["status"] = st
-                cache["last_seen"] = datetime.now().astimezone().timestamp()
+                cache["last_seen"] = datetime.now(_local_tz()).timestamp()
                 return (device, cache)
         cache = self._bind(device)
         if cache is None:
@@ -447,7 +450,7 @@ class GREEACClient:
         st = self._status(mac_n, cache)
         if st is not None:
             cache["status"] = st
-            cache["last_seen"] = datetime.now().astimezone().timestamp()
+            cache["last_seen"] = datetime.now(_local_tz()).timestamp()
         return (device, cache)
 
     # ---- Status encoding/decoding ----
@@ -616,9 +619,14 @@ class GREEACClient:
                     )
                 if entry:
                     device_list.append(entry)
+            Path(self._config_path).parent.mkdir(parents=True, exist_ok=True)
+            with suppress(PermissionError):
+                Path(self._config_path).parent.chmod(0o777)
             Path(self._config_path).write_text(
                 dumps({"devices": device_list}, indent=2) + "\n"
             )
+            with suppress(PermissionError):
+                Path(self._config_path).chmod(0o666)
 
     # ---- Public command helpers ----
 
@@ -857,7 +865,7 @@ class GREEACClient:
             return {"error": str(e)}
         mn = self._norm(device["mac"])
         if time_str is None:
-            time_str = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
+            time_str = datetime.now(_local_tz()).strftime("%Y-%m-%d %H:%M:%S")
         resp = self._cmd(mn, cache, ["time"], [time_str], sub=mn)
         _record_event("set_time", time=time_str, mac=mn)
         return {
@@ -1022,7 +1030,7 @@ class GREEACClient:
             st = self._status(mac, cache)
             if st is not None:
                 cache["status"] = st
-                cache["last_seen"] = datetime.now().astimezone().timestamp()
+                cache["last_seen"] = datetime.now(_local_tz()).timestamp()
             self._persist(device, cache)
             return self.decode(device, cache, cache.get("status", {}))
 
@@ -1040,7 +1048,7 @@ class GREEACClient:
             )
         except (ValueError, TypeError):
             return
-        local = datetime.now().astimezone()
+        local = datetime.now(_local_tz())
         if abs((local - dt).total_seconds()) > 60:
             self._cmd(
                 mac, cache, ["time"], [local.strftime("%Y-%m-%d %H:%M:%S")], sub=mac
@@ -1058,6 +1066,8 @@ _TELEMETRY_DIR = Path(__file__).resolve().parents[3] / "data" / "gree_ac" / "tel
 _GRAPH_DIR = Path(__file__).resolve().parents[3] / "data" / "gree_ac" / "graphs"
 _TELEMETRY_DIR.mkdir(parents=True, exist_ok=True)
 _GRAPH_DIR.mkdir(parents=True, exist_ok=True)
+_TELEMETRY_DIR.chmod(0o777)
+_GRAPH_DIR.chmod(0o777)
 
 _telemetry_lock = Lock()
 _collector_thread: Thread | None = None
@@ -1066,14 +1076,16 @@ _stop_event = Event()
 
 def _record_event(action: str, **details: Any) -> None:
     """Append a user action event to the telemetry stream."""
-    path = _TELEMETRY_DIR / f"{datetime.now().astimezone().strftime('%Y-%m-%d')}.jsonl"
+    path = _TELEMETRY_DIR / f"{datetime.now(_local_tz()).strftime('%Y-%m-%d')}.jsonl"
     event = {
-        "deviceTime": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S"),
+        "deviceTime": datetime.now(_local_tz()).strftime("%Y-%m-%d %H:%M:%S"),
         "action": action,
         **details,
     }
     with _telemetry_lock, path.open("a") as f:
         f.write(dumps(event, default=str) + "\n")
+    with suppress(PermissionError):
+        path.chmod(0o666)
 
 
 def _telemetry_fetch() -> dict | None:
@@ -1110,9 +1122,11 @@ def _telemetry_fetch() -> dict | None:
 
 def _save_reading(reading: dict) -> None:
     """Append a telemetry reading to today's JSONL file."""
-    path = _TELEMETRY_DIR / f"{datetime.now().astimezone().strftime('%Y-%m-%d')}.jsonl"
+    path = _TELEMETRY_DIR / f"{datetime.now(_local_tz()).strftime('%Y-%m-%d')}.jsonl"
     with _telemetry_lock, path.open("a", encoding="utf-8") as f:
         f.write(dumps(reading, default=str) + "\n")
+    with suppress(PermissionError):
+        path.chmod(0o666)
 
 
 def _collect() -> None:
@@ -1122,6 +1136,7 @@ def _collect() -> None:
             r = _telemetry_fetch()
             if r and "error" not in r:
                 _save_reading(r)
+                _client._persist(None, None)  # noqa: SLF001
         except Exception as e:
             _save_reading({"_error": str(e)})
         _stop_event.wait(60)
@@ -1398,10 +1413,12 @@ def _generate_graph(
     plt.tight_layout()
     out = str(
         _GRAPH_DIR
-        / f"ac_graph_{datetime.now().astimezone().strftime('%Y%m%d_%H%M%S')}.png"
+        / f"ac_graph_{datetime.now(_local_tz()).strftime('%Y%m%d_%H%M%S')}.png"
     )
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
+    with suppress(PermissionError):
+        Path(out).chmod(0o666)
     return out
 
 
@@ -1410,6 +1427,16 @@ def _generate_graph(
 # ============================================================
 
 _stop_event.clear()
+
+# Sync AC clock(s) to local server time on startup
+with suppress(Exception):
+    _client._ensure()  # noqa: SLF001
+    for mac, d in _client._state["devices"].items():  # noqa: SLF001
+        r = _client._bind_dev(d, refresh=True)  # noqa: SLF001
+        if not isinstance(r, str):
+            _client._sync_device_time(mac, r[1])  # noqa: SLF001
+    _client._persist(None, None)  # noqa: SLF001
+
 _collector_thread = Thread(target=_collect, daemon=True)
 _collector_thread.start()
 
@@ -1596,7 +1623,7 @@ def generate_ac_temperature_graph(  # noqa: PLR0911
     ] = None,
 ) -> dict[str, Any]:
     """Generate a temperature evolution graph (PNG) + structured data summary. Graph: blue line=room temp, green/red/orange line=AC target temp (green=room≈target, orange=heating/cooling, red=AC off). Summary includes current temps, power stats, and user action events. Returns {graph_path, title, period, summary}."""
-    now = datetime.now().astimezone()
+    now = datetime.now(_local_tz())
     period = (range or "1w").lower()
 
     m = match(r"^(\d+)([hdw])$", period)
