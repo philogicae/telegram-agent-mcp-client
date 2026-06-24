@@ -7,7 +7,6 @@ from bisect import bisect_left
 from contextlib import suppress
 from datetime import datetime, timedelta, tzinfo
 from json import JSONDecodeError, dumps, loads
-from os import getenv
 from pathlib import Path
 from re import match
 from signal import SIGTERM, signal
@@ -42,6 +41,22 @@ GENERIC_KEY_V2 = b"{yxAHAY_Lm6pbC/<"
 IV_V2 = bytes([0x54, 0x40, 0x78, 0x44, 0x49, 0x67, 0x5A, 0x51, 0x6C, 0x5E, 0x63, 0x13])
 AAD_V2 = b"qualcomm-test"
 TEMSEN_OFFSET = 40
+
+_DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "gree_ac"
+_DATA_DIR.mkdir(parents=True, exist_ok=True)
+with suppress(PermissionError):
+    _DATA_DIR.chmod(0o777)
+
+
+def _device_dir(mac: str) -> Path:
+    """Return per-device data directory, ensuring subdirs exist."""
+    d = _DATA_DIR / mac.lower().replace(":", "").replace("-", "")
+    for sub in ("", "telemetry", "graphs"):
+        p = d / sub if sub else d
+        p.mkdir(parents=True, exist_ok=True)
+        with suppress(PermissionError):
+            p.chmod(0o777)
+    return d
 
 
 def _local_tz() -> tzinfo | None:
@@ -127,18 +142,15 @@ class GREEACClient:
     """Low-level GREE/EWPE wire protocol client (UDP + AES)."""
 
     def __init__(self) -> None:
-        """Initialize client: load config overrides, prepare device cache."""
+        """Initialize client: load per-device config overrides, prepare device cache."""
         self._cache: dict[str, dict[str, Any]] = {}
         self._state: dict[str, Any] = {"devices": {}, "loaded": False}
-        config_path = getenv("GREE_MCP_CONFIG", "")
         self._overrides: dict[str, dict[str, Any]] = {}
-        if config_path:
-            p = Path(config_path)
-            if p.exists():
-                raw = p.read_bytes().rstrip(b"\x00").decode("utf-8")
+        for config_path in _DATA_DIR.glob("*/config.json"):
+            with suppress(JSONDecodeError, OSError):
+                raw = config_path.read_bytes().rstrip(b"\x00").decode("utf-8")
                 for d in loads(raw).get("devices", []):
                     self._overrides[self._norm(d["mac"])] = d
-        self._config_path = config_path
         self._lock = RLock()
 
     @staticmethod
@@ -592,12 +604,9 @@ class GREEACClient:
         return raw
 
     def _persist(self, _device: dict | None = None, _cache: dict | None = None) -> None:
-        """Write all device statuses back to config JSON."""
+        """Write per-device config JSON files."""
         with self._lock:
-            if not self._config_path:
-                return
             devs = self._state.get("devices", {})
-            device_list = []
             for d in devs.values():
                 entry = {
                     k: v for k, v in d.items() if v is not None and k != "lastStatus"
@@ -618,15 +627,10 @@ class GREEACClient:
                         else None
                     )
                 if entry:
-                    device_list.append(entry)
-            Path(self._config_path).parent.mkdir(parents=True, exist_ok=True)
-            with suppress(PermissionError):
-                Path(self._config_path).parent.chmod(0o777)
-            Path(self._config_path).write_text(
-                dumps({"devices": device_list}, indent=2) + "\n"
-            )
-            with suppress(PermissionError):
-                Path(self._config_path).chmod(0o666)
+                    config_path = _device_dir(mn) / "config.json"
+                    config_path.write_text(dumps({"devices": [entry]}, indent=2) + "\n")
+                    with suppress(PermissionError):
+                        config_path.chmod(0o666)
 
     # ---- Public command helpers ----
 
@@ -867,7 +871,7 @@ class GREEACClient:
         if time_str is None:
             time_str = datetime.now(_local_tz()).strftime("%Y-%m-%d %H:%M:%S")
         resp = self._cmd(mn, cache, ["time"], [time_str], sub=mn)
-        _record_event("set_time", time=time_str, mac=mn)
+        _record_event(mn, "set_time", time=time_str)
         return {
             "mac": mn,
             "name": device["name"],
@@ -926,9 +930,7 @@ class GREEACClient:
         schedule["_ver"] = cache["version"]
         schedule["_key"] = cache["key"]
         resp = self._send(cache["address"], schedule)
-        _record_event(
-            "set_schedule", hour=hour, minute=minute, power_on=power_on, mac=mn
-        )
+        _record_event(mn, "set_schedule", hour=hour, minute=minute, power_on=power_on)
         return {
             "mac": mn,
             "name": device["name"],
@@ -1004,7 +1006,9 @@ class GREEACClient:
         if not cmd:
             return {"error": "No settings provided. Specify at least one parameter."}
         _record_event(
-            "set_multiple", params={k: v for k, v in kwargs.items() if v is not None}
+            self._norm(device["mac"]),
+            "set_multiple",
+            params={k: v for k, v in kwargs.items() if v is not None},
         )
         return self._cmd_verify(device, cache, cmd)
 
@@ -1026,7 +1030,7 @@ class GREEACClient:
                     decoded = _FAN_REV.get(raw_val, raw_val)
                 changes[name] = decoded
             if changes:
-                _record_event("cmd", changes=changes, mac=mac)
+                _record_event(mac, "cmd", changes=changes)
             st = self._status(mac, cache)
             if st is not None:
                 cache["status"] = st
@@ -1062,43 +1066,37 @@ _client = GREEACClient()
 # TELEMETRY & GRAPHING
 # ============================================================
 
-_TELEMETRY_DIR = Path(__file__).resolve().parents[3] / "data" / "gree_ac" / "telemetry"
-_GRAPH_DIR = Path(__file__).resolve().parents[3] / "data" / "gree_ac" / "graphs"
-_TELEMETRY_DIR.mkdir(parents=True, exist_ok=True)
-_GRAPH_DIR.mkdir(parents=True, exist_ok=True)
-_TELEMETRY_DIR.chmod(0o777)
-_GRAPH_DIR.chmod(0o777)
-
 _telemetry_lock = Lock()
 _collector_thread: Thread | None = None
 _stop_event = Event()
 
 
-def _record_event(action: str, **details: Any) -> None:
-    """Append a user action event to the telemetry stream."""
-    path = _TELEMETRY_DIR / f"{datetime.now(_local_tz()).strftime('%Y-%m-%d')}.jsonl"
+def _record_event(mac: str, action: str, **details: Any) -> None:
+    """Append a user action event to the per-device telemetry stream."""
+    tdir = _device_dir(mac) / "telemetry"
+    path = tdir / f"{datetime.now(_local_tz()).strftime('%Y-%m-%d')}.jsonl"
     event = {
         "deviceTime": datetime.now(_local_tz()).strftime("%Y-%m-%d %H:%M:%S"),
         "action": action,
         **details,
     }
-    with _telemetry_lock, path.open("a") as f:
+    with _telemetry_lock, path.open("a", encoding="utf-8") as f:
         f.write(dumps(event, default=str) + "\n")
     with suppress(PermissionError):
         path.chmod(0o666)
 
 
-def _telemetry_fetch() -> dict | None:
+def _telemetry_fetch(mac: str | None = None) -> dict | None:
     """Fetch current AC status for telemetry logging. Returns decoded status or error dict."""
-    r = _client.resolve(refresh=True)
+    r = _client.resolve(mac=mac, refresh=True)
     if isinstance(r, str):
         return {"error": r}
-    return _client.decode(
-        r[0],
-        r[1],
-        r[1].get("status", {}),
+    device, cache = r[0], r[1]
+    decoded = _client.decode(
+        device,
+        cache,
+        cache.get("status", {}),
         skip={
-            "mac",
             "name",
             "lastSeen",
             "room",
@@ -1118,11 +1116,15 @@ def _telemetry_fetch() -> dict | None:
             "bound",
         },
     )
+    decoded["mac"] = _client._norm(device["mac"])  # noqa: SLF001
+    return decoded
 
 
 def _save_reading(reading: dict) -> None:
-    """Append a telemetry reading to today's JSONL file."""
-    path = _TELEMETRY_DIR / f"{datetime.now(_local_tz()).strftime('%Y-%m-%d')}.jsonl"
+    """Append a telemetry reading to today's per-device JSONL file."""
+    mac = reading.get("mac", "unknown")
+    tdir = _device_dir(mac) / "telemetry"
+    path = tdir / f"{datetime.now(_local_tz()).strftime('%Y-%m-%d')}.jsonl"
     with _telemetry_lock, path.open("a", encoding="utf-8") as f:
         f.write(dumps(reading, default=str) + "\n")
     with suppress(PermissionError):
@@ -1133,21 +1135,51 @@ def _collect() -> None:
     """Background loop: fetch status every 1 min until stopped."""
     while not _stop_event.is_set():
         try:
-            r = _telemetry_fetch()
-            if r and "error" not in r:
-                _save_reading(r)
-                _client._persist(None, None)  # noqa: SLF001
+            with _client._lock:  # noqa: SLF001
+                _client._ensure()  # noqa: SLF001
+                macs = list(_client._state["devices"].keys())  # noqa: SLF001
+            for mac in macs:
+                r = _telemetry_fetch(mac)
+                if r and "error" not in r:
+                    _save_reading(r)
+            _client._persist(None, None)  # noqa: SLF001
         except Exception as e:
-            _save_reading({"_error": str(e)})
+            err_path = _DATA_DIR / "errors.jsonl"
+            with _telemetry_lock, err_path.open("a", encoding="utf-8") as f:
+                f.write(
+                    dumps(
+                        {
+                            "_error": str(e),
+                            "deviceTime": datetime.now(_local_tz()).strftime(
+                                "%Y-%m-%d %H:%M:%S"
+                            ),
+                        },
+                        default=str,
+                    )
+                    + "\n"
+                )
         _stop_event.wait(60)
 
 
 def _query_readings(
-    start: datetime | None = None, end: datetime | None = None, limit: int = 100000
+    start: datetime | None = None,
+    end: datetime | None = None,
+    limit: int = 100000,
+    mac: str | None = None,
 ) -> list[dict]:
-    """Query telemetry readings by date range. Returns sorted list newest-first."""
+    """Query telemetry readings by date range. Returns sorted list oldest-first (chronological)."""
     results = []
-    for fpath in sorted(_TELEMETRY_DIR.glob("*.jsonl"), reverse=True):
+    if mac:
+        files = sorted(
+            (_device_dir(mac) / "telemetry").glob("*.jsonl"),
+            key=lambda p: p.name,
+            reverse=True,
+        )
+    else:
+        files = sorted(
+            _DATA_DIR.glob("*/telemetry/*.jsonl"), key=lambda p: p.name, reverse=True
+        )
+    for fpath in files:
         if len(results) >= limit:
             break
         with fpath.open(encoding="utf-8") as f:
@@ -1260,6 +1292,7 @@ def _generate_graph(
     start: datetime | None = None,
     end: datetime | None = None,
     events: list[dict] | None = None,
+    mac: str = "unknown",
 ) -> str:
     """Generate a temperature evolution PNG with power-state overlays. Returns file path."""
     plt.rcParams.update(
@@ -1411,9 +1444,9 @@ def _generate_graph(
         )
 
     plt.tight_layout()
+    gdir = _device_dir(mac) / "graphs"
     out = str(
-        _GRAPH_DIR
-        / f"ac_graph_{datetime.now(_local_tz()).strftime('%Y%m%d_%H%M%S')}.png"
+        gdir / f"ac_graph_{datetime.now(_local_tz()).strftime('%Y%m%d_%H%M%S')}.png"
     )
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -1607,8 +1640,8 @@ def ac_data_collection_status() -> dict[str, Any]:
     running = _collector_thread is not None and _collector_thread.is_alive()
     return {
         "running": running,
-        "data_dir": str(_TELEMETRY_DIR),
-        "total_files": len(list(_TELEMETRY_DIR.glob("*.jsonl"))),
+        "data_dir": str(_DATA_DIR),
+        "total_files": len(list(_DATA_DIR.glob("*/telemetry/*.jsonl"))),
     }
 
 
@@ -1621,6 +1654,8 @@ def generate_ac_temperature_graph(  # noqa: PLR0911
             default=None,
         ),
     ] = None,
+    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
+    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
 ) -> dict[str, Any]:
     """Generate a temperature evolution graph (PNG) + structured data summary. Graph: blue line=room temp, green/red/orange line=AC target temp (green=room≈target, orange=heating/cooling, red=AC off). Summary includes current temps, power stats, and user action events. Returns {graph_path, title, period, summary}."""
     now = datetime.now(_local_tz())
@@ -1663,7 +1698,13 @@ def generate_ac_temperature_graph(  # noqa: PLR0911
             "error": f"Unknown range '{period}'. Use e.g. '6h', '3d', '2w', or 'YYYY-MM-DD to YYYY-MM-DD'."
         }
 
-    readings = _query_readings(start, end)
+    try:
+        dev, _ = _client._resolve_one(mac, name)  # noqa: SLF001
+    except ValueError as e:
+        return {"error": str(e)}
+    dev_mac = _client._norm(dev["mac"])  # noqa: SLF001
+
+    readings = _query_readings(start, end, mac=dev_mac)
     if not readings:
         return {"error": f"No readings found for period: {period}"}
     events_list = [r for r in readings if "action" in r]
@@ -1672,7 +1713,7 @@ def generate_ac_temperature_graph(  # noqa: PLR0911
         return {"error": f"No telemetry readings found for period: {period}"}
     try:
         path = _generate_graph(
-            readings, title=title, start=start, end=end, events=events_list
+            readings, title=title, start=start, end=end, events=events_list, mac=dev_mac
         )
         summary = _summarize_readings(readings)
         summary["events"] = events_list
@@ -1695,9 +1736,18 @@ def graph_home_ac(
             default=None,
         ),
     ] = None,
+    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
+    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
 ) -> dict[str, Any]:
     """Generate a temperature evolution graph (PNG) + structured data summary. Graph: blue line=room temp, green/red/orange line=AC target temp (green=room≈target, orange=heating/cooling, red=AC off). Summary includes current temps, power stats, and user action events. Returns {graph_path, title, period, summary}."""
-    return generate_ac_temperature_graph.invoke({"range": range} if range else {})
+    params: dict[str, Any] = {}
+    if range:
+        params["range"] = range
+    if mac:
+        params["mac"] = mac
+    if name:
+        params["name"] = name
+    return generate_ac_temperature_graph.invoke(params)
 
 
 @tool
