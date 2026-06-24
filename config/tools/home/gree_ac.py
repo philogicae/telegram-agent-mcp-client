@@ -1264,25 +1264,18 @@ def _smooth(
         return xs, ys
     xs, ys = [], []
     for i in range(len(x) - 1):
-        p0x = x[i - 1] if i else x[i]
         p1x = x[i]
         p2x = x[i + 1]
-        p3x = x[i + 2] if i + 2 < len(x) else x[i + 1]
         p0y = y[i - 1] if i else y[i]
         p1y = y[i]
         p2y = y[i + 1]
         p3y = y[i + 2] if i + 2 < len(y) else y[i + 1]
         for t in range(n):
             tn, t2, t3 = t / n, (t / n) ** 2, (t / n) ** 3
-            xs.append(
-                0.5
-                * (
-                    2 * p1x
-                    + (-p0x + p2x) * tn
-                    + (2 * p0x - 5 * p1x + 4 * p2x - p3x) * t2
-                    + (-p0x + 3 * p1x - 3 * p2x + p3x) * t3
-                )
-            )
+            # x is interpolated linearly so time stays monotonic. Cubic-
+            # interpolating x overshoots on uneven spacing, making the curve
+            # loop back on itself (time running backwards).
+            xs.append(p1x + (p2x - p1x) * tn)
             ys.append(
                 0.5
                 * (

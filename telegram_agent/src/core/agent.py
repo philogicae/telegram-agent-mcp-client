@@ -426,10 +426,12 @@ class Agent:
                                 extra = {"tool": called_tool, "output": text}
                                 try:
                                     result = loads(text)
-                                    if isinstance(result, dict) and result.get(
-                                        "graph_path"
-                                    ):
-                                        pending_images.append(result["graph_path"])
+                                    if isinstance(result, dict):
+                                        pending_images.extend(
+                                            result[key]
+                                            for key in ("graph_path", "image_path")
+                                            if result.get(key)
+                                        )
                                 except (JSONDecodeError, TypeError):
                                     pass
                         elif not tool_calls:  # Final result
