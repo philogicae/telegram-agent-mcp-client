@@ -1038,12 +1038,21 @@ class GREEACClient:
             self._persist(device, cache)
             return self.decode(device, cache, cache.get("status", {}))
 
-    def _sync_device_time(self, mac: str, cache: dict) -> None:
-        """Sync AC clock to local time if off by >60s. Runs once on initial bind."""
-        st = self._status(mac, cache, ["time"])
-        if st is None:
-            return
-        dt_raw = st.get("time")
+    def _sync_device_time(
+        self, mac: str, cache: dict, status: dict | None = None
+    ) -> None:
+        """
+        Sync AC clock to local time if off by >60s.
+
+        If *status* is provided it must be a RAW status dict (as returned by
+        ``_status``, keyed by ``FIELDS["time"]``), not a ``decode``d one — pass it
+        to reuse an already-fetched status instead of a separate UDP round-trip.
+        """
+        if status is None:
+            status = self._status(mac, cache, ["time"])
+            if status is None:
+                return
+        dt_raw = status.get(FIELDS["time"])
         if not isinstance(dt_raw, str) or not dt_raw.strip():
             return
         try:
@@ -1203,6 +1212,40 @@ def _query_readings(
     return results
 
 
+def _dedup_unchanged(readings: list[dict]) -> list[dict]:
+    """
+    Collapse runs of consecutive readings identical except for the timestamp.
+
+    Keeps the FIRST and LAST reading of each run (a single point only once) so
+    flat segments stay anchored at both ends — the smoothing curve then draws a
+    true horizontal line instead of bowing through a lone midpoint. Transition
+    timestamps remain accurate.
+
+    Assumes `readings` contains only sensor readings (no action/event records);
+    splitting those out is the caller's responsibility.
+    """
+    deduped: list[dict] = []
+    run_sig: tuple | None = None
+    run_last: dict | None = None  # pending tail of the current run, not yet emitted
+
+    def flush() -> None:
+        nonlocal run_last
+        if run_last is not None:
+            deduped.append(run_last)
+            run_last = None
+
+    for r in readings:
+        sig = tuple(sorted((k, v) for k, v in r.items() if k != "deviceTime"))
+        if sig != run_sig:
+            flush()
+            deduped.append(r)
+            run_sig = sig
+        else:
+            run_last = r  # extend run; remember tail to emit when it ends
+    flush()
+    return deduped
+
+
 def _smooth(
     x: list[float], y: list[float], n: int = 50
 ) -> tuple[list[float], list[float]]:
@@ -1254,6 +1297,28 @@ def _smooth(
     return xs, ys
 
 
+# Max points to render/return. Data is collected every 1 min, so 1w = 10080
+# raw points; anything past ~1000 is invisible noise on a chart.
+_GRAPH_MAX_POINTS = 1000
+_SERIES_MAX_POINTS = 200
+
+
+def _downsample(readings: list[dict], max_points: int) -> list[dict]:
+    """
+    Uniformly thin readings to at most `max_points`, keeping the last sample.
+
+    Index-stride is exact for our regular 1/min cadence. Sparse data
+    (fewer than `max_points`) is returned untouched (step=1).
+    """
+    if not readings or len(readings) <= max_points:
+        return readings
+    step = -(-len(readings) // max_points)  # ceil division
+    thinned = readings[::step]
+    if thinned[-1] is not readings[-1]:
+        thinned.append(readings[-1])
+    return thinned
+
+
 def _summarize_readings(readings: list[dict]) -> dict[str, Any]:
     room_temps = [
         v
@@ -1275,14 +1340,37 @@ def _summarize_readings(readings: list[dict]) -> dict[str, Any]:
     transitions = sum(
         1 for i in range(1, len(power_vals)) if power_vals[i] != power_vals[i - 1]
     )
+    # Stats above use the raw uniform samples (time-correct averages/percentages);
+    # the charted series is deduped + downsampled so flat runs draw clean.
+    series = []
+    for r in _downsample(_dedup_unchanged(readings), _SERIES_MAX_POINTS):
+        rv = (
+            r.get("currentTemperature")
+            if r.get("currentTemperature") is not None
+            else r.get("roomTemperature")
+        )
+        series.append(
+            {
+                "time": r.get("deviceTime"),
+                "room": rv,
+                "target": r.get("targetTemperature"),
+                "power": r.get("power"),
+            }
+        )
     return {
         "data_points": len(readings),
         "room_temperature": room_temps[-1] if room_temps else None,
+        "room_temp_min": min(room_temps) if room_temps else None,
+        "room_temp_max": max(room_temps) if room_temps else None,
+        "room_temp_avg": (
+            round(sum(room_temps) / len(room_temps), 1) if room_temps else None
+        ),
         "target_temperature": target_temps[-1] if target_temps else None,
         "power_on_pct": (
             round(power_on_count / len(power_vals) * 100, 1) if power_vals else None
         ),
         "power_transitions": transitions,
+        "series": series,
     }
 
 
@@ -1311,12 +1399,7 @@ def _generate_graph(
         }
     )
 
-    if start and end:
-        span_mins = (end - start).total_seconds() / 60
-        step = max(1, round(span_mins / 800))
-    else:
-        step = 1
-    sampled = readings[::step]
+    sampled = _downsample(_dedup_unchanged(readings), _GRAPH_MAX_POINTS)
     ts, rt, at, ps = [], [], [], []
     for r in sampled:
         dt_s = r.get("deviceTime")
@@ -1461,7 +1544,7 @@ def _generate_graph(
 
 _stop_event.clear()
 
-# Sync AC clock(s) to local server time on startup
+# Sync AC clock(s) to local server time on startup.
 with suppress(Exception):
     _client._ensure()  # noqa: SLF001
     for mac, d in _client._state["devices"].items():  # noqa: SLF001

@@ -24,6 +24,8 @@ services:
     volumes:
       - ${DATA_DIR:-./data}:/app/data
       - ${CONFIG_DIR:-./config}:/app/config
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     <<: [ *default-logging ]
     network_mode: host
 

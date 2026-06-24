@@ -3,7 +3,7 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=0
 WORKDIR /app
 # Node is needed for MCP tools
 RUN apt-get update && \
-    apt-get install -y nodejs npm && \
+    apt-get install -y --no-install-recommends nodejs npm tzdata && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
