@@ -304,8 +304,11 @@ class Agent:
             start_time = end_time = datetime.now(UTC).timestamp()
             usage: Usage = Usage()
             forced_messages: list[AnyMessage] = []
+            pending_images: list[str] = []
+            extra: dict[str, Any] = {}
             final, retry = False, 0
             while not final:
+                pending_images.clear()
                 async for _, chunk in swarm.agent.astream(
                     {"messages": forced_messages or messages}, config, subgraphs=True
                 ):
@@ -379,7 +382,7 @@ class Agent:
                     # Logging
                     step: str = ""
                     done: bool = False
-                    extra: dict[str, str] = {}
+                    extra: dict[str, Any] = {}
 
                     if text:
                         if not text.startswith(
@@ -426,7 +429,7 @@ class Agent:
                                     if isinstance(result, dict) and result.get(
                                         "graph_path"
                                     ):
-                                        extra["image"] = result["graph_path"]
+                                        pending_images.append(result["graph_path"])
                                 except (JSONDecodeError, TypeError):
                                     pass
                         elif not tool_calls:  # Final result
@@ -577,6 +580,8 @@ class Agent:
 
                 # Exit safe loop
                 final = True
+                if pending_images:
+                    extra["images"] = list(pending_images)
                 yield swarm.active[thread_id], step, True, extra
 
                 # Add memories to graph

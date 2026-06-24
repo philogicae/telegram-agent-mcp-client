@@ -31,12 +31,23 @@ def fixed_telegram(_: Any, text: str) -> str:
 
     text = re.sub(r"```(\w+)?\n?(.*?)```", _code_block, text, flags=re.DOTALL)
     text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+
+    def _image(m: re.Match) -> str:
+        url, title = m.group(2), m.group(3)
+        if url.startswith(("http://", "https://")):
+            if title:
+                return f'<figure><img src="{url}"/><figcaption>{title}</figcaption></figure>'
+            return f'<img src="{url}"/>'
+        return ""
+
+    text = re.sub(r'!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)', _image, text)
     text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', text)
     text = re.sub(r"\|\|(.+?)\|\|", r"<tg-spoiler>\1</tg-spoiler>", text)
     text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
     text = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"<i>\1</i>", text)
     text = re.sub(r"__(.+?)__", r"<u>\1</u>", text)
-    text = re.sub(r"~(.+?)~", r"<s>\1</s>", text)
+    text = re.sub(r"~~(.+?)~~", r"<s>\1</s>", text)
+    text = re.sub(r"==(.+?)==", r"<mark>\1</mark>", text)
 
     # Divider: ---
     text = re.sub(r"(?m)^(-{3,}|\*{3,}|_{3,})\s*$", r"<hr>", text)
@@ -65,16 +76,23 @@ def fixed_telegram(_: Any, text: str) -> str:
 
     text = re.sub(r"(?m)^\|.+\|\s*$(\n\|.+\|\s*$)*", _table, text)
 
-    # Unordered list: - or * items
+    # Unordered list: -, *, or + items (including task lists)
     def _ulist(m: re.Match) -> str:
-        items = "".join(
-            f"<li>{re.sub(r'^[\-\*]\s+', '', line).strip()}</li>"
-            for line in m.group(0).split("\n")
-            if line.strip()
-        )
+        items = ""
+        for raw_line in m.group(0).split("\n"):
+            line = raw_line.strip()
+            if not line:
+                continue
+            task = re.match(r"^[\-\*\+]\s+\[([ xX])\]\s+(.*)", line)
+            if task:
+                checked = task.group(1).lower() == "x"
+                items += f'<li><input type="checkbox"{" checked" if checked else ""}/>{task.group(2)}</li>'
+            else:
+                content = re.sub(r"^[\-\*\+]\s+", "", line)
+                items += f"<li>{content}</li>"
         return f"<ul>{items}</ul>"
 
-    text = re.sub(r"(?m)^[\-\*]\s.*(\n[\-\*]\s.*)*", _ulist, text)
+    text = re.sub(r"(?m)^[\-\*\+]\s.*(\n[\-\*\+]\s.*)*", _ulist, text)
 
     # Ordered list: 1. items
     def _olist(m: re.Match) -> str:
@@ -90,6 +108,7 @@ def fixed_telegram(_: Any, text: str) -> str:
     # Blockquote
     text = re.sub(r"(?m)^>\s?(.*)$", r"<blockquote>\1</blockquote>", text)
 
+    # Escape raw < and > that aren't part of generated HTML tags
     result, in_tag = [], False
     for char in text:
         if char == "<":
@@ -100,8 +119,6 @@ def fixed_telegram(_: Any, text: str) -> str:
             result.append(char)
         elif in_tag:
             result.append(char)
-        elif char in "<>":
-            result.append(f"&#{ord(char)};")
         else:
             result.append(char)
     result_str = "".join(result)
@@ -116,7 +133,7 @@ def logify_telegram(
     if not logs:
         return ""
     label = agent.replace(" ", "-") if agent else "Logs"
-    inner = "\n".join(logs)
+    inner = "\n".join(logs).replace("<", "&lt;").replace(">", "&gt;")
     return f'<pre><code class="language-{label}">{inner}\n</code></pre>'
 
 

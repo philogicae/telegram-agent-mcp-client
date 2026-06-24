@@ -1,13 +1,14 @@
 """Telegram bot handlers."""
 
-from asyncio import sleep, to_thread
+from asyncio import gather, sleep, to_thread
+from io import BytesIO
 from os import getenv
 from pathlib import Path
 from traceback import print_exc
 
 from dotenv import load_dotenv
 from langchain.messages import HumanMessage
-from telebot.types import Message
+from telebot.types import InputFile, InputMediaPhoto, Message
 
 from ...core.llm import LLM, LLM_CHOICE, LLM_UTILS
 from ..abstract import AgenticBot, handler
@@ -135,9 +136,22 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
                     )
             if not done:
                 await sleep(0.5)  # No need to spam
-            elif extra.get("image") and Path(extra["image"]).exists():
-                img_bytes = await to_thread(Path(extra["image"]).read_bytes)
-                await instance.bot.core.send_photo(msg.chat.id, img_bytes)
+            elif extra.get("images"):
+                paths = [p for p in extra["images"] if Path(p).exists()]
+                if paths:
+                    if len(paths) == 1:
+                        img_bytes = await to_thread(Path(paths[0]).read_bytes)
+                        await instance.bot.core.send_photo(msg.chat.id, img_bytes)
+                    else:
+                        for i in range(0, len(paths), 10):
+                            batch = paths[i : i + 10]
+                            imgs = await gather(
+                                *(to_thread(Path(p).read_bytes) for p in batch)
+                            )
+                            media = [
+                                InputMediaPhoto(InputFile(BytesIO(b))) for b in imgs
+                            ]
+                            await instance.bot.core.send_media_group(msg.chat.id, media)
     except Exception as e:
         print_exc()
         await telegram_report_issue(instance, msg, reply, e)
