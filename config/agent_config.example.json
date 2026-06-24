@@ -126,7 +126,8 @@
       "prompt": "You are the Home Assistant, responsible for controlling smart home devices (e.g. AC units). Always check current state before making changes; the result will reflect the new state.",
       "tools": [
         "status_home_ac",
-        "set_home_ac"
+        "set_home_ac",
+        "graph_home_ac"
       ],
       "transfer": "for any request involving controlling, checking, or configuring home AC units or other smart home devices"
     } */

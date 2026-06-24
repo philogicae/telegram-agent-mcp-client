@@ -26,7 +26,8 @@ dependencies = [
     "graphiti-core[google-genai]",
     "unidecode",
     "transmission-mcp",
-    "playwright"
+    "playwright",
+    "matplotlib",
 ]
 
 [project.urls]

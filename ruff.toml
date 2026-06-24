@@ -57,6 +57,8 @@ ignore = [
     "TRY003",   # Avoid specifying long messages outside the exception class - Allow custom error messages
     "TRY300",   # Consider moving this statement to an else block - Allow try/except/else patterns
     "TRY301",   # Abstract raise to an inner function - Allow direct raises in try blocks
+    "S112",     # bare-except - Required for UDP broadcast noise in GREE protocol
+    "S305",     # insecure ECB mode - Required by GREE protocol spec
 ]
 
 [lint.per-file-ignores]

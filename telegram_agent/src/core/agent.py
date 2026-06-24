@@ -1,9 +1,9 @@
 """Agent implementation for orchestrating LLM interactions."""
 
-import json
 import sys
 from collections.abc import AsyncGenerator, Callable, Sequence
 from datetime import UTC, datetime
+from json import JSONDecodeError, loads
 from os import getenv
 from pathlib import Path
 from typing import Any, ClassVar, Self
@@ -81,7 +81,7 @@ class Agent:
         self.user_config = {}
         if user_config_path.exists():
             with user_config_path.open() as f:
-                self.user_config = json.loads(f.read())
+                self.user_config = loads(f.read())
 
         # Pre-create restricted as the universal fallback
         restricted = self.agents.restricted = Dict()
@@ -421,6 +421,14 @@ class Agent:
                                 if called_tool_timer:
                                     step += f": {called_tool_timer.done()}"
                                 extra = {"tool": called_tool, "output": text}
+                                try:
+                                    result = loads(text)
+                                    if isinstance(result, dict) and result.get(
+                                        "graph_path"
+                                    ):
+                                        extra["image"] = result["graph_path"]
+                                except (JSONDecodeError, TypeError):
+                                    pass
                         elif not tool_calls:  # Final result
                             step, done = text, True
 

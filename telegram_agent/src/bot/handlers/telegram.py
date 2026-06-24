@@ -1,8 +1,9 @@
 """Telegram bot handlers."""
 
-import traceback
-from asyncio import sleep
+from asyncio import sleep, to_thread
 from os import getenv
+from pathlib import Path
+from traceback import print_exc
 
 from dotenv import load_dotenv
 from langchain.messages import HumanMessage
@@ -134,8 +135,11 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
                     )
             if not done:
                 await sleep(0.5)  # No need to spam
+            elif extra.get("image") and Path(extra["image"]).exists():
+                img_bytes = await to_thread(Path(extra["image"]).read_bytes)
+                await instance.bot.core.send_photo(msg.chat.id, img_bytes)
     except Exception as e:
-        traceback.print_exc()
+        print_exc()
         await telegram_report_issue(instance, msg, reply, e)
     instance.log.sent(msg, timer)
 
@@ -185,7 +189,7 @@ async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
             msg.text = f"🎤 [voice message]: {transcription}"
         await telegram_chat(instance, msg)
     except Exception as e:
-        traceback.print_exc()
+        print_exc()
         await telegram_report_issue(instance, msg, msg, e)
 
 
@@ -249,5 +253,5 @@ async def telegram_image(instance: AgenticBot, msg: Message) -> None:
     except Exception as e:
         if msg.media_group_id and msg.media_group_id in _media_groups:
             _media_groups.pop(msg.media_group_id, None)
-        traceback.print_exc()
+        print_exc()
         await telegram_report_issue(instance, msg, msg, e)
