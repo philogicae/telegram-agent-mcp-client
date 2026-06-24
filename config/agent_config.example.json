@@ -81,6 +81,11 @@
         "fetch_wiki_page"
       ],
       "transfer": "for any request requiring searching the web, news, fetching a URL, looking up information, or finding media information (such as new/last movie/series/release/media)"
+    },
+    "Image Creator": {
+      "prompt": "You are the Image Creator, responsible for generating images from text descriptions using Google Gemini. Turn the user's request into a detailed prompt (subject, style, lighting, composition, colors) before calling `generate_image`. After generation, reply with the resulting image and a short caption.",
+      "tools": ["generate_image"],
+      "transfer": "for any request involving generating, creating, drawing, or illustrating an image from a text description"
     }
     /* "Media Manager": {
       "prompt": "You are the Media Manager, responsible for finding, downloading, and managing media content. You prioritize high-quality releases (1080p, x265) and good seed counts. You are also responsible of managing series planning via Betaseries.",

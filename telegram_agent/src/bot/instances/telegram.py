@@ -2,6 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
+from logging import getLogger
 from typing import Any, ClassVar
 
 import aiohttp
@@ -10,7 +11,15 @@ from telebot.types import CallbackQuery, LinkPreviewOptions, Message
 from telebot.util import smart_split
 
 from ..abstract import Bot
-from ..utils import fixed_telegram, logify_telegram, reply_markup
+from ..utils import (
+    fixed_telegram,
+    logify_telegram,
+    reply_markup,
+    strip_html_tags,
+    strip_rich_images,
+)
+
+logger = getLogger(__name__)
 
 msg_params: dict[str, Any] = {
     "link_preview_options": LinkPreviewOptions(is_disabled=True)
@@ -61,6 +70,34 @@ class TelegramBot(Bot):
             if not result.get("ok"):
                 raise RuntimeError(f"Telegram API error: {result}")
             return result["result"]
+
+    async def _send_rich(self, chat_id: int, content_html: str) -> Message:
+        """
+        Send a rich HTML message, degrading gracefully on failure.
+
+        Telegram rejects the whole message if it cannot fetch an embedded
+        image (RICH_MESSAGE_PHOTO_NO_MEDIA_FOUND). Since the placeholder
+        message is already deleted by then, a raw failure would leave the
+        user with no answer at all. So we retry without images, then fall
+        back to plain text, guaranteeing a response is always delivered.
+        """
+        stripped = strip_rich_images(content_html)
+        attempts = [content_html] + ([stripped] if stripped != content_html else [])
+        for html in attempts:
+            try:
+                result = await self._exec(
+                    self._rich_request,
+                    "sendRichMessage",
+                    {"chat_id": chat_id, "rich_message": {"html": html}},
+                    retries=0,
+                )
+                return Message.de_json(result)
+            except (RuntimeError, aiohttp.ClientError, TimeoutError) as exc:
+                logger.warning("sendRichMessage attempt failed: %s", exc)
+                continue
+        return await self.paginated(
+            self.core.send_message, chat_id, strip_html_tags(content_html)
+        )
 
     async def initialize(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
         """Set up message handlers for the bot."""
@@ -214,15 +251,7 @@ class TelegramBot(Bot):
             content_html = self.fixed(edited)
             if final:
                 await self.delete(message)
-                result = await self._exec(
-                    self._rich_request,
-                    "sendRichMessage",
-                    {
-                        "chat_id": message.chat.id,
-                        "rich_message": {"html": content_html},
-                    },
-                )
-                msg = Message.de_json(result)
+                msg = await self._send_rich(message.chat.id, content_html)
             elif len(content_html) > self._dynamic_length(content_html):
                 msg = await self.paginated(
                     self.core.edit_message_text,
@@ -295,7 +324,7 @@ class TelegramBot(Bot):
                 cache["current"] = new_index
                 await self._exec(
                     self.core.edit_message_text,
-                    self.fixed(cache["pages"][new_index]),
+                    cache["pages"][new_index],
                     message.chat.id,
                     message.id,
                     reply_markup=reply_markup(new_index, len(cache["pages"])),

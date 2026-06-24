@@ -1246,50 +1246,6 @@ def _dedup_unchanged(readings: list[dict]) -> list[dict]:
     return deduped
 
 
-def _smooth(
-    x: list[float], y: list[float], n: int = 50
-) -> tuple[list[float], list[float]]:
-    """Catmull-Rom interpolation — smooth a curve through uneven sample points."""
-    if len(x) < 2:
-        return x, y
-    if len(x) < 4:
-        xs, ys = [x[0]], [y[0]]
-        for i in range(len(x) - 1):
-            for t in range(1, n):
-                frac = t / n
-                xs.append(x[i] + (x[i + 1] - x[i]) * frac)
-                ys.append(y[i] + (y[i + 1] - y[i]) * frac)
-        xs.append(x[-1])
-        ys.append(y[-1])
-        return xs, ys
-    xs, ys = [], []
-    for i in range(len(x) - 1):
-        p1x = x[i]
-        p2x = x[i + 1]
-        p0y = y[i - 1] if i else y[i]
-        p1y = y[i]
-        p2y = y[i + 1]
-        p3y = y[i + 2] if i + 2 < len(y) else y[i + 1]
-        for t in range(n):
-            tn, t2, t3 = t / n, (t / n) ** 2, (t / n) ** 3
-            # x is interpolated linearly so time stays monotonic. Cubic-
-            # interpolating x overshoots on uneven spacing, making the curve
-            # loop back on itself (time running backwards).
-            xs.append(p1x + (p2x - p1x) * tn)
-            ys.append(
-                0.5
-                * (
-                    2 * p1y
-                    + (-p0y + p2y) * tn
-                    + (2 * p0y - 5 * p1y + 4 * p2y - p3y) * t2
-                    + (-p0y + 3 * p1y - 3 * p2y + p3y) * t3
-                )
-            )
-    xs.append(x[-1])
-    ys.append(y[-1])
-    return xs, ys
-
-
 # Max points to render/return. Data is collected every 1 min, so 1w = 10080
 # raw points; anything past ~1000 is invisible noise on a chart.
 _GRAPH_MAX_POINTS = 1000
@@ -1421,9 +1377,13 @@ def _generate_graph(
     valid_rt = [(t, v) for t, v in zip(ts, rt) if v is not None]
     if valid_rt:
         rt_ts, rt_vals = zip(*valid_rt)
-        sx, sy = _smooth(list(date2num(rt_ts)), list(rt_vals))
         ax.plot(
-            sx, sy, color="#00bcd4", linewidth=2, alpha=0.9, label="Room Temperature"
+            date2num(rt_ts),
+            rt_vals,
+            color="#00bcd4",
+            linewidth=2,
+            alpha=0.9,
+            label="Room Temperature",
         )
 
     valid_at = [(t, v, p, r) for t, v, p, r in zip(ts, at, ps, rt) if v is not None]

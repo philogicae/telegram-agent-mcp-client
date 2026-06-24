@@ -119,8 +119,13 @@ class Bot(ABC):
         return self.last_call + self.delay < time()
 
     async def _exec(
-        self, method: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any
+        self,
+        method: Callable[..., Awaitable[Any]],
+        *args: Any,
+        retries: int | None = None,
+        **kwargs: Any,
     ) -> Any:
+        max_retries = self.retries if retries is None else retries
         retry = 0
         while True:
             if self._is_free():
@@ -130,7 +135,7 @@ class Bot(ABC):
                     return result
                 except Exception:
                     retry += 1
-                    if retry > self.retries:
+                    if retry > max_retries:
                         raise
             else:
                 await sleep(self.delay)

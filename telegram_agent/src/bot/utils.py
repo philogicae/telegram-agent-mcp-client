@@ -108,21 +108,53 @@ def fixed_telegram(_: Any, text: str) -> str:
     # Blockquote
     text = re.sub(r"(?m)^>\s?(.*)$", r"<blockquote>\1</blockquote>", text)
 
-    # Escape raw < and > that aren't part of generated HTML tags
-    result, in_tag = [], False
-    for char in text:
-        if char == "<":
-            in_tag = True
-            result.append(char)
-        elif char == ">":
-            in_tag = False
-            result.append(char)
-        elif in_tag:
-            result.append(char)
+    # Escape < and > that aren't part of HTML tags or entities.
+    # After markdown processing the text contains generated HTML tags
+    # (e.g. <b>, <pre>, <a href="…">) alongside literal angle brackets
+    # from user text. Only the latter must be escaped.
+    result: list[str] = []
+    i = 0
+    while i < len(text):
+        if text[i] == "<":
+            tag = re.match(r"</?[a-zA-Z][^>]*>", text[i:])
+            if tag:
+                result.append(tag.group(0))
+                i += len(tag.group(0))
+            else:
+                result.append("&lt;")
+                i += 1
+        elif text[i] == ">":
+            result.append("&gt;")
+            i += 1
         else:
-            result.append(char)
-    result_str = "".join(result)
-    return re.sub(r"\n{3,}", "\n\n", result_str.strip())
+            result.append(text[i])
+            i += 1
+    return re.sub(r"\n{3,}", "\n\n", "".join(result).strip())
+
+
+def strip_rich_images(html: str) -> str:
+    """
+    Remove media tags and unwrap <figure>/<figcaption> from rich HTML.
+
+    Used as a fallback when Telegram's sendRichMessage rejects a message
+    because it could not fetch one of the embedded media URLs
+    (RICH_MESSAGE_PHOTO_NO_MEDIA_FOUND). Captions are kept as plain text.
+    """
+    html = re.sub(r"<(?:img|video|audio|tg-collage|tg-slideshow)[^>]*?/?>", "", html)
+    html = re.sub(r"<figcaption>(.*?)</figcaption>", r"\1", html, flags=re.DOTALL)
+    html = re.sub(r"</?figure>", "", html)
+    return re.sub(r"\n{3,}", "\n\n", html).strip()
+
+
+def strip_html_tags(html: str) -> str:
+    """
+    Reduce rich HTML to tag-free text (last-resort Telegram fallback).
+
+    Entities (&amp;, &lt;, ...) are kept escaped so the result stays valid
+    under Telegram's HTML parse mode used by send_message.
+    """
+    text = re.sub(r"<[^>]+>", "", html)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def logify_telegram(
