@@ -54,9 +54,12 @@ class DownloadManager(Manager):
     async def start(self) -> None:
         """Start the torrent status monitoring loop."""
         while True:
-            if self.torrents:
-                await self.update_torrent_stats()
-                await self.update_chats()
+            try:
+                if self.torrents:
+                    await self.update_torrent_stats()
+                    await self.update_chats()
+            except Exception:
+                self.instance.log.exception("Torrent monitoring error")
             await sleep(self.delay)
 
     async def notify(self, chat_id: int, data: str) -> None:

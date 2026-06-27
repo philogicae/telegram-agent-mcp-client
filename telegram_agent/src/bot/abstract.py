@@ -137,6 +137,7 @@ class Bot(ABC):
                     retry += 1
                     if retry > max_retries:
                         raise
+                    await sleep(self.delay)
             else:
                 await sleep(self.delay)
 

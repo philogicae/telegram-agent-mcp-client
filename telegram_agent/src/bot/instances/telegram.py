@@ -62,10 +62,12 @@ class TelegramBot(Bot):
 
     async def _rich_request(self, method: str, params: dict) -> dict[str, Any]:
         url = f"https://api.telegram.org/bot{self.core.token}/{method}"
+        timeout = aiohttp.ClientTimeout(total=30)
         async with (
-            aiohttp.ClientSession() as session,
+            aiohttp.ClientSession(timeout=timeout) as session,
             session.post(url, json=params) as resp,
         ):
+            resp.raise_for_status()
             result: dict[str, Any] = await resp.json()
             if not result.get("ok"):
                 raise RuntimeError(f"Telegram API error: {result}")
@@ -92,7 +94,7 @@ class TelegramBot(Bot):
                     retries=0,
                 )
                 return Message.de_json(result)
-            except (RuntimeError, aiohttp.ClientError, TimeoutError) as exc:
+            except Exception as exc:
                 logger.warning("sendRichMessage attempt failed: %s", exc)
                 continue
         return await self.paginated(
