@@ -163,6 +163,7 @@ class GREEACClient:
     def __init__(self) -> None:
         """Initialize client: load per-device config overrides, prepare device cache."""
         self._cache: dict[str, dict[str, Any]] = {}
+        self._schedules: dict[str, list[dict[str, Any]]] = {}
         self._state: dict[str, Any] = {"devices": {}, "loaded": False}
         self._overrides: dict[str, dict[str, Any]] = {}
         for config_path in _DATA_DIR.glob("*/config.json"):
@@ -373,6 +374,37 @@ class GREEACClient:
             return dict(zip(st.get("opt", []), st.get("p", st.get("val", []))))
         return None
 
+    def _query_timers(self, mac: str, cache: dict) -> list[dict] | None:
+        """
+        Query all scheduled timers via the 'queryT' command.
+
+        The Gree protocol uses a dedicated 'queryT' message type to read
+        back timer/schedule entries — a status request with cols=['schedules']
+        does not return schedule data.
+
+        Some firmware versions (e.g. V1.x) accept setT but don't respond to
+        queryT. In that case we fall back to the local schedule cache that is
+        maintained by set_schedule/delete_schedule.
+        """
+        d = {
+            "mac": mac,
+            "t": "queryT",
+            "count": 16,
+            "index": 0,
+            "_ver": cache["version"],
+            "_key": cache["key"],
+        }
+        resp = self._send(cache["address"], d)
+        if resp is not None:
+            for key in ("tlist", "timers", "list"):
+                if key in resp and isinstance(resp[key], list):
+                    return resp[key]
+            if isinstance(resp, list):
+                return resp
+            return []
+        # Device didn't respond to queryT — use local cache
+        return self._schedules.get(mac, [])
+
     def _cmd(
         self, _mac: str, cache: dict, opt: list[str], p: list, sub: str | None = None
     ) -> dict | None:
@@ -420,8 +452,27 @@ class GREEACClient:
                         "status": self._encode(last) if last else {},
                         "last_seen": 0,
                     }
+            for mac in self._overrides:
+                self._load_schedules(mac)
             self._state["devices"] = discovered
             self._state["loaded"] = True
+
+    def _load_schedules(self, mac: str) -> None:
+        """Load persisted local schedule cache for a device."""
+        path = _device_dir(mac) / "schedules.json"
+        with suppress(JSONDecodeError, OSError):
+            self._schedules[mac] = loads(
+                path.read_bytes().rstrip(b"\x00").decode("utf-8")
+            )
+        if mac not in self._schedules:
+            self._schedules[mac] = []
+
+    def _save_schedules(self, mac: str) -> None:
+        """Persist local schedule cache for a device."""
+        path = _device_dir(mac) / "schedules.json"
+        path.write_text(dumps(self._schedules.get(mac, []), indent=2) + "\n")
+        with suppress(PermissionError):
+            path.chmod(0o666)
 
     def _dev(self, mac: str | None = None, name: str | None = None) -> dict | None:
         """Look up device by MAC or name."""
@@ -687,11 +738,8 @@ class GREEACClient:
             return {"error": str(e)}
         result = self.decode(device, cache, cache.get("status", {}))
         mn = self._norm(device["mac"])
-        st = self._status(mn, cache, ["schedules"])
-        if st is not None:
-            result["schedules"] = st.get("schedules", [])
-        else:
-            result["schedules"] = []
+        timers = self._query_timers(mn, cache)
+        result["schedules"] = timers if timers is not None else []
         return result
 
     def room_temp(
@@ -914,11 +962,11 @@ class GREEACClient:
         except ValueError as e:
             return {"error": str(e)}
         mn = self._norm(device["mac"])
-        st = self._status(mn, cache, ["schedules"])
+        timers = self._query_timers(mn, cache)
         return {
             "mac": mn,
             "name": device["name"],
-            "schedules": st.get("schedules", []) if st else [],
+            "schedules": timers if timers is not None else [],
         }
 
     def set_schedule(
@@ -959,6 +1007,23 @@ class GREEACClient:
         schedule["_key"] = cache["key"]
         resp = self._send(cache["address"], schedule)
         _record_event(mn, "set_schedule", hour=hour, minute=minute, power_on=power_on)
+        # Maintain local schedule cache for devices that don't support queryT
+        if resp is not None and resp.get("r") == 200:
+            sid = schedule_id or 0
+            entry = {
+                "id": sid,
+                "hour": hour,
+                "minute": minute,
+                "power_on": power_on,
+                "weekdays": weekdays or [0, 1, 1, 1, 1, 1, 0],
+                "enable": 1,
+            }
+            with self._lock:
+                scheds = self._schedules.setdefault(mn, [])
+                scheds = [s for s in scheds if s.get("id") != sid]
+                scheds.append(entry)
+                self._schedules[mn] = scheds
+                self._save_schedules(mn)
         return {
             "mac": mn,
             "name": device["name"],
@@ -996,6 +1061,13 @@ class GREEACClient:
         schedule["_key"] = cache["key"]
         resp = self._send(cache["address"], schedule)
         _record_event(mn, "delete_schedule", schedule_id=schedule_id)
+        # Remove from local schedule cache
+        if resp is not None and resp.get("r") == 200:
+            with self._lock:
+                self._schedules[mn] = [
+                    s for s in self._schedules.get(mn, []) if s.get("id") != schedule_id
+                ]
+                self._save_schedules(mn)
         return {
             "mac": mn,
             "name": device["name"],
@@ -1168,6 +1240,7 @@ class GREEACClient:
                     cache["last_seen"] = datetime.now(_local_tz()).timestamp()
                 self._persist(device, cache)
                 result.update(self.decode(device, cache, cache.get("status", {})))
+            result["schedules"] = self._query_timers(mn, cache) or []
         if warnings:
             result["warnings"] = warnings
         return result
