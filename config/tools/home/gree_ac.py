@@ -1050,6 +1050,20 @@ class GREEACClient:
                 cmd[FIELDS["swingVertical"]] = SWING_VERTICAL[vert]
             if horiz in SWING_HORIZONTAL:
                 cmd[FIELDS["swingHorizontal"]] = SWING_HORIZONTAL[horiz]
+        if (swing_vertical := kwargs.get("swing_vertical")) is not None:
+            if swing_vertical in SWING_VERTICAL:
+                cmd[FIELDS["swingVertical"]] = SWING_VERTICAL[swing_vertical]
+            else:
+                errors.append(
+                    f"Invalid swing_vertical '{swing_vertical}'. Valid: {list(SWING_VERTICAL)}"
+                )
+        if (swing_horizontal := kwargs.get("swing_horizontal")) is not None:
+            if swing_horizontal in SWING_HORIZONTAL:
+                cmd[FIELDS["swingHorizontal"]] = SWING_HORIZONTAL[swing_horizontal]
+            else:
+                errors.append(
+                    f"Invalid swing_horizontal '{swing_horizontal}'. Valid: {list(SWING_HORIZONTAL)}"
+                )
         if (xfan := kwargs.get("xfan")) is not None:
             if not device.get("xFan", False):
                 errors.append("X-Fan not enabled for this device.")
@@ -1905,7 +1919,22 @@ def set_home_ac(
     oscillation: Annotated[
         bool | None,
         Field(
-            description="Louver swing on/off. Omit to leave unchanged.", default=None
+            description="Louver swing on/off (controls both vertical and horizontal together). Omit to leave unchanged. Use swing_vertical/swing_horizontal for independent control.",
+            default=None,
+        ),
+    ] = None,
+    swing_vertical: Annotated[
+        str | None,
+        Field(
+            description="Vertical (up-down) louver position. Controls swing independently from horizontal. Values: default (off), full (full swing), fixed-top, fixed-upper-middle, fixed-middle, fixed-lower-middle, fixed-bottom, swing-bottom, swing-lower-middle, swing-middle, swing-upper-middle, swing-top. Omit to leave unchanged.",
+            default=None,
+        ),
+    ] = None,
+    swing_horizontal: Annotated[
+        str | None,
+        Field(
+            description="Horizontal (left-right) louver position. Controls swing independently from vertical. Values: default (off), full (full swing), fixed-left, fixed-center-left, fixed-center, fixed-center-right, fixed-right. Omit to leave unchanged.",
+            default=None,
         ),
     ] = None,
     xfan: Annotated[
@@ -2000,6 +2029,8 @@ def set_home_ac(
         temperature=temperature,
         fan_speed=fan_speed,
         oscillation=oscillation,
+        swing_vertical=swing_vertical,
+        swing_horizontal=swing_horizontal,
         xfan=xfan,
         light=light,
         quiet=quiet,
