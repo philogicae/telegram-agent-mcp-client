@@ -24,6 +24,7 @@ from langchain.tools import tool
 from matplotlib import use
 from matplotlib.collections import LineCollection
 from matplotlib.dates import DateFormatter, DayLocator, date2num
+from matplotlib.lines import Line2D
 from pydantic import Field
 
 use("Agg")
@@ -1374,9 +1375,24 @@ def _generate_graph(
     fig.patch.set_facecolor("#000000")
     ax.set_facecolor("#000000")
 
+    if ps:
+        _on_start: datetime | None = None
+        for i, p in enumerate(ps):
+            if p and _on_start is None:
+                _on_start = ts[i]
+            elif not p and _on_start is not None:
+                ax.axvspan(_on_start, ts[i], color="#1a237e", alpha=0.07, zorder=0)
+                _on_start = None
+        if _on_start is not None:
+            ax.axvspan(_on_start, ts[-1], color="#1a237e", alpha=0.07, zorder=0)
+
+    rt_n, short_w, long_w = 0, 0, 0
     valid_rt = [(t, v) for t, v in zip(ts, rt) if v is not None]
     if valid_rt:
         rt_ts, rt_vals = zip(*valid_rt)
+        rt_n = len(rt_vals)
+        short_w = max(3, min(15, rt_n // 20))
+        long_w = max(10, min(50, rt_n // 7))
         ax.plot(
             date2num(rt_ts),
             rt_vals,
@@ -1385,6 +1401,34 @@ def _generate_graph(
             alpha=0.9,
             label="Room Temperature",
         )
+
+        def _sma(vals: list[float], w: int) -> list[float]:
+            if len(vals) < w:
+                return list(vals)
+            return [sum(vals[i : i + w]) / w for i in range(len(vals) - w + 1)]
+
+        if rt_n > short_w:
+            short_ma = _sma(list(rt_vals), short_w)
+            ax.plot(
+                date2num(rt_ts[short_w - 1 :]),
+                short_ma,
+                color="#80deea",
+                linewidth=1.5,
+                alpha=0.7,
+                linestyle="--",
+                label=f"Room MA-{short_w}",
+            )
+        if rt_n > long_w > short_w:
+            long_ma = _sma(list(rt_vals), long_w)
+            ax.plot(
+                date2num(rt_ts[long_w - 1 :]),
+                long_ma,
+                color="#ffeb3b",
+                linewidth=1.5,
+                alpha=0.6,
+                linestyle=":",
+                label=f"Room MA-{long_w}",
+            )
 
     valid_at = [(t, v, p, r) for t, v, p, r in zip(ts, at, ps, rt) if v is not None]
     at_vals: tuple = ()
@@ -1404,7 +1448,6 @@ def _generate_graph(
                 cols.append("#ff9100")  # actively changing
         lc = LineCollection(segs, colors=cols, linewidth=2, alpha=0.9)
         ax.add_collection(lc)
-        ax.plot([], [], color="#00e676", linewidth=2, label="AC Target Temperature")
 
     if events and ts:
         ev_x, ev_y = [], []
@@ -1442,11 +1485,60 @@ def _generate_graph(
     ax.set_xlabel("Time", fontsize=11)
     ax.set_ylabel("Temperature (°C)", fontsize=11)
     ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
-    ax.legend(loc="lower left", fontsize=10, framealpha=0.8)
+    _handles = [
+        Line2D([0], [0], color="#00bcd4", linewidth=2, label="Room Temperature")
+    ]
+    if valid_rt and short_w and rt_n > short_w:
+        _handles.append(
+            Line2D(
+                [0],
+                [0],
+                color="#80deea",
+                linewidth=1.5,
+                linestyle="--",
+                alpha=0.7,
+                label=f"Room MA-{short_w}",
+            )
+        )
+    if valid_rt and long_w and long_w > short_w and rt_n > long_w:
+        _handles.append(
+            Line2D(
+                [0],
+                [0],
+                color="#ffeb3b",
+                linewidth=1.5,
+                linestyle=":",
+                alpha=0.6,
+                label=f"Room MA-{long_w}",
+            )
+        )
+    if valid_at:
+        _handles.extend(
+            [
+                Line2D(
+                    [0], [0], color="#00e676", linewidth=2, label="Target (on target)"
+                ),
+                Line2D(
+                    [0],
+                    [0],
+                    color="#ff9100",
+                    linewidth=2,
+                    label="Target (heating/cooling)",
+                ),
+                Line2D([0], [0], color="#ff1744", linewidth=2, label="Target (AC off)"),
+            ]
+        )
+    ax.legend(handles=_handles, loc="lower left", fontsize=9, framealpha=0.8, ncol=2)
     ax.grid(True, linestyle="--", alpha=0.15)  # noqa: FBT003
 
     pad = (ts[-1] - ts[0]) * 0.02 if len(ts) > 1 else timedelta(hours=1)
     ax.set_xlim(ts[0] - pad, ts[-1] + pad)
+
+    _y_vals = [v for v in rt if v is not None] + [v for v in at if v is not None]
+    if _y_vals:
+        y_min, y_max = min(_y_vals), max(_y_vals)
+        y_pad = max(0.5, (y_max - y_min) * 0.1)
+        ax.set_ylim(y_min - y_pad, y_max + y_pad)
 
     span = ts[-1] - ts[0]
     if span <= timedelta(days=2):
@@ -1462,7 +1554,11 @@ def _generate_graph(
         rv = [v for _, v in valid_rt]
         current_room = f"Room: {rv[-1]:.1f}°C" if rv else ""
         current_target = f"Target: {at_vals[-1]:.0f}°C" if valid_at else ""
-        info = "  |  ".join(s for s in [current_room, current_target] if s)
+        range_info = f"Range: {min(rv):.1f}-{max(rv):.1f}°C" if rv else ""
+        avg_info = f"Avg: {sum(rv) / len(rv):.1f}°C" if rv else ""
+        info = "  |  ".join(
+            s for s in [current_room, current_target, range_info, avg_info] if s
+        )
         ax.text(
             0.02,
             0.98,
