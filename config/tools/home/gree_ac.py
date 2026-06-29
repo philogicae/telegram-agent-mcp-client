@@ -25,7 +25,7 @@ from matplotlib import use
 from matplotlib.collections import LineCollection
 from matplotlib.dates import DateFormatter, DayLocator, date2num
 from matplotlib.lines import Line2D
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 use("Agg")
 load_dotenv()
@@ -132,6 +132,24 @@ STATUS_COLS = [v for k, v in FIELDS.items() if k != "tempSensor"] + [
 _FIELDS_REV = {v: k for k, v in FIELDS.items()}
 _MODE_REV = {v: k for k, v in MODE.items()}
 _FAN_REV = {v: k for k, v in FAN_SPEED.items()}
+
+
+class ScheduleConfig(BaseModel):
+    """Create or update a scheduled timer on the AC unit."""
+
+    hour: int = Field(description="Hour (0-23)")
+    minute: int = Field(description="Minute (0-59)")
+    power_on: bool = Field(
+        description="True = turn AC on at scheduled time, False = turn off"
+    )
+    weekdays: list[int] | None = Field(
+        default=None,
+        description="Days of week to repeat: 0=Sun..6=Sat. Default: weekdays.",
+    )
+    schedule_id: int | None = Field(
+        default=None,
+        description="Schedule ID (0-15) to update. Auto-assigned if omitted.",
+    )
 
 
 # ============================================================
@@ -662,12 +680,19 @@ class GREEACClient:
     def status(
         self, mac: str | None = None, name: str | None = None, refresh: bool = True
     ) -> dict[str, Any]:
-        """Get decoded status. Returns error dict on failure."""
+        """Get decoded status including schedules. Returns error dict on failure."""
         try:
             device, cache = self._resolve_one(mac, name, refresh=refresh)
         except ValueError as e:
             return {"error": str(e)}
-        return self.decode(device, cache, cache.get("status", {}))
+        result = self.decode(device, cache, cache.get("status", {}))
+        mn = self._norm(device["mac"])
+        st = self._status(mn, cache, ["schedules"])
+        if st is not None:
+            result["schedules"] = st.get("schedules", [])
+        else:
+            result["schedules"] = []
+        return result
 
     def room_temp(
         self, mac: str | None = None, name: str | None = None
@@ -911,6 +936,8 @@ class GREEACClient:
             return {"error": "Hour must be 0-23"}
         if minute < 0 or minute > 59:
             return {"error": "Minute must be 0-59"}
+        if schedule_id is not None and (schedule_id < 0 or schedule_id > 15):
+            return {"error": "schedule_id must be 0-15"}
         try:
             device, cache = self._resolve_one(mac, name)
         except ValueError as e:
@@ -939,10 +966,49 @@ class GREEACClient:
             "response": resp,
         }
 
+    def delete_schedule(
+        self,
+        schedule_id: int,
+        mac: str | None = None,
+        name: str | None = None,
+    ) -> dict[str, Any]:
+        """Delete a scheduled timer event by its ID."""
+        if schedule_id < 0 or schedule_id > 15:
+            return {"error": "schedule_id must be 0-15"}
+        try:
+            device, cache = self._resolve_one(mac, name)
+        except ValueError as e:
+            return {"error": str(e)}
+        mn = self._norm(device["mac"])
+        schedule = {
+            "cmd": [{"mac": [mn], "opt": ["Pow"], "p": [0]}],
+            "enable": 0,
+            "hr": 0,
+            "id": schedule_id,
+            "min": 0,
+            "name": "5363686564756c65",
+            "sec": 0,
+            "t": "setT",
+            "tz": 1,
+            "week": [0, 0, 0, 0, 0, 0, 0],
+        }
+        schedule["_ver"] = cache["version"]
+        schedule["_key"] = cache["key"]
+        resp = self._send(cache["address"], schedule)
+        _record_event(mn, "delete_schedule", schedule_id=schedule_id)
+        return {
+            "mac": mn,
+            "name": device["name"],
+            "deletedScheduleId": schedule_id,
+            "response": resp,
+        }
+
     def set_multiple(self, **kwargs: Any) -> dict[str, Any]:
         """Set multiple AC parameters at once. kwargs match set_home_ac tool params."""
         mac = kwargs.pop("mac", None)
         name = kwargs.pop("name", None)
+        schedule: ScheduleConfig | None = kwargs.pop("schedule", None)
+        delete_schedule_id: int | None = kwargs.pop("delete_schedule_id", None)
         try:
             device, cache = self._resolve_one(mac, name)
         except ValueError as e:
@@ -1002,16 +1068,95 @@ class GREEACClient:
             cmd[FIELDS["turbo"]] = ON_OFF["on"] if turbo else ON_OFF["off"]
             if turbo:
                 cmd[FIELDS["quiet"]] = QUIET["off"]
+        if (fresh_air := kwargs.get("fresh_air")) is not None:
+            cmd[FIELDS["freshAir"]] = ON_OFF["on"] if fresh_air else ON_OFF["off"]
+        if (health := kwargs.get("health")) is not None:
+            cmd[FIELDS["health"]] = ON_OFF["on"] if health else ON_OFF["off"]
+        if (sleep := kwargs.get("sleep")) is not None:
+            cmd[FIELDS["sleep"]] = ON_OFF["on"] if sleep else ON_OFF["off"]
+        if (sleep_mode := kwargs.get("sleep_mode")) is not None:
+            cmd[FIELDS["sleepMode"]] = ON_OFF["on"] if sleep_mode else ON_OFF["off"]
+        if (no_frost := kwargs.get("no_frost")) is not None:
+            cmd[FIELDS["noFrost"]] = ON_OFF["on"] if no_frost else ON_OFF["off"]
+        if (energy_saving := kwargs.get("energy_saving")) is not None:
+            cmd[FIELDS["energySaving"]] = (
+                ON_OFF["on"] if energy_saving else ON_OFF["off"]
+            )
+        if (heat_cool_type := kwargs.get("heat_cool_type")) is not None:
+            cmd[FIELDS["heatCoolType"]] = heat_cool_type
         if errors:
             return {"error": "; ".join(errors)}
-        if not cmd:
+
+        # Validate schedule params before executing any schedule ops
+        if delete_schedule_id is not None:
+            if delete_schedule_id < 0 or delete_schedule_id > 15:
+                errors.append("delete_schedule_id must be 0-15")
+        if schedule is not None:
+            if schedule.hour < 0 or schedule.hour > 23:
+                errors.append("schedule.hour must be 0-23")
+            if schedule.minute < 0 or schedule.minute > 59:
+                errors.append("schedule.minute must be 0-59")
+            if schedule.schedule_id is not None and (
+                schedule.schedule_id < 0 or schedule.schedule_id > 15
+            ):
+                errors.append("schedule.schedule_id must be 0-15")
+        if errors:
+            return {"error": "; ".join(errors)}
+
+        result: dict[str, Any] = {}
+        warnings: list[str] = []
+
+        # Handle schedule deletion
+        if delete_schedule_id is not None:
+            del_result = self.delete_schedule(delete_schedule_id, mac, name)
+            if "error" in del_result:
+                warnings.append(del_result["error"])
+            else:
+                result["deletedSchedule"] = del_result
+
+        # Handle schedule creation/update
+        if schedule is not None:
+            sched_result = self.set_schedule(
+                schedule.hour,
+                schedule.minute,
+                schedule.power_on,
+                schedule.weekdays,
+                schedule.schedule_id,
+                mac,
+                name,
+            )
+            if "error" in sched_result:
+                warnings.append(sched_result["error"])
+            else:
+                result["schedule"] = sched_result
+
+        if not cmd and not result:
+            if warnings:
+                return {"error": "; ".join(warnings)}
             return {"error": "No settings provided. Specify at least one parameter."}
         _record_event(
             self._norm(device["mac"]),
             "set_multiple",
             params={k: v for k, v in kwargs.items() if v is not None},
+            schedule=schedule.model_dump() if schedule else None,
+            delete_schedule_id=delete_schedule_id,
         )
-        return self._cmd_verify(device, cache, cmd)
+        if cmd:
+            status_result = self._cmd_verify(device, cache, cmd)
+            result.update(status_result)
+        else:
+            # Only schedule ops — return current status too
+            with self._lock:
+                mn = self._norm(device["mac"])
+                st = self._status(mn, cache)
+                if st is not None:
+                    cache["status"] = st
+                    cache["last_seen"] = datetime.now(_local_tz()).timestamp()
+                self._persist(device, cache)
+                result.update(self.decode(device, cache, cache.get("status", {})))
+        if warnings:
+            result["warnings"] = warnings
+        return result
 
     def _cmd_verify(self, device: dict, cache: dict, cmd: dict) -> dict[str, Any]:
         """Send command, try best-effort status re-fetch, return decoded status."""
@@ -1617,16 +1762,16 @@ with suppress(ValueError, OSError):  # ponytail: only works in main thread
     signal(SIGTERM, lambda *_: _stop_collector())
 
 # ============================================================
-# MCP TOOLS
+# MCP TOOLS — only convenience tools are exposed to the agent.
+# All individual setters are subsumed by set_home_ac.
 # ============================================================
 
 _mac_desc = "Device MAC address (12 hex digits). Omit if only one device."
 _name_desc = "Device name. Omit if only one device."
 
 
-@tool
-def list_gree_ac_devices() -> dict[str, Any]:
-    """List all GREE AC units with live status (power, mode, temp, fan, swing)."""
+def _list_devices() -> dict[str, Any]:
+    """List all GREE AC units with live status."""
     with _client._lock:  # noqa: SLF001
         _client._ensure()  # noqa: SLF001
         devices = []
@@ -1640,156 +1785,12 @@ def list_gree_ac_devices() -> dict[str, Any]:
     return {"devices": devices}
 
 
-@tool
-def get_gree_ac_device_status(
-    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
-    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
+def _generate_temp_graph(  # noqa: PLR0911
+    range: str | None = None,  # noqa: A002
+    mac: str | None = None,
+    name: str | None = None,
 ) -> dict[str, Any]:
-    """Get full live status of one AC unit: power, mode, temps, fan, swing, flags."""
-    return _client.status(mac, name)
-
-
-@tool
-def get_gree_ac_room_temperature(
-    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
-    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
-) -> dict[str, Any]:
-    """Get current room temperature in C from the AC's built-in sensor."""
-    return _client.room_temp(mac, name)
-
-
-@tool
-def set_gree_ac_power(
-    on: Annotated[bool, Field(description="true = power on, false = power off")],
-    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
-    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
-) -> dict[str, Any]:
-    """Power an AC unit on or off."""
-    return _client.set_power(on, mac, name)
-
-
-@tool
-def set_gree_ac_mode(
-    mode: Annotated[str, Field(description="Mode: auto, cool, dry, fan, or heat")],
-    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
-    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
-) -> dict[str, Any]:
-    """Set AC operating mode. Also powers the unit on."""
-    return _client.set_mode(mode, mac, name)
-
-
-@tool
-def set_gree_ac_target_temperature(
-    temperature: Annotated[float, Field(description="Target temperature in C (16-30)")],
-    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
-    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
-) -> dict[str, Any]:
-    """Set target cooling/heating temperature in C."""
-    return _client.set_temp(temperature, mac, name)
-
-
-@tool
-def set_gree_ac_fan_speed(
-    speed: Annotated[
-        str,
-        Field(
-            description="Fan speed: auto, quiet, low, medium-low, medium, medium-high, high, turbo"
-        ),
-    ],
-    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
-    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
-) -> dict[str, Any]:
-    """Set fan speed. 'quiet' and 'turbo' are dedicated modes."""
-    return _client.set_fan(speed, mac, name)
-
-
-@tool
-def set_gree_ac_oscillation(
-    on: Annotated[bool, Field(description="true = louver swing on, false = fixed")],
-    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
-    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
-) -> dict[str, Any]:
-    """Enable/disable louver swing (vertical and horizontal)."""
-    return _client.set_swing(on, mac, name)
-
-
-@tool
-def set_gree_ac_xfan(
-    on: Annotated[bool, Field(description="true = enable, false = disable")],
-    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
-    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
-) -> dict[str, Any]:
-    """Toggle X-Fan: keeps fan running after power-off to dry the coil."""
-    return _client.set_xfan(on, mac, name)
-
-
-@tool
-def set_gree_ac_light(
-    on: Annotated[bool, Field(description="true = display on, false = display off")],
-    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
-    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
-) -> dict[str, Any]:
-    """Toggle the front-panel display LED on/off."""
-    return _client.set_light(on, mac, name)
-
-
-@tool
-def set_gree_ac_quiet_mode(
-    on: Annotated[bool, Field(description="true = enable, false = disable")],
-    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
-    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
-) -> dict[str, Any]:
-    """Toggle quiet mode (lowers fan noise). Disables turbo when enabled."""
-    return _client.set_quiet(on, mac, name)
-
-
-@tool
-def set_gree_ac_turbo_mode(
-    on: Annotated[bool, Field(description="true = enable, false = disable")],
-    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
-    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
-) -> dict[str, Any]:
-    """Toggle turbo mode (max fan power). Disables quiet when enabled."""
-    return _client.set_turbo(on, mac, name)
-
-
-@tool
-def restart_ac_data_collection() -> dict[str, Any]:
-    """Restart the background data collection thread (auto-started on MCP init, polls every 1min)."""
-    global _collector_thread  # noqa: PLW0603
-    _stop_event.set()
-    if _collector_thread:
-        _collector_thread.join(timeout=5)
-    _stop_event.clear()
-    _collector_thread = Thread(target=_collect, daemon=True)
-    _collector_thread.start()
-    return {"message": "Data collection restarted."}
-
-
-@tool
-def ac_data_collection_status() -> dict[str, Any]:
-    """Check if data collection is running and how much data exists."""
-    running = _collector_thread is not None and _collector_thread.is_alive()
-    return {
-        "running": running,
-        "data_dir": str(_DATA_DIR),
-        "total_files": len(list(_DATA_DIR.glob("*/telemetry/*.jsonl"))),
-    }
-
-
-@tool
-def generate_ac_temperature_graph(  # noqa: PLR0911
-    range: Annotated[  # noqa: A002
-        str | None,
-        Field(
-            description="Time range: number + unit (h/d/w), e.g. '6h', '3d', '2w'. Or 'YYYY-MM-DD to YYYY-MM-DD'. Default: '1w'.",
-            default=None,
-        ),
-    ] = None,
-    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
-    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
-) -> dict[str, Any]:
-    """Generate a temperature evolution graph (PNG) + structured data summary. Graph: blue line=room temp, green/red/orange line=AC target temp (green=room≈target, orange=heating/cooling, red=AC off). Summary includes current temps, power stats, and user action events. Returns {graph_path, title, period, summary}."""
+    """Generate a temperature evolution graph (PNG) + structured data summary."""
     now = datetime.now(_local_tz())
     period = (range or "1w").lower()
 
@@ -1860,93 +1861,9 @@ def generate_ac_temperature_graph(  # noqa: PLR0911
 
 
 @tool
-def graph_home_ac(
-    range: Annotated[  # noqa: A002
-        str | None,
-        Field(
-            description="Time range: number + unit (h/d/w), e.g. '6h', '3d', '2w'. Or 'YYYY-MM-DD to YYYY-MM-DD'. Default: '1w'.",
-            default=None,
-        ),
-    ] = None,
-    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
-    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
-) -> dict[str, Any]:
-    """Generate a temperature evolution graph (PNG) + structured data summary. Graph: blue line=room temp, green/red/orange line=AC target temp (green=room≈target, orange=heating/cooling, red=AC off). Summary includes current temps, power stats, and user action events. Returns {graph_path, title, period, summary}."""
-    params: dict[str, Any] = {}
-    if range:
-        params["range"] = range
-    if mac:
-        params["mac"] = mac
-    if name:
-        params["name"] = name
-    return generate_ac_temperature_graph.invoke(params)
-
-
-@tool
-def get_gree_ac_time(
-    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
-    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
-) -> dict[str, Any]:
-    """Get the current date and time from the AC unit's internal clock."""
-    return _client.get_time(mac, name)
-
-
-@tool
-def set_gree_ac_time(
-    time_str: Annotated[
-        str | None,
-        Field(
-            description="Time string in 'YYYY-MM-DD HH:MM:SS' format. Defaults to current system time.",
-            default=None,
-        ),
-    ] = None,
-    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
-    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
-) -> dict[str, Any]:
-    """Synchronize the AC unit's internal clock with system time or a specific datetime."""
-    return _client.set_time(time_str, mac, name)
-
-
-@tool
-def list_gree_ac_schedules(
-    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
-    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
-) -> dict[str, Any]:
-    """List all scheduled timer events on the AC unit."""
-    return _client.list_schedules(mac, name)
-
-
-@tool
-def set_gree_ac_schedule(
-    hour: Annotated[int, Field(description="Hour (0-23)")],
-    minute: Annotated[int, Field(description="Minute (0-59)")],
-    power_on: Annotated[bool, Field(description="true = turn on, false = turn off")],
-    weekdays: Annotated[
-        list[int] | None,
-        Field(
-            description="Days of week to repeat: 0=Sun..6=Sat. Default: weekdays.",
-            default=None,
-        ),
-    ] = None,
-    schedule_id: Annotated[
-        int | None,
-        Field(
-            description="Schedule ID (0-15). Auto-assigned if omitted.", default=None
-        ),
-    ] = None,
-    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
-    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
-) -> dict[str, Any]:
-    """Create or update a scheduled timer on the AC unit."""
-    return _client.set_schedule(
-        hour, minute, power_on, weekdays, schedule_id, mac, name
-    )
-
-
-@tool
 def list_home_ac() -> dict[str, Any]:
     """List all home AC units with live status. Use this first to discover available units."""
-    return list_gree_ac_devices.invoke({})
+    return _list_devices()
 
 
 @tool
@@ -1954,7 +1871,7 @@ def status_home_ac(
     mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
     name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
 ) -> dict[str, Any]:
-    """Get full live status of a home AC unit. Omit mac/name if only one unit."""
+    """Get full live status of a home AC unit, including any scheduled timers. Omit mac/name if only one unit."""
     return _client.status(mac, name)
 
 
@@ -2010,10 +1927,73 @@ def set_home_ac(
         bool | None,
         Field(description="Turbo mode on/off. Omit to leave unchanged.", default=None),
     ] = None,
+    fresh_air: Annotated[
+        bool | None,
+        Field(
+            description="Fresh air intake on/off. Omit to leave unchanged.",
+            default=None,
+        ),
+    ] = None,
+    health: Annotated[
+        bool | None,
+        Field(
+            description="Health (ionizer/UV purifier) on/off. Omit to leave unchanged.",
+            default=None,
+        ),
+    ] = None,
+    sleep: Annotated[
+        bool | None,
+        Field(
+            description="Sleep timer on/off. Omit to leave unchanged.",
+            default=None,
+        ),
+    ] = None,
+    sleep_mode: Annotated[
+        bool | None,
+        Field(
+            description="Sleep mode on/off. Omit to leave unchanged.",
+            default=None,
+        ),
+    ] = None,
+    no_frost: Annotated[
+        bool | None,
+        Field(
+            description="No-frost / anti-freeze heating on/off. Omit to leave unchanged.",
+            default=None,
+        ),
+    ] = None,
+    energy_saving: Annotated[
+        bool | None,
+        Field(
+            description="Energy saving mode on/off. Omit to leave unchanged.",
+            default=None,
+        ),
+    ] = None,
+    heat_cool_type: Annotated[
+        int | None,
+        Field(
+            description="Heat/cool type value (device-specific int). Omit to leave unchanged.",
+            default=None,
+        ),
+    ] = None,
+    schedule: Annotated[
+        ScheduleConfig | None,
+        Field(
+            description="Create or update a scheduled timer. Provide as an object with hour, minute, power_on, weekdays, schedule_id.",
+            default=None,
+        ),
+    ] = None,
+    delete_schedule_id: Annotated[
+        int | None,
+        Field(
+            description="Delete a schedule by its ID (0-15). Takes precedence over schedule creation.",
+            default=None,
+        ),
+    ] = None,
     mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
     name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
 ) -> dict[str, Any]:
-    """Set one or more AC settings at once. Only provided parameters are applied."""
+    """Set one or more AC settings at once. Only provided parameters are applied. Can also create, update, or delete scheduled timers via the schedule and delete_schedule_id params."""
     return _client.set_multiple(
         power=power,
         mode=mode,
@@ -2024,9 +2004,60 @@ def set_home_ac(
         light=light,
         quiet=quiet,
         turbo=turbo,
+        fresh_air=fresh_air,
+        health=health,
+        sleep=sleep,
+        sleep_mode=sleep_mode,
+        no_frost=no_frost,
+        energy_saving=energy_saving,
+        heat_cool_type=heat_cool_type,
+        schedule=schedule,
+        delete_schedule_id=delete_schedule_id,
         mac=mac,
         name=name,
     )
+
+
+@tool
+def graph_home_ac(
+    range: Annotated[  # noqa: A002
+        str | None,
+        Field(
+            description="Time range: number + unit (h/d/w), e.g. '6h', '3d', '2w'. Or 'YYYY-MM-DD to YYYY-MM-DD'. Default: '1w'.",
+            default=None,
+        ),
+    ] = None,
+    mac: Annotated[str | None, Field(description=_mac_desc, default=None)] = None,
+    name: Annotated[str | None, Field(description=_name_desc, default=None)] = None,
+) -> dict[str, Any]:
+    """Generate a temperature evolution graph (PNG) + structured data summary. Graph: blue line=room temp, green/red/orange line=AC target temp (green=room≈target, orange=heating/cooling, red=AC off). Summary includes current temps, power stats, and user action events. Returns {graph_path, title, period, summary}."""
+    return _generate_temp_graph(range=range, mac=mac, name=name)
+
+
+@tool
+def restart_ac_data_collection() -> dict[str, Any]:
+    """Restart the background data collection thread (auto-started on MCP init, polls every 1min)."""
+    global _collector_thread  # noqa: PLW0603
+    _stop_event.set()
+    if _collector_thread:
+        _collector_thread.join(timeout=5)
+    if _collector_thread is not None and _collector_thread.is_alive():
+        return {"error": "Old collector thread did not stop within 5s. Try again."}
+    _stop_event.clear()
+    _collector_thread = Thread(target=_collect, daemon=True)
+    _collector_thread.start()
+    return {"message": "Data collection restarted."}
+
+
+@tool
+def ac_data_collection_status() -> dict[str, Any]:
+    """Check if data collection is running and how much data exists."""
+    running = _collector_thread is not None and _collector_thread.is_alive()
+    return {
+        "running": running,
+        "data_dir": str(_DATA_DIR),
+        "total_files": len(list(_DATA_DIR.glob("*/telemetry/*.jsonl"))),
+    }
 
 
 if __name__ == "__main__":
