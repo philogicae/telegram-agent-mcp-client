@@ -2,16 +2,19 @@
 """Script to update Transmission default trackers from trackers.txt file."""
 
 import json
+import sys
 from pathlib import Path
 
 
 def load_trackers(trackers_file: str) -> list[str]:
-    """Load trackers from file and filter out comments."""
+    """Load trackers from file, filter out comments, and deduplicate (preserving order)."""
     trackers = []
+    seen = set()
     with Path(trackers_file).open() as f:
         for raw_line in f:
             line = raw_line.strip()
-            if line and not line.startswith("#"):
+            if line and not line.startswith("#") and line not in seen:
+                seen.add(line)
                 trackers.append(line)
     return trackers
 
@@ -38,7 +41,7 @@ def update_transmission_config(config_file: str, trackers_file: str) -> str:
     with Path(config_file).open("w") as f:
         json.dump(config, f, indent=2)
 
-    print(f"Updated {config_file} with {len(trackers)} trackers")
+    print(f"Updated {Path(config_file).name} with {len(trackers)} trackers")
     return default_trackers
 
 
@@ -48,6 +51,13 @@ if __name__ == "__main__":
 
     config_file = script_dir / "transmission.config.json"
     trackers_file = script_dir / "transmission.trackers.txt"
+
+    if not trackers_file.exists():
+        print(f"Error: {trackers_file.name} not found")
+        sys.exit(1)
+    if not config_file.exists():
+        print(f"Error: {config_file.name} not found")
+        sys.exit(1)
 
     # Update config
     default_trackers = update_transmission_config(str(config_file), str(trackers_file))
