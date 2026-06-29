@@ -25,6 +25,7 @@ from matplotlib import use
 from matplotlib.collections import LineCollection
 from matplotlib.dates import DateFormatter, DayLocator, date2num
 from matplotlib.lines import Line2D
+from matplotlib.path import Path as MplPath
 from pydantic import BaseModel, Field
 
 use("Agg")
@@ -137,18 +138,26 @@ _FAN_REV = {v: k for k, v in FAN_SPEED.items()}
 class ScheduleConfig(BaseModel):
     """Create or update a scheduled timer on the AC unit."""
 
-    hour: int = Field(description="Hour (0-23)")
-    minute: int = Field(description="Minute (0-59)")
+    hour: int = Field(description="Hour (0-23) in system local time")
+    minute: int = Field(description="Minute (0-59) in system local time")
     power_on: bool = Field(
         description="True = turn AC on at scheduled time, False = turn off"
     )
+    repeat: bool = Field(
+        default=False,
+        description="True = recurring schedule (fires every week on selected days). False = one-shot (fires once then auto-deletes).",
+    )
     weekdays: list[int] | None = Field(
         default=None,
-        description="Days of week to repeat: 0=Sun..6=Sat. Default: weekdays.",
+        description="Days of week to repeat: 0=Sun..6=Sat. Default: every day. Only used when repeat=True.",
     )
     schedule_id: int | None = Field(
         default=None,
         description="Schedule ID (0-15) to update. Auto-assigned if omitted.",
+    )
+    enabled: bool = Field(
+        default=True,
+        description="Enable/disable this schedule without deleting it.",
     )
 
 
@@ -172,6 +181,10 @@ class GREEACClient:
                 for d in loads(raw).get("devices", []):
                     self._overrides[self._norm(d["mac"])] = d
         self._lock = RLock()
+        # Software scheduler
+        self._sched_stop = Event()
+        self._sched_thread: Thread | None = None
+        self._start_scheduler()
 
     @staticmethod
     def _norm(mac: str) -> str:
@@ -374,36 +387,16 @@ class GREEACClient:
             return dict(zip(st.get("opt", []), st.get("p", st.get("val", []))))
         return None
 
-    def _query_timers(self, mac: str, cache: dict) -> list[dict] | None:
-        """
-        Query all scheduled timers via the 'queryT' command.
-
-        The Gree protocol uses a dedicated 'queryT' message type to read
-        back timer/schedule entries — a status request with cols=['schedules']
-        does not return schedule data.
-
-        Some firmware versions (e.g. V1.x) accept setT but don't respond to
-        queryT. In that case we fall back to the local schedule cache that is
-        maintained by set_schedule/delete_schedule.
-        """
-        d = {
-            "mac": mac,
-            "t": "queryT",
-            "count": 16,
-            "index": 0,
-            "_ver": cache["version"],
-            "_key": cache["key"],
-        }
-        resp = self._send(cache["address"], d)
-        if resp is not None:
-            for key in ("tlist", "timers", "list"):
-                if key in resp and isinstance(resp[key], list):
-                    return resp[key]
-            if isinstance(resp, list):
-                return resp
-            return []
-        # Device didn't respond to queryT — use local cache
-        return self._schedules.get(mac, [])
+    def _query_timers(self, mac: str, cache: dict) -> list[dict] | None:  # noqa: ARG002
+        """Return schedules from the local software scheduler, enriched with next-fire info."""
+        scheds = self._schedules.get(mac, [])
+        now = datetime.now(_local_tz())
+        result = []
+        for s in scheds:
+            entry = dict(s)
+            entry["nextFire"] = self._compute_next_fire(s, now)
+            result.append(entry)
+        return result
 
     def _cmd(
         self, _mac: str, cache: dict, opt: list[str], p: list, sub: str | None = None
@@ -458,7 +451,7 @@ class GREEACClient:
             self._state["loaded"] = True
 
     def _load_schedules(self, mac: str) -> None:
-        """Load persisted local schedule cache for a device."""
+        """Load persisted schedules for a device."""
         path = _device_dir(mac) / "schedules.json"
         with suppress(JSONDecodeError, OSError):
             self._schedules[mac] = loads(
@@ -468,7 +461,7 @@ class GREEACClient:
             self._schedules[mac] = []
 
     def _save_schedules(self, mac: str) -> None:
-        """Persist local schedule cache for a device."""
+        """Persist schedules for a device."""
         path = _device_dir(mac) / "schedules.json"
         path.write_text(dumps(self._schedules.get(mac, []), indent=2) + "\n")
         with suppress(PermissionError):
@@ -523,6 +516,7 @@ class GREEACClient:
             if st is not None:
                 cache["status"] = st
                 cache["last_seen"] = datetime.now(_local_tz()).timestamp()
+                self._sync_device_time(mac_n, cache, status=st)
                 return (device, cache)
         cache = self._bind(device)
         if cache is None:
@@ -687,6 +681,9 @@ class GREEACClient:
                 if st:
                     decoded = self.decode(d, c, st)
                     decoded.pop("lastSeen", None)
+                    # Include schedules in persisted status
+                    scheds = self._query_timers(mn, c)
+                    decoded["schedules"] = scheds if scheds is not None else []
                     entry["lastStatus"] = decoded
                 if "last_seen" in c:
                     entry["lastSeen"] = (
@@ -969,6 +966,125 @@ class GREEACClient:
             "schedules": timers if timers is not None else [],
         }
 
+    # ---- Software scheduler ----
+
+    @staticmethod
+    def _compute_next_fire(s: dict, now: datetime) -> str | None:
+        """Compute next fire time for a schedule as ISO string, or None if disabled."""
+        if not s.get("enabled", True):
+            return None
+        hour, minute = s.get("hour", 0), s.get("minute", 0)
+        repeat = s.get("repeat", False)
+        weekdays = s.get("weekdays", [1] * 7)
+        # Python weekday: Mon=0..Sun=6 ; Gree: Sun=0..Sat=6
+        for day_offset in range(8):
+            candidate = now + timedelta(days=day_offset)
+            py_wd = candidate.weekday()
+            gree_wd = (py_wd + 1) % 7
+            if repeat and gree_wd < len(weekdays) and not weekdays[gree_wd]:
+                continue
+            target = candidate.replace(
+                hour=hour, minute=minute, second=0, microsecond=0
+            )
+            if target <= now:
+                continue
+            return target.strftime("%Y-%m-%d %H:%M")
+        return None
+
+    def _start_scheduler(self) -> None:
+        """Start the background scheduler thread (if not already running)."""
+        if self._sched_thread is not None and self._sched_thread.is_alive():
+            return
+        self._sched_stop.clear()
+        self._sched_thread = Thread(
+            target=self._scheduler_loop, daemon=True, name="gree-scheduler"
+        )
+        self._sched_thread.start()
+
+    def _stop_scheduler(self) -> None:
+        """Signal the scheduler thread to stop."""
+        self._sched_stop.set()
+
+    def _scheduler_loop(self) -> None:
+        """Background loop: check schedules every 10s and fire due events."""
+        while not self._sched_stop.is_set():
+            now = datetime.now(_local_tz())
+            to_fire: list[tuple[str, int, bool]] = []
+            to_delete: list[tuple[str, int]] = []
+            with self._lock:
+                for mn, scheds in self._schedules.items():
+                    for s in scheds:
+                        if not s.get("enabled", True):
+                            continue
+                        sid = s.get("id")
+                        if not isinstance(sid, int):
+                            continue
+                        hour, minute = s.get("hour", 0), s.get("minute", 0)
+                        target_hm = hour * 60 + minute
+                        cur_hm = now.hour * 60 + now.minute
+                        # Fire when current time >= target time (within same minute)
+                        if cur_hm < target_hm:
+                            continue
+                        # For recurring: check weekday is enabled
+                        if s.get("repeat", False):
+                            gree_wd = (now.weekday() + 1) % 7
+                            weekdays = s.get("weekdays", [1] * 7)
+                            if gree_wd < len(weekdays) and not weekdays[gree_wd]:
+                                continue
+                        # Check if already fired today (for recurring) or ever (for one-shot)
+                        last_fired = s.get("lastFired", "")
+                        today_str = now.strftime("%Y-%m-%d")
+                        if s.get("repeat", False) and last_fired == today_str:
+                            continue
+                        if not s.get("repeat", False) and last_fired:
+                            continue
+                        to_fire.append((mn, sid, s.get("power_on", False)))
+                        if not s.get("repeat", False):
+                            to_delete.append((mn, sid))
+            # Fire outside lock to avoid blocking
+            for mn, sid, power_on in to_fire:
+                Thread(
+                    target=self._fire_schedule,
+                    args=(mn, sid, power_on),
+                    daemon=True,
+                ).start()
+            # Mark fired and auto-delete one-shots
+            if to_fire:
+                with self._lock:
+                    now_str = now.strftime("%Y-%m-%d")
+                    for mn, sid, _ in to_fire:
+                        scheds = self._schedules.get(mn, [])
+                        for s in scheds:
+                            if s.get("id") == sid:
+                                s["lastFired"] = now_str
+                                break
+                    for mn, sid in to_delete:
+                        self._schedules[mn] = [
+                            s for s in self._schedules.get(mn, []) if s.get("id") != sid
+                        ]
+                    for mn in {m for m, _, _ in to_fire} | {m for m, _ in to_delete}:
+                        self._save_schedules(mn)
+            self._sched_stop.wait(10)
+
+    def _fire_schedule(self, mac: str, schedule_id: int, power_on: bool) -> None:
+        """Send a power command for a fired schedule."""
+        try:
+            device, cache = self._resolve_one(mac=mac, refresh=True)
+        except ValueError:
+            return
+        self._cmd(
+            self._norm(device["mac"]),
+            cache,
+            [FIELDS["power"]],
+            [ON_OFF["on"] if power_on else ON_OFF["off"]],
+        )
+        _record_event(
+            mac,
+            "schedule_fired",
+            schedule_id=schedule_id,
+            power_on=power_on,
+        )
+
     def set_schedule(
         self,
         hour: int,
@@ -978,8 +1094,10 @@ class GREEACClient:
         schedule_id: int | None = None,
         mac: str | None = None,
         name: str | None = None,
+        repeat: bool = False,
+        enabled: bool = True,
     ) -> dict[str, Any]:
-        """Create or update a scheduled timer event on the AC unit."""
+        """Create or update a software-scheduled timer event."""
         if hour < 0 or hour > 23:
             return {"error": "Hour must be 0-23"}
         if minute < 0 or minute > 59:
@@ -987,48 +1105,56 @@ class GREEACClient:
         if schedule_id is not None and (schedule_id < 0 or schedule_id > 15):
             return {"error": "schedule_id must be 0-15"}
         try:
-            device, cache = self._resolve_one(mac, name)
+            device, _cache = self._resolve_one(mac, name)
         except ValueError as e:
             return {"error": str(e)}
         mn = self._norm(device["mac"])
-        schedule = {
-            "cmd": [{"mac": [mn], "opt": ["Pow"], "p": [1 if power_on else 0]}],
-            "enable": 1,
-            "hr": hour,
-            "id": schedule_id or 0,
-            "min": minute,
-            "name": "5363686564756c65",
-            "sec": 0,
-            "t": "setT",
-            "tz": 1,
-            "week": weekdays or [0, 1, 1, 1, 1, 1, 0],
+
+        # Auto-assign schedule_id if not provided
+        if schedule_id is None:
+            existing = {s.get("id") for s in self._schedules.get(mn, [])}
+            schedule_id = next((i for i in range(16) if i not in existing), 0)
+
+        weekdays_norm = weekdays or [1] * 7
+        entry = {
+            "id": schedule_id,
+            "hour": hour,
+            "minute": minute,
+            "power_on": power_on,
+            "repeat": repeat,
+            "weekdays": weekdays_norm,
+            "enabled": enabled,
+            "createdAt": datetime.now(_local_tz()).strftime("%Y-%m-%d %H:%M"),
+            "lastFired": "",
         }
-        schedule["_ver"] = cache["version"]
-        schedule["_key"] = cache["key"]
-        resp = self._send(cache["address"], schedule)
-        _record_event(mn, "set_schedule", hour=hour, minute=minute, power_on=power_on)
-        # Maintain local schedule cache for devices that don't support queryT
-        if resp is not None and resp.get("r") == 200:
-            sid = schedule_id or 0
-            entry = {
-                "id": sid,
-                "hour": hour,
-                "minute": minute,
-                "power_on": power_on,
-                "weekdays": weekdays or [0, 1, 1, 1, 1, 1, 0],
-                "enable": 1,
-            }
-            with self._lock:
-                scheds = self._schedules.setdefault(mn, [])
-                scheds = [s for s in scheds if s.get("id") != sid]
-                scheds.append(entry)
-                self._schedules[mn] = scheds
-                self._save_schedules(mn)
+        with self._lock:
+            scheds = self._schedules.setdefault(mn, [])
+            # Preserve lastFired if updating existing schedule
+            for old in scheds:
+                if old.get("id") == schedule_id:
+                    entry["lastFired"] = old.get("lastFired", "")
+                    break
+            scheds = [s for s in scheds if s.get("id") != schedule_id]
+            scheds.append(entry)
+            self._schedules[mn] = scheds
+            self._save_schedules(mn)
+        _record_event(
+            mn,
+            "set_schedule",
+            schedule_id=schedule_id,
+            hour=hour,
+            minute=minute,
+            power_on=power_on,
+            repeat=repeat,
+            enabled=enabled,
+            weekdays=weekdays_norm,
+        )
+        # Enrich with nextFire for the response
+        entry["nextFire"] = self._compute_next_fire(entry, datetime.now(_local_tz()))
         return {
             "mac": mn,
             "name": device["name"],
-            "schedule": {k: v for k, v in schedule.items() if not k.startswith("_")},
-            "response": resp,
+            "schedule": entry,
         }
 
     def delete_schedule(
@@ -1041,38 +1167,20 @@ class GREEACClient:
         if schedule_id < 0 or schedule_id > 15:
             return {"error": "schedule_id must be 0-15"}
         try:
-            device, cache = self._resolve_one(mac, name)
+            device, _cache = self._resolve_one(mac, name)
         except ValueError as e:
             return {"error": str(e)}
         mn = self._norm(device["mac"])
-        schedule = {
-            "cmd": [{"mac": [mn], "opt": ["Pow"], "p": [0]}],
-            "enable": 0,
-            "hr": 0,
-            "id": schedule_id,
-            "min": 0,
-            "name": "5363686564756c65",
-            "sec": 0,
-            "t": "setT",
-            "tz": 1,
-            "week": [0, 0, 0, 0, 0, 0, 0],
-        }
-        schedule["_ver"] = cache["version"]
-        schedule["_key"] = cache["key"]
-        resp = self._send(cache["address"], schedule)
+        with self._lock:
+            self._schedules[mn] = [
+                s for s in self._schedules.get(mn, []) if s.get("id") != schedule_id
+            ]
+            self._save_schedules(mn)
         _record_event(mn, "delete_schedule", schedule_id=schedule_id)
-        # Remove from local schedule cache
-        if resp is not None and resp.get("r") == 200:
-            with self._lock:
-                self._schedules[mn] = [
-                    s for s in self._schedules.get(mn, []) if s.get("id") != schedule_id
-                ]
-                self._save_schedules(mn)
         return {
             "mac": mn,
             "name": device["name"],
             "deletedScheduleId": schedule_id,
-            "response": resp,
         }
 
     def set_multiple(self, **kwargs: Any) -> dict[str, Any]:
@@ -1210,6 +1318,8 @@ class GREEACClient:
                 schedule.schedule_id,
                 mac,
                 name,
+                repeat=schedule.repeat,
+                enabled=schedule.enabled,
             )
             if "error" in sched_result:
                 warnings.append(sched_result["error"])
@@ -1271,6 +1381,25 @@ class GREEACClient:
             self._persist(device, cache)
             return self.decode(device, cache, cache.get("status", {}))
 
+    def _device_time_offset_minutes(self, cache: dict) -> int:
+        """
+        Return offset in minutes between device clock and system local time.
+
+        Positive = device clock is ahead of system clock.
+        Returns 0 if device time is unavailable or unparseable.
+        """
+        dt_raw = cache.get("status", {}).get(FIELDS["time"])
+        if not isinstance(dt_raw, str) or not dt_raw.strip():
+            return 0
+        try:
+            dt = datetime.strptime(dt_raw.strip(), "%Y-%m-%d %H:%M:%S").replace(
+                tzinfo=_local_tz()
+            )
+        except (ValueError, TypeError):
+            return 0
+        local = datetime.now(_local_tz())
+        return round((dt - local).total_seconds() / 60)
+
     def _sync_device_time(
         self, mac: str, cache: dict, status: dict | None = None
     ) -> None:
@@ -1296,9 +1425,9 @@ class GREEACClient:
             return
         local = datetime.now(_local_tz())
         if abs((local - dt).total_seconds()) > 60:
-            self._cmd(
-                mac, cache, ["time"], [local.strftime("%Y-%m-%d %H:%M:%S")], sub=mac
-            )
+            time_str = local.strftime("%Y-%m-%d %H:%M:%S")
+            self._cmd(mac, cache, ["time"], [time_str], sub=mac)
+            cache["status"][FIELDS["time"]] = time_str
 
 
 _client = GREEACClient()
@@ -1359,6 +1488,10 @@ def _telemetry_fetch(mac: str | None = None) -> dict | None:
         },
     )
     decoded["mac"] = _client._norm(device["mac"])  # noqa: SLF001
+    # Include active schedules in telemetry for tracking
+    mn = _client._norm(device["mac"])  # noqa: SLF001
+    scheds = _client._query_timers(mn, cache)  # noqa: SLF001
+    decoded["schedules"] = scheds if scheds is not None else []
     return decoded
 
 
@@ -1483,6 +1616,32 @@ def _dedup_unchanged(readings: list[dict]) -> list[dict]:
 # raw points; anything past ~1000 is invisible noise on a chart.
 _GRAPH_MAX_POINTS = 1000
 _SERIES_MAX_POINTS = 200
+
+_CLOCK_MARKER: MplPath | None = None
+
+
+def _clock_marker() -> MplPath:
+    """Build a clock-shaped marker (circle + two hands) as a matplotlib Path."""
+    global _CLOCK_MARKER  # noqa: PLW0603
+    if _CLOCK_MARKER is not None:
+        return _CLOCK_MARKER
+    from math import cos, pi, sin
+
+    verts: list[tuple[float, float]] = []
+    codes: list[int] = []
+    # Circle outline (16 segments)
+    for i in range(17):
+        a = 2 * pi * i / 16
+        verts.append((0.5 * cos(a), 0.5 * sin(a)))
+        codes.append(int(MplPath.MOVETO) if i == 0 else int(MplPath.LINETO))
+    # Hour hand (to ~10 o'clock)
+    verts.extend([(0, 0), (-0.22, 0.13)])
+    codes.extend([int(MplPath.MOVETO), int(MplPath.LINETO)])
+    # Minute hand (to 12)
+    verts.extend([(0, 0), (0, 0.33)])
+    codes.extend([int(MplPath.MOVETO), int(MplPath.LINETO)])
+    _CLOCK_MARKER = MplPath(verts, codes)
+    return _CLOCK_MARKER
 
 
 def _downsample(readings: list[dict], max_points: int) -> list[dict]:
@@ -1682,7 +1841,8 @@ def _generate_graph(
         ax.add_collection(lc)
 
     if events and ts:
-        ev_x, ev_y = [], []
+        ev_x, ev_y = [], []  # user actions
+        sched_x, sched_y = [], []  # auto-fired schedule events
         _rt_idx = sorted(range(len(ts)), key=lambda i: ts[i])
         _rt_ts = [ts[i] for i in _rt_idx]
         for ev in events:
@@ -1707,11 +1867,33 @@ def _generate_graph(
                     j -= 1
                 y = at[_rt_idx[j]]
                 if y is not None:
-                    ev_x.append(ev_dt)
-                    ev_y.append(y)
+                    if ev.get("action") == "schedule_fired":
+                        sched_x.append(ev_dt)
+                        sched_y.append(y)
+                    else:
+                        ev_x.append(ev_dt)
+                        ev_y.append(y)
         if ev_x:
             ax.scatter(
-                date2num(ev_x), ev_y, color="#ffffff", s=12, zorder=6, marker="o"
+                date2num(ev_x),
+                ev_y,
+                color="#ffffff",
+                s=12,
+                zorder=6,
+                marker="o",
+                edgecolors="#666666",
+                linewidths=0.3,
+            )
+        if sched_x:
+            ax.scatter(
+                date2num(sched_x),
+                sched_y,
+                color="#ffd700",
+                s=60,
+                zorder=7,
+                marker=_clock_marker(),
+                edgecolors="#b8860b",
+                linewidths=0.5,
             )
 
     ax.set_xlabel("Time", fontsize=11)
@@ -1759,6 +1941,34 @@ def _generate_graph(
                 ),
                 Line2D([0], [0], color="#ff1744", linewidth=2, label="Target (AC off)"),
             ]
+        )
+    if ev_x:
+        _handles.append(
+            Line2D(
+                [0],
+                [0],
+                color="#ffffff",
+                marker="o",
+                markersize=4,
+                linestyle="None",
+                markeredgecolor="#666666",
+                markeredgewidth=0.3,
+                label="User action",
+            )
+        )
+    if sched_x:
+        _handles.append(
+            Line2D(
+                [0],
+                [0],
+                color="#ffd700",
+                marker=_clock_marker(),
+                markersize=8,
+                linestyle="None",
+                markeredgecolor="#b8860b",
+                markeredgewidth=0.5,
+                label="Scheduled event",
+            )
         )
     ax.legend(handles=_handles, loc="lower left", fontsize=9, framealpha=0.8, ncol=2)
     ax.grid(True, linestyle="--", alpha=0.15)  # noqa: FBT003
@@ -1847,6 +2057,9 @@ def _stop_collector() -> None:
 register(_stop_collector)
 with suppress(ValueError, OSError):  # ponytail: only works in main thread
     signal(SIGTERM, lambda *_: _stop_collector())
+
+# Stop the software scheduler on exit
+register(_client._stop_scheduler)  # noqa: SLF001
 
 # ============================================================
 # MCP TOOLS — only convenience tools are exposed to the agent.
@@ -1937,6 +2150,14 @@ def _generate_temp_graph(  # noqa: PLR0911
         )
         summary = _summarize_readings(readings)
         summary["events"] = events_list
+        summary["event_counts"] = {
+            "user_actions": sum(
+                1 for e in events_list if e.get("action") != "schedule_fired"
+            ),
+            "scheduled_fires": sum(
+                1 for e in events_list if e.get("action") == "schedule_fired"
+            ),
+        }
         return {
             "graph_path": path,
             "title": title,
@@ -2081,7 +2302,7 @@ def set_home_ac(
     schedule: Annotated[
         ScheduleConfig | None,
         Field(
-            description="Create or update a scheduled timer. Provide as an object with hour, minute, power_on, weekdays, schedule_id.",
+            description="Create or update a scheduled timer. Object with: hour, minute (system local time), power_on, repeat (true=recurring/weekly, false=one-shot auto-delete), weekdays (0=Sun..6=Sat, only for repeat), schedule_id (0-15, auto-assigned), enabled (default true).",
             default=None,
         ),
     ] = None,
@@ -2155,12 +2376,24 @@ def restart_ac_data_collection() -> dict[str, Any]:
 
 @tool
 def ac_data_collection_status() -> dict[str, Any]:
-    """Check if data collection is running and how much data exists."""
-    running = _collector_thread is not None and _collector_thread.is_alive()
+    """Check if data collection and scheduler are running, and how much data exists."""
+    collector_running = _collector_thread is not None and _collector_thread.is_alive()
+    scheduler_running = (
+        _client._sched_thread is not None  # noqa: SLF001
+        and _client._sched_thread.is_alive()  # noqa: SLF001
+    )
+    total_schedules = sum(len(s) for s in _client._schedules.values())  # noqa: SLF001
     return {
-        "running": running,
+        "collector_running": collector_running,
+        "scheduler_running": scheduler_running,
         "data_dir": str(_DATA_DIR),
         "total_files": len(list(_DATA_DIR.glob("*/telemetry/*.jsonl"))),
+        "active_schedules": total_schedules,
+        "devices": {
+            mn: len(scheds)
+            for mn, scheds in _client._schedules.items()  # noqa: SLF001
+            if scheds
+        },
     }
 
 
