@@ -618,10 +618,12 @@ class GREEACClient:
         """Decode temperature sensor value, return (celsius, estimated)."""
         raw = status.get(FIELDS["tempSensor"])
         if raw is not None and 0 < raw < 100:
-            return raw - TEMSEN_OFFSET + device.get("sensorOffset", 0), False
+            return float(raw - TEMSEN_OFFSET + device.get("sensorOffset", 0)), False
         if device.get("fakeSensor", False):
             return (
-                status.get(FIELDS["targetTemp"], 25) + device.get("sensorOffset", 0),
+                float(
+                    status.get(FIELDS["targetTemp"], 25) + device.get("sensorOffset", 0)
+                ),
                 True,
             )
         return None, False
@@ -1777,49 +1779,22 @@ def _generate_graph(
         if _on_start is not None:
             ax.axvspan(_on_start, ts[-1], color="#1a237e", alpha=0.07, zorder=0)
 
-    rt_n, short_w, long_w = 0, 0, 0
     valid_rt = [(t, v) for t, v in zip(ts, rt) if v is not None]
     if valid_rt:
         rt_ts, rt_vals = zip(*valid_rt)
-        rt_n = len(rt_vals)
-        short_w = max(3, min(15, rt_n // 20))
-        long_w = max(10, min(50, rt_n // 7))
+        span = 15
+        alpha = 2 / (span + 1)
+        ema = [rt_vals[0]]
+        for v in rt_vals[1:]:
+            ema.append(alpha * v + (1 - alpha) * ema[-1])
         ax.plot(
             date2num(rt_ts),
-            rt_vals,
+            ema,
             color="#00bcd4",
             linewidth=2,
             alpha=0.9,
             label="Room Temperature",
         )
-
-        def _sma(vals: list[float], w: int) -> list[float]:
-            if len(vals) < w:
-                return list(vals)
-            return [sum(vals[i : i + w]) / w for i in range(len(vals) - w + 1)]
-
-        if rt_n > short_w:
-            short_ma = _sma(list(rt_vals), short_w)
-            ax.plot(
-                date2num(rt_ts[short_w - 1 :]),
-                short_ma,
-                color="#80deea",
-                linewidth=1.5,
-                alpha=0.7,
-                linestyle="--",
-                label=f"Room MA-{short_w}",
-            )
-        if rt_n > long_w > short_w:
-            long_ma = _sma(list(rt_vals), long_w)
-            ax.plot(
-                date2num(rt_ts[long_w - 1 :]),
-                long_ma,
-                color="#ffeb3b",
-                linewidth=1.5,
-                alpha=0.6,
-                linestyle=":",
-                label=f"Room MA-{long_w}",
-            )
 
     valid_at = [(t, v, p, r) for t, v, p, r in zip(ts, at, ps, rt) if v is not None]
     at_vals: tuple = ()
@@ -1902,30 +1877,6 @@ def _generate_graph(
     _handles = [
         Line2D([0], [0], color="#00bcd4", linewidth=2, label="Room Temperature")
     ]
-    if valid_rt and short_w and rt_n > short_w:
-        _handles.append(
-            Line2D(
-                [0],
-                [0],
-                color="#80deea",
-                linewidth=1.5,
-                linestyle="--",
-                alpha=0.7,
-                label=f"Room MA-{short_w}",
-            )
-        )
-    if valid_rt and long_w and long_w > short_w and rt_n > long_w:
-        _handles.append(
-            Line2D(
-                [0],
-                [0],
-                color="#ffeb3b",
-                linewidth=1.5,
-                linestyle=":",
-                alpha=0.6,
-                label=f"Room MA-{long_w}",
-            )
-        )
     if valid_at:
         _handles.extend(
             [
