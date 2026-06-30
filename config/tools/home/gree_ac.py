@@ -1761,6 +1761,12 @@ def _generate_graph(
         pv = r.get("power")
         ps.append(pv in (True, "on", "true", "1") if not isinstance(pv, bool) else pv)
 
+    diff_ts, diff_vals = [], []
+    for i in range(len(ts)):
+        if rt[i] is not None and at[i] is not None:
+            diff_ts.append(ts[i])
+            diff_vals.append(abs(rt[i] - at[i]))
+
     if not ts:
         raise ValueError("No valid readings to graph.")
 
@@ -1782,19 +1788,13 @@ def _generate_graph(
     valid_rt = [(t, v) for t, v in zip(ts, rt) if v is not None]
     if valid_rt:
         rt_ts, rt_vals = zip(*valid_rt)
-        span = 15
-        alpha = 2 / (span + 1)
-        ema = [rt_vals[0]]
-        for v in rt_vals[1:]:
-            ema.append(alpha * v + (1 - alpha) * ema[-1])
-        ax.plot(
-            date2num(rt_ts),
-            ema,
-            color="#00bcd4",
-            linewidth=2,
-            alpha=0.9,
-            label="Room Temperature",
-        )
+        ax.plot(date2num(rt_ts), rt_vals, color="#00bcd4", linewidth=2, alpha=0.6)
+        window = max(3, min(10, len(rt_vals) // 20))
+        sma = [
+            sum(rt_vals[max(0, i - window + 1) : i + 1]) / min(i + 1, window)
+            for i in range(len(rt_vals))
+        ]
+        ax.plot(date2num(rt_ts), sma, color="#2196F3", linewidth=0.5, alpha=0.7)
 
     valid_at = [(t, v, p, r) for t, v, p, r in zip(ts, at, ps, rt) if v is not None]
     at_vals: tuple = ()
@@ -1818,8 +1818,9 @@ def _generate_graph(
     if events and ts:
         ev_x, ev_y = [], []  # user actions
         sched_x, sched_y = [], []  # auto-fired schedule events
-        _rt_idx = sorted(range(len(ts)), key=lambda i: ts[i])
-        _rt_ts = [ts[i] for i in _rt_idx]
+        ev_x, ev_y = [], []  # user actions
+        _valid_ts = [t for t, v in zip(ts, at) if v is not None]
+        _valid_at = [v for v in at if v is not None]
         for ev in events:
             ev_ts = ev.get("deviceTime")
             if not ev_ts:
@@ -1834,20 +1835,15 @@ def _generate_graph(
             if e and e.tzinfo:
                 e = e.replace(tzinfo=None)
             if (s is None or s <= ev_dt) and (e is None or ev_dt <= e):
-                j = bisect_left(_rt_ts, ev_dt)
-                j = min(j, len(_rt_ts) - 1)
-                if j and abs((_rt_ts[j] - ev_dt).total_seconds()) > abs(
-                    (_rt_ts[j - 1] - ev_dt).total_seconds()
-                ):
-                    j -= 1
-                y = at[_rt_idx[j]]
-                if y is not None:
-                    if ev.get("action") == "schedule_fired":
-                        sched_x.append(ev_dt)
-                        sched_y.append(y)
-                    else:
-                        ev_x.append(ev_dt)
-                        ev_y.append(y)
+                j = bisect_left(_valid_ts, ev_dt)
+                j = min(j, len(_valid_ts) - 1)
+                y = _valid_at[j] - 0.5
+                if ev.get("action") == "schedule_fired":
+                    sched_x.append(ev_dt)
+                    sched_y.append(y)
+                else:
+                    ev_x.append(ev_dt)
+                    ev_y.append(y)
         if ev_x:
             ax.scatter(
                 date2num(ev_x),
@@ -1863,35 +1859,28 @@ def _generate_graph(
             ax.scatter(
                 date2num(sched_x),
                 sched_y,
-                color="#ffd700",
-                s=60,
+                color="#ce93d8",
+                s=30,
                 zorder=7,
                 marker=_clock_marker(),
-                edgecolors="#b8860b",
-                linewidths=0.5,
+                edgecolors="#666666",
+                linewidths=0.3,
             )
 
     ax.set_xlabel("Time", fontsize=11)
     ax.set_ylabel("Temperature (°C)", fontsize=11)
     ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
     _handles = [
-        Line2D([0], [0], color="#00bcd4", linewidth=2, label="Room Temperature")
+        Line2D([0], [0], color="#00bcd4", linewidth=2, alpha=0.6, label="Room"),
+        Line2D([0], [0], color="#aaaaaa", linewidth=2, label="Target"),
     ]
-    if valid_at:
-        _handles.extend(
-            [
-                Line2D(
-                    [0], [0], color="#00e676", linewidth=2, label="Target (on target)"
-                ),
-                Line2D(
-                    [0],
-                    [0],
-                    color="#ff9100",
-                    linewidth=2,
-                    label="Target (heating/cooling)",
-                ),
-                Line2D([0], [0], color="#ff1744", linewidth=2, label="Target (AC off)"),
-            ]
+    if diff_vals:
+        _handles.append(
+            Line2D([0], [0], color="yellow", linewidth=0.5, alpha=0.4, label="Diff"),
+        )
+    if valid_rt:
+        _handles.append(
+            Line2D([0], [0], color="#2196F3", linewidth=0.5, alpha=0.7, label="SMA"),
         )
     if ev_x:
         _handles.append(
@@ -1904,7 +1893,7 @@ def _generate_graph(
                 linestyle="None",
                 markeredgecolor="#666666",
                 markeredgewidth=0.3,
-                label="User action",
+                label="User Action",
             )
         )
     if sched_x:
@@ -1912,17 +1901,17 @@ def _generate_graph(
             Line2D(
                 [0],
                 [0],
-                color="#ffd700",
+                color="#ce93d8",
                 marker=_clock_marker(),
-                markersize=8,
+                markersize=6,
                 linestyle="None",
-                markeredgecolor="#b8860b",
-                markeredgewidth=0.5,
-                label="Scheduled event",
+                markeredgecolor="#666666",
+                markeredgewidth=0.3,
+                label="Scheduled",
             )
         )
-    ax.legend(handles=_handles, loc="lower left", fontsize=9, framealpha=0.8, ncol=2)
-    ax.grid(True, linestyle="--", alpha=0.15)  # noqa: FBT003
+    ax.legend(handles=_handles, loc="upper left", fontsize=9, framealpha=0.8, ncol=2)
+    ax.grid(True, linestyle="--", alpha=0.3, color="#555555")  # noqa: FBT003
 
     pad = (ts[-1] - ts[0]) * 0.02 if len(ts) > 1 else timedelta(hours=1)
     ax.set_xlim(ts[0] - pad, ts[-1] + pad)
@@ -1933,6 +1922,16 @@ def _generate_graph(
         y_pad = max(0.5, (y_max - y_min) * 0.1)
         ax.set_ylim(y_min - y_pad, y_max + y_pad)
 
+    if diff_vals:
+        ax2 = ax.twinx()
+        ax2.set_facecolor("#000000")
+        ax2.plot(date2num(diff_ts), diff_vals, color="yellow", linewidth=0.5, alpha=0.4)
+        ax2.set_ylabel("Temp Diff (°C)", fontsize=11, color="#999999")
+        ax2.set_ylim(-1, 20)
+        ax2.tick_params(axis="y", colors="#999999")
+        ax2.spines["right"].set_color("#999999")
+        ax2.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
+
     span = ts[-1] - ts[0]
     if span <= timedelta(days=2):
         ax.xaxis.set_major_formatter(DateFormatter("%H:%M"))
@@ -1942,31 +1941,6 @@ def _generate_graph(
         ax.xaxis.set_major_formatter(DateFormatter("%b %d"))
         ax.xaxis.set_major_locator(DayLocator())
     fig.autofmt_xdate()
-
-    if valid_rt:
-        rv = [v for _, v in valid_rt]
-        current_room = f"Room: {rv[-1]:.1f}°C" if rv else ""
-        current_target = f"Target: {at_vals[-1]:.0f}°C" if valid_at else ""
-        range_info = f"Range: {min(rv):.1f}-{max(rv):.1f}°C" if rv else ""
-        avg_info = f"Avg: {sum(rv) / len(rv):.1f}°C" if rv else ""
-        info = "  |  ".join(
-            s for s in [current_room, current_target, range_info, avg_info] if s
-        )
-        ax.text(
-            0.02,
-            0.98,
-            info,
-            transform=ax.transAxes,
-            ha="left",
-            va="top",
-            fontsize=10,
-            color="#eaeaea",
-            bbox={
-                "boxstyle": "round,pad=0.3",
-                "facecolor": "#111111",
-                "edgecolor": "#333333",
-            },
-        )
 
     plt.tight_layout()
     gdir = _device_dir(mac) / "graphs"

@@ -152,6 +152,8 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
                                 InputMediaPhoto(InputFile(BytesIO(b))) for b in imgs
                             ]
                             await instance.bot.core.send_media_group(msg.chat.id, media)
+                    for p in paths:
+                        Path(p).unlink(missing_ok=True)
     except Exception as e:
         print_exc()
         await telegram_report_issue(instance, msg, reply, e)
