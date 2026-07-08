@@ -551,7 +551,7 @@ class Agent:
                             )
                         )
                         continue
-                    if not step or step[0] in "✅❌":  # Avoid empty reply
+                    if not step or not done:  # Avoid empty reply
                         last_messages.pop()
                         forced_messages.append(
                             HumanMessage(
@@ -566,7 +566,7 @@ class Agent:
                             )
                         )
                         continue
-                if not step or step[0] in "✅❌":  # Avoid empty reply when retry >= 3
+                if not step or not done:  # Avoid empty reply when retry >= 3
                     step = "The same internal error occurred 3 times in a row... Please try again."
 
                 # Final step

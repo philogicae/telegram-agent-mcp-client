@@ -121,13 +121,13 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
             if step != prev:
                 prev = step
                 await instance.bot.edit(reply, step, final=done, agent=agent)
-                if step[0] == "✅":
+                if not done and step[0] == "✅":
                     tool = extra.get("tool")
                     if tool and tool in instance.managers:
                         await instance.managers[tool].notify(
                             msg.chat.id, extra.get("output")
                         )
-                elif step[0] == "❌":
+                elif not done and step[0] == "❌":
                     await telegram_report_issue(
                         instance,
                         msg,

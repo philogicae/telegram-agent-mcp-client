@@ -182,15 +182,16 @@ class GraphRAG(Singleton):
         chat_id: Any,
         limit: int = 10,
         min_score: float = 0.1,
-        config: SearchConfig = COMBINED_HYBRID_SEARCH_RRF,
+        config: SearchConfig | None = None,
     ) -> dict[str, Any]:
         """Perform a full search with all result types."""
-        config.limit = limit
-        config.reranker_min_score = min_score
+        search_config = (config or COMBINED_HYBRID_SEARCH_RRF).model_copy(
+            update={"limit": limit, "reranker_min_score": min_score}
+        )
         results = await self.graphiti.search_(
             query=f"{user}: {content}",
             group_ids=[str(chat_id)],
-            config=config,
+            config=search_config,
         )
         return {
             "stats": {
@@ -209,7 +210,7 @@ class GraphRAG(Singleton):
         chat_id: Any,
         limit: int = 10,
         min_score: float = 0.1,
-        config: SearchConfig = COMBINED_HYBRID_SEARCH_RRF,
+        config: SearchConfig | None = None,
     ) -> dict[str, Any]:
         """Perform a full search and return formatted results."""
         results = await self.full_search_memories(

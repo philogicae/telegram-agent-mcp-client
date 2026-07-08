@@ -241,10 +241,7 @@ class TelegramBot(Bot):
             if final:
                 edited = (self.logify(agent, content[:-1]) + f"\n{text}").strip()
             else:
-                if "🛠️" in content[-1] and text[0] in "✅❌":  # Tool result edit
-                    content[-1] = text
-                else:  # Tool call init or logs
-                    content[-1] = text
+                content[-1] = text  # Tool result edit / Tool call init or logs
                 if not content[-1].endswith("..."):
                     content.append(self.waiting)
                 edited = self.logify(agent, content)
