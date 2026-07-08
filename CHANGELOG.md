@@ -202,6 +202,134 @@
 - Feat: add Transmission configuration management with auto-deployment scripts and DOCKER_HOST support
 - Feat: add Fireworks AI provider support with Anthropic-compatible API integration
 - Feat: update Transmission tracker list and switch ygg-api to develop-noupx image
+- Feat: update Playwright installation to use uvx and add search_docs tool to RAG server
+- Feat: add Opencode LLM provider support and improve structured output handling
+
+- Add Opencode provider configuration in .env.example and llm.py
+- Add LLM_UTILS environment variable for utility model selection
+- Extend langchain dependencies to include openai package
+- Implement fallback structured output parsing for providers without native support
+- Update summarize_and_rephrase and filter_relevant_memories to use LLM_UTILS
+- Add JSON schema appending for non-native structured output providers
+- Feat: restrict default agent swarm to core agents and fix AIMessage attribute access
+
+- Limit default agent configuration to Geppetto, Search Agent, and Media Manager
+- Fix structured output parsing to use AIMessage.text instead of .content attribute
+- Feat: clarify agent handoff terminology and improve transfer conditions
+
+- Update handoff instruction to use "Call it to switch" instead of "You become"
+- Replace "delegate" with "switch" in routine steps for consistency
+- Remove series planning trigger from find_media routine
+- Add series planning to Media Manager transfer condition
+- Fix final result detection to check for absence of tool_calls
+- Feat: migrate to Telegram HTML formatting, add GREE AC control
+
+- Replace MarkdownV2 with HTML parse mode; add sendRichMessage for final messages
+- Rewrite fixed_telegram as native Markdown→HTML converter; drop telegramify-markdown, mcite, html_to_markdown
+- Simplify \_dynamic_length (drop quote tracking), pagination, and progress edit logic
+- Add GREE/EWPE AC tools (native UDP + AES protocol, scan/bind/status/command)
+- Add "Home Assistant" sub-agent with AC tools to agent config
+- Add user_config.example.json, GREE_MCP_CONFIG env var, compose volume mount
+- Remove unused WHITELIST from .env.example
+- Feat: add voice and image message handling with multimodal support
+
+- Add telegram_voice and telegram_image handlers with Gemini multimodal support
+- Implement media group accumulation and debouncing for photo albums
+- Add pending_media storage for captionless images awaiting text context
+- Add \_media_to_text fallback for non-multimodal LLMs (transcription/description)
+- Add \_is_multimodal check based on LLM_CHOICE and LLM_UTILS providers
+- Conditionally register voice/image handlers when GEMINI_API
+- Feat: add AC telemetry logging and graphing with multi-threaded background collection
+
+- Add graph_home_ac tool to Home Assistant agent for temperature/humidity visualization
+- Implement background telemetry thread with configurable interval (default 5min)
+- Add SQLite-based time-series storage with automatic schema migration
+- Add matplotlib-based graphing with dual y-axis (temp/humidity) and color-coded segments
+- Refactor GREE AC client into class-based architecture with proper locking
+- Add graceful shutdown handling via signal handlers and atexit registration
+- Feat: add multi-image support and enhance markdown formatting with task lists and marked text
+
+- Add support for multiple images in tool results with batched media group sending (max 10 per batch)
+- Change extra["image"] to extra["images"] list accumulation with pending_images tracking
+- Add markdown image syntax support with optional captions using HTML figure/figcaption
+- Add task list support with checkbox rendering for `- [ ]` and `- [x]` items
+- Add ==marked== text support with HTML mark tag
+- Feat: add timezone helper and improve file permissions handling in GREE AC module
+- Feat: refactor GREE AC config to per-device file structure and improve telemetry isolation
+
+- Replace single GREE_MCP_CONFIG file with per-device config.json files in data/gree_ac/{mac}/
+- Remove GREE_MCP_CONFIG environment variable and compose volume mount
+- Add \_device_dir helper to create mac-based subdirectories (config, telemetry, graphs)
+- Update \_persist to write individual device configs instead of merged JSON
+- Add mac parameter to \_record_event, \_telemetry_fetch, \_query_readings, and \_generate_graph
+- Feat: optimize AC telemetry graphing with deduplication and downsampling
+
+- Add \_dedup_unchanged to collapse consecutive identical readings while preserving run boundaries
+- Add \_downsample for uniform thinning to max points (1000 graph, 200 series)
+- Add room_temp_min/max/avg and series array to \_summarize_readings output
+- Update \_generate_graph to use \_downsample instead of fixed step sampling
+- Add status parameter to \_sync_device_time to reuse already-fetched status
+- Add tzdata package to Dockerfile
+- Feat: replace host timezone mounts with TZ environment variable
+
+- Remove /etc/localtime and /etc/timezone volume mounts from compose.yaml
+- Add TZ environment variable with UTC default fallback
+- Add commented TZ example to .env.example
+- Feat: add image generation tool and improve graph smoothing
+
+- Add generate_image tool using Gemini Nano Banana with image modality support
+- Add GEMINI_API_IMAGE_MODEL environment variable to .env.example
+- Fix graph smoothing to use linear x-interpolation instead of cubic to prevent time reversal
+- Update agent to collect both graph_path and image_path from tool results for display
+- Feat: improve image generation prompting and add rich message fallback handling
+
+- Add "Image Creator" sub-agent with generate_image tool to agent config
+- Rewrite generate_image prompt parameter description with domain-specific style guidance (artistic, technical, diagram, photographic, logo) and structured JSON schema examples
+- Add negative_prompt requirement to always exclude default Gemini aesthetic
+- Remove \_smooth Catmull-Rom interpolation from AC graphing (use raw linear plot)
+- Feat: add Image Creator to allowed agents in user config example
+- Feat: update Transmission tracker lists and improve deployment scripts
+- Feat: add moving averages, AC run shading, and enhanced graph legend to GREE AC telemetry
+- Feat: consolidate GREE AC tools into unified set_home_ac interface and add schedule management
+- Feat: add independent vertical and horizontal swing control to GREE AC
+
+- Add swing_vertical and swing_horizontal parameters to set_home_ac tool
+- Support granular louver positioning (fixed positions, partial swings, full swing)
+- Maintain backward compatibility with existing oscillation parameter
+- Add validation and error messages for invalid swing values
+- Feat: add local schedule cache fallback for GREE AC devices that don't support queryT
+- Feat: replace hardware timers with software scheduler and add clock offset tracking to GREE AC
+- Feat: improve AC graph readability and add image cleanup
+
+- Replace EMA with SMA (adaptive window: max(3, min(10, n//20)))
+- Add absolute temp diff line on right y-axis (scale 0-20, integer ticks)
+- Simplify legend: Room, Target, Diff, SMA, User Action, Scheduled
+- Move event dots under target line; scheduled in violet, user in white
+- Brighter grey grid (#555555, alpha 0.3)
+- Remove info text box overlay, move legend to upper left
+- Delete generated PNGs after sending via Telegram
+- Feat: disable think tool and add anti-text safeguards to image generation
+
+- Comment out think tool from default agent config and new_releases routine
+- Rename sequential_thinking.py to \_sequential_thinking.py (disabled)
+- Add explicit anti-text instructions to image generation prompt description
+- Require natural-language color names instead of hex codes in prompts
+- Add text/labels/watermarks to default negative_prompt list
+- Clarify that text in images requires explicit specification
+- Feat: harden agent completion detection and telegram result routing
+
+- agent.py: replace step-prefix heuristic with the done flag to detect
+  genuine final replies, since LLM answers can legitimately start with
+  a checkmark/cross emoji, which previously caused valid replies to be
+  discarded and retried up to 3 times before falling back to a fake
+  internal-error message
+- handlers/telegram.py: gate tool-notify/error-report branches on
+  not done to avoid misclassifying a final answer starting with an
+  emoji as a tool result, which could trigger bogus error reports
+- graphiti.py: stop mutating the shared global SearchConfig default
+  (COMBINED_HYBRID_SEARCH_RRF) on every search call; copy it instead
+- instances/telegram.py: drop dead duplicate branch in edit()
+- uv.lock: refresh after uv sync
 
 ### 🐛 Bug Fixes
 
@@ -285,6 +413,17 @@
 - Fix: update deps + markdownify
 - Fix: remove standalone output mode from docs-ui Next.js config
 - Fix: add ruff linting config and resolve code quality issues
+- Fix: handle 504 errors gracefully — timeout, retry backoff, broader exception handling
+
+- \_rich_request: add 30s timeout and raise_for_status() to prevent hangs
+  and crash on non-JSON 504 responses
+- \_send_rich: catch Exception broadly instead of specific types —
+  json.JSONDecodeError from 504 HTML body was slipping through
+- \_exec: add delay between retry attempts to avoid request bursts on
+  transient failures
+- DownloadManager.start(): wrap loop in try/except so unhandled
+  exceptions don't kill the manager task and stop the bot
+- Fix: replace SMA with EMA smoothing and ensure float temperature sensor values in GREE AC
 
 ### 💼 Changes
 
@@ -415,4 +554,16 @@
 - Chore: update deps
 - Chore: update changelog
 - Chore: disable Neo4j service and graph database integration
+- Chore: update deps
+- Chore: update changelog
+- Chore: update deps
+- Chore: update Fireworks model to kimi-k2p6-turbo and suppress LangChain deprecation warnings
+- Chore: update deps
+- Chore: update Transmission default trackers list
+- Chore: update deps and Transmission default trackers list
+- Chore: update Gemini default models to gemini-3.5-flash and gemini-3.1-flash-lite
+- Chore: update Transmission default trackers list
+- Chore: update tracker lists
+- Chore: update GitHub Actions versions and switch to gemini-3.1-flash-lite-image model
+- Chore: update deps
 - Chore: update deps
