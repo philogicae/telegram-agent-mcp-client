@@ -3,7 +3,7 @@
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://docs.astral.sh/uv/getting-started/installation/)
 [![Python](https://img.shields.io/badge/python-3.13%2B-blue)](https://www.python.org/downloads/)
 [![PyPI](https://badge.fury.io/py/telegram-agent-mcp-client.svg?cache-control=no-cache)](https://badge.fury.io/py/telegram-agent-mcp-client)
-[![Actions status](https://github.com/philogicae/telegram-agent-mcp-client/actions/workflows/python-package-ci.yml/badge.svg?cache-control=no-cache)](https://github.com/philogicae/telegram-agent-mcp-client/actions)
+[![Actions status](https://github.com/philogicae/telegram-agent-mcp-client/actions/workflows/ci-cd.yml/badge.svg?cache-control=no-cache)](https://github.com/philogicae/telegram-agent-mcp-client/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/philogicae/telegram-agent-mcp-client)
 
