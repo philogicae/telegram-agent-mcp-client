@@ -1,11 +1,19 @@
 name: CI-CD
 
-on: push
+on:
+  push:
+    branches:
+      - "**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   UV_SYSTEM_PYTHON: 1
 
 jobs:
-  test:
+  lint:
     name: Run ruff and ty 🧪
     runs-on: ubuntu-latest
     steps:
@@ -17,13 +25,13 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - name: Install dependencies
-        run: uv sync --locked --dev
-      - name: Run ruff format
-        run: uv run ruff format telegram_agent
-      - name: Run ruff check
-        run: uv run ruff check telegram_agent
+        run: uv sync --dev --frozen
+      - name: Run ruff format check
+        run: uv run ruff format --check
+      - name: Run ruff lint
+        run: uv run ruff check
       - name: Run ty check
-        run: uv run ty check telegram_agent
+        run: uv run ty check
 
   build:
     name: Build distribution 📦
