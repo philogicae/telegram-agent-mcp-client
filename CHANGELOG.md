@@ -567,3 +567,13 @@
 - Chore: update GitHub Actions versions and switch to gemini-3.1-flash-lite-image model
 - Chore: update deps
 - Chore: update deps
+- Chore: update changelog
+- Chore: rename CI workflow file and improve lint job configuration
+
+- Rename python-package-ci.yml to ci-cd.yml
+- Add concurrency control to cancel in-progress runs on same ref
+- Rename test job to lint for clarity
+- Switch to --frozen flag for uv sync (stricter than --locked)
+- Add --check flag to ruff format to verify formatting without modifying
+- Remove redundant telegram_agent path arguments (check entire project)
+- Bump version to 0.14.0
