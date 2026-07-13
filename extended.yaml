@@ -19,35 +19,9 @@ x-networks: &default-networks
     - ai-agent
 
 services:
-  ygg-api:
-    image: ghcr.io/uwudev/ygege:develop-noupx
-    container_name: ygg-api
-    restart: unless-stopped
-    ports:
-      - 8715:8715
-    volumes:
-      - ygg-config:/config
-    #environment:
-    # BIND_IP: "0.0.0.0"                   # Optional: IP to bind (default: 0.0.0.0)
-    # BIND_PORT: "8715"                    # Optional: Internal port (default: 8715)
-    # LOG_LEVEL: "info"                    # Optional: Log level (default: info)
-    # TMDB_TOKEN: "your_token"             # Optional: TMDB API token for IMDB/TMDB lookups
-    # RELAY_URL: "wss://relay.ygg.gratis"  # Optional: Nostr relay URL (default: wss://relay.ygg.gratis)
-    env_file:
-      - .env
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8715/health || exit 1"]
-      interval: 1m30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    <<: [*default-dns, *default-logging, *default-networks]
-    deploy:
-      replicas: ${YGG_ENABLE:-1}
-
   transmission:
     container_name: transmission
-    image: lscr.io/linuxserver/transmission:4.0.6
+    image: lscr.io/linuxserver/transmission:4.1.3
     restart: unless-stopped
     #ports: # Not needed on host
     #  - 9091:9091 # Web UI port
@@ -81,7 +55,7 @@ services:
       - docker-envs/transmission.env
     volumes:
       - torrents:/torrents
-    <<: [*default-logging, *default-networks]
+    <<: [*default-dns, *default-logging, *default-networks]
 
   torrent-search-mcp:
     container_name: torrent-search-mcp
@@ -91,10 +65,9 @@ services:
     restart: unless-stopped
     ports:
       - 8005:8000
-    environment:
-      - YGG_LOCAL_API=http://ygg-api:8715
     env_file:
-      - docker-envs/torrent_search.env
+      - path: docker-envs/torrent_search.env
+        required: false
     volumes:
       - torrents:/torrents
     <<: [*default-dns, *default-logging, *default-networks]
@@ -113,7 +86,6 @@ networks:
           gateway: fd28:489c:c1d1::1
 
 volumes:
-  ygg-config:
   torrents:
   transmission_config:
   transmission_watch:

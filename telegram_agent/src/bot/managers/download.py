@@ -232,5 +232,5 @@ class DownloadManager(Manager):
             if speed < 1024 * 1024 * 1024:
                 return f"{speed / (1024 * 1024):.1f}MB/s"
             return f"{speed / (1024 * 1024 * 1024):.1f}GB/s"
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return "0B/s"

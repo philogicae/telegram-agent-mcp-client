@@ -41,7 +41,7 @@ class GraphRAG(Singleton):
     embedding_dim = 3072
 
     @staticmethod
-    async def init(think: bool = True, clear: bool = False) -> "GraphRAG":
+    async def init(think: bool = True, clear: bool = False) -> GraphRAG:
         """Initialize the GraphRAG instance."""
         obj = GraphRAG()
         if not hasattr(obj, "graphiti"):

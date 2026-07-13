@@ -149,7 +149,7 @@ class Agent:
         enable_persist: bool = False,
         debug: bool = False,
         generate_png: bool = False,
-    ) -> "Agent":
+    ) -> Agent:
         graph = (await Agent.load_graph()) if enable_graph else None
         tools = (await Agent.load_tools()) if enable_tools else None
         return Agent(tools, graph, enable_persist, dev, debug, generate_png)
@@ -432,7 +432,7 @@ class Agent:
                                             for key in ("graph_path", "image_path")
                                             if result.get(key)
                                         )
-                                except (JSONDecodeError, TypeError):
+                                except JSONDecodeError, TypeError:
                                     pass
                         elif not tool_calls:  # Final result
                             step, done = text, True

@@ -1397,7 +1397,7 @@ class GREEACClient:
             dt = datetime.strptime(dt_raw.strip(), "%Y-%m-%d %H:%M:%S").replace(
                 tzinfo=_local_tz()
             )
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return 0
         local = datetime.now(_local_tz())
         return round((dt - local).total_seconds() / 60)
@@ -1423,7 +1423,7 @@ class GREEACClient:
             dt = datetime.strptime(dt_raw.strip(), "%Y-%m-%d %H:%M:%S").replace(
                 tzinfo=_local_tz()
             )
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return
         local = datetime.now(_local_tz())
         if abs((local - dt).total_seconds()) > 60:
@@ -1750,7 +1750,7 @@ def _generate_graph(
             continue
         try:
             ts.append(datetime.strptime(dt_s, "%Y-%m-%d %H:%M:%S"))  # noqa: DTZ007
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             continue
         rv = r.get("currentTemperature")
         if rv is None:
@@ -1827,7 +1827,7 @@ def _generate_graph(
                 continue
             try:
                 ev_dt = datetime.strptime(ev_ts, "%Y-%m-%d %H:%M:%S")  # noqa: DTZ007
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 continue
             s, e = start, end
             if s and s.tzinfo:
@@ -2047,7 +2047,7 @@ def _generate_temp_graph(  # noqa: PLR0911
                 )
             )
             title = f"Temperature - {s} to {e or 'now'}"
-        except (ValueError, IndexError):
+        except ValueError, IndexError:
             return {
                 "error": f"Invalid date range '{period}'. Use format 'YYYY-MM-DD to YYYY-MM-DD'."
             }
