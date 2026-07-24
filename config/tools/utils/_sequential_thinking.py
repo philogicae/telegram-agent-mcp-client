@@ -6,10 +6,10 @@ from langchain.tools import tool
 @tool
 def think(
     thread_purpose: str,
-    thought: str,  # noqa: ARG001
+    thought: str,
     thought_index: int,
     tool_recommendation: str | None = "None",
-    left_to_be_done: str | None = "None",  # noqa: ARG001
+    left_to_be_done: str | None = "None",
 ) -> str:
     """
     Logs a thought step for agentic problem-solving, tracking reasoning, tools, and future plans.

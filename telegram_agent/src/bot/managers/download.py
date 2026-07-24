@@ -106,7 +106,7 @@ class DownloadManager(Manager):
             *[self.client.get_torrent(torrent_id) for torrent_id in self.torrents],
             return_exceptions=True,
         )
-        for torrent_id, stats in zip(self.torrents.keys(), results):
+        for torrent_id, stats in zip(self.torrents.keys(), results, strict=False):
             if isinstance(stats, Exception):
                 self.instance.log.error(f"Error fetching torrent {torrent_id}: {stats}")
                 self.torrents[torrent_id].stats = False

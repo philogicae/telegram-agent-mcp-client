@@ -37,6 +37,7 @@ Native tools are Python files that define functions or classes decorated with `@
 ```python
 from langchain.tools import tool
 
+
 @tool
 def calculate_complexity(code: str) -> str:
     """

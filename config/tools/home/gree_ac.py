@@ -171,6 +171,7 @@ class GREEACClient:
 
     def __init__(self) -> None:
         """Initialize client: load per-device config overrides, prepare device cache."""
+        self._log = logging.getLogger(__name__)
         self._cache: dict[str, dict[str, Any]] = {}
         self._schedules: dict[str, list[dict[str, Any]]] = {}
         self._state: dict[str, Any] = {"devices": {}, "loaded": False}
@@ -206,7 +207,7 @@ class GREEACClient:
 
     def _enc_v1(self, data: dict, key: bytes) -> str:
         """AES-128-ECB encrypt + base64 encode."""
-        c = Cipher(algorithms.AES(key), modes.ECB())
+        c = Cipher(algorithms.AES(key), modes.ECB())  # noqa: S305  # Gree protocol mandates ECB
         e = c.encryptor()
         return b64encode(
             e.update(self._pad(dumps(data).encode("utf-8"))) + e.finalize()
@@ -214,7 +215,7 @@ class GREEACClient:
 
     def _dec_v1(self, packed: str, key: bytes) -> dict:
         """Base64 decode + AES-128-ECB decrypt."""
-        c = Cipher(algorithms.AES(key), modes.ECB())
+        c = Cipher(algorithms.AES(key), modes.ECB())  # noqa: S305  # Gree protocol mandates ECB
         d = c.decryptor()
         return loads(self._unpad(d.update(b64decode(packed)) + d.finalize()))
 
@@ -333,7 +334,8 @@ class GREEACClient:
                             }
                 except TimeoutError:
                     break
-                except Exception:
+                except Exception as exc:
+                    self._log.warning("Device discovery error: %s", exc)
                     continue
         finally:
             sock.close()
@@ -362,7 +364,8 @@ class GREEACClient:
                         "last_seen": datetime.now(_local_tz()).timestamp(),
                         "info": device.get("info", {}),
                     }
-            except Exception:
+            except Exception as exc:
+                self._log.warning("Device bind error: %s", exc)
                 continue
         return None
 
@@ -382,12 +385,14 @@ class GREEACClient:
             return None
         t = str(st.get("t", "")).lower()
         if t == "dat":
-            return dict(zip(st.get("cols", []), st.get("dat", [])))
+            return dict(zip(st.get("cols", []), st.get("dat", []), strict=False))
         if t == "res":
-            return dict(zip(st.get("opt", []), st.get("p", st.get("val", []))))
+            return dict(
+                zip(st.get("opt", []), st.get("p", st.get("val", [])), strict=False)
+            )
         return None
 
-    def _query_timers(self, mac: str, cache: dict) -> list[dict] | None:  # noqa: ARG002
+    def _query_timers(self, mac: str, cache: dict) -> list[dict] | None:
         """Return schedules from the local software scheduler, enriched with next-fire info."""
         scheds = self._schedules.get(mac, [])
         now = datetime.now(_local_tz())
@@ -1284,9 +1289,10 @@ class GREEACClient:
             return {"error": "; ".join(errors)}
 
         # Validate schedule params before executing any schedule ops
-        if delete_schedule_id is not None:
-            if delete_schedule_id < 0 or delete_schedule_id > 15:
-                errors.append("delete_schedule_id must be 0-15")
+        if delete_schedule_id is not None and (
+            delete_schedule_id < 0 or delete_schedule_id > 15
+        ):
+            errors.append("delete_schedule_id must be 0-15")
         if schedule is not None:
             if schedule.hour < 0 or schedule.hour > 23:
                 errors.append("schedule.hour must be 0-23")
@@ -1489,10 +1495,10 @@ def _telemetry_fetch(mac: str | None = None) -> dict | None:
             "bound",
         },
     )
-    decoded["mac"] = _client._norm(device["mac"])  # noqa: SLF001
+    decoded["mac"] = _client._norm(device["mac"])
     # Include active schedules in telemetry for tracking
-    mn = _client._norm(device["mac"])  # noqa: SLF001
-    scheds = _client._query_timers(mn, cache)  # noqa: SLF001
+    mn = _client._norm(device["mac"])
+    scheds = _client._query_timers(mn, cache)
     decoded["schedules"] = scheds if scheds is not None else []
     return decoded
 
@@ -1512,14 +1518,14 @@ def _collect() -> None:
     """Background loop: fetch status every 1 min until stopped."""
     while not _stop_event.is_set():
         try:
-            with _client._lock:  # noqa: SLF001
-                _client._ensure()  # noqa: SLF001
-                macs = list(_client._state["devices"].keys())  # noqa: SLF001
+            with _client._lock:
+                _client._ensure()
+                macs = list(_client._state["devices"].keys())
             for mac in macs:
                 r = _telemetry_fetch(mac)
                 if r and "error" not in r:
                     _save_reading(r)
-            _client._persist(None, None)  # noqa: SLF001
+            _client._persist(None, None)
         except Exception as e:
             err_path = _DATA_DIR / "errors.jsonl"
             with _telemetry_lock, err_path.open("a", encoding="utf-8") as f:
@@ -1624,7 +1630,7 @@ _CLOCK_MARKER: MplPath | None = None
 
 def _clock_marker() -> MplPath:
     """Build a clock-shaped marker (circle + two hands) as a matplotlib Path."""
-    global _CLOCK_MARKER  # noqa: PLW0603
+    global _CLOCK_MARKER
     if _CLOCK_MARKER is not None:
         return _CLOCK_MARKER
     from math import cos, pi, sin
@@ -1749,7 +1755,7 @@ def _generate_graph(
         if not dt_s:
             continue
         try:
-            ts.append(datetime.strptime(dt_s, "%Y-%m-%d %H:%M:%S"))  # noqa: DTZ007
+            ts.append(datetime.strptime(dt_s, "%Y-%m-%d %H:%M:%S"))
         except ValueError, TypeError:
             continue
         rv = r.get("currentTemperature")
@@ -1785,9 +1791,9 @@ def _generate_graph(
         if _on_start is not None:
             ax.axvspan(_on_start, ts[-1], color="#1a237e", alpha=0.07, zorder=0)
 
-    valid_rt = [(t, v) for t, v in zip(ts, rt) if v is not None]
+    valid_rt = [(t, v) for t, v in zip(ts, rt, strict=False) if v is not None]
     if valid_rt:
-        rt_ts, rt_vals = zip(*valid_rt)
+        rt_ts, rt_vals = zip(*valid_rt, strict=False)
         ax.plot(date2num(rt_ts), rt_vals, color="#00bcd4", linewidth=2, alpha=0.6)
         window = max(3, min(10, len(rt_vals) // 20))
         sma = [
@@ -1796,10 +1802,14 @@ def _generate_graph(
         ]
         ax.plot(date2num(rt_ts), sma, color="#2196F3", linewidth=0.5, alpha=0.7)
 
-    valid_at = [(t, v, p, r) for t, v, p, r in zip(ts, at, ps, rt) if v is not None]
+    valid_at = [
+        (t, v, p, r)
+        for t, v, p, r in zip(ts, at, ps, rt, strict=False)
+        if v is not None
+    ]
     at_vals: tuple = ()
     if valid_at:
-        at_ts, at_vals, at_ps, at_rt = zip(*valid_at)
+        at_ts, at_vals, at_ps, at_rt = zip(*valid_at, strict=False)
         segs, cols = [], []
         for i in range(len(at_ts) - 1):
             x1, y1 = date2num(at_ts[i]), at_vals[i]
@@ -1819,14 +1829,14 @@ def _generate_graph(
         ev_x, ev_y = [], []  # user actions
         sched_x, sched_y = [], []  # auto-fired schedule events
         ev_x, ev_y = [], []  # user actions
-        _valid_ts = [t for t, v in zip(ts, at) if v is not None]
+        _valid_ts = [t for t, v in zip(ts, at, strict=False) if v is not None]
         _valid_at = [v for v in at if v is not None]
         for ev in events:
             ev_ts = ev.get("deviceTime")
             if not ev_ts:
                 continue
             try:
-                ev_dt = datetime.strptime(ev_ts, "%Y-%m-%d %H:%M:%S")  # noqa: DTZ007
+                ev_dt = datetime.strptime(ev_ts, "%Y-%m-%d %H:%M:%S")
             except ValueError, TypeError:
                 continue
             s, e = start, end
@@ -1911,7 +1921,7 @@ def _generate_graph(
             )
         )
     ax.legend(handles=_handles, loc="upper left", fontsize=9, framealpha=0.8, ncol=2)
-    ax.grid(True, linestyle="--", alpha=0.3, color="#555555")  # noqa: FBT003
+    ax.grid(True, linestyle="--", alpha=0.3, color="#555555")
 
     pad = (ts[-1] - ts[0]) * 0.02 if len(ts) > 1 else timedelta(hours=1)
     ax.set_xlim(ts[0] - pad, ts[-1] + pad)
@@ -1962,12 +1972,12 @@ _stop_event.clear()
 
 # Sync AC clock(s) to local server time on startup.
 with suppress(Exception):
-    _client._ensure()  # noqa: SLF001
-    for mac, d in _client._state["devices"].items():  # noqa: SLF001
-        r = _client._bind_dev(d, refresh=True)  # noqa: SLF001
+    _client._ensure()
+    for mac, d in _client._state["devices"].items():
+        r = _client._bind_dev(d, refresh=True)
         if not isinstance(r, str):
-            _client._sync_device_time(mac, r[1])  # noqa: SLF001
-    _client._persist(None, None)  # noqa: SLF001
+            _client._sync_device_time(mac, r[1])
+    _client._persist(None, None)
 
 _collector_thread = Thread(target=_collect, daemon=True)
 _collector_thread.start()
@@ -1984,7 +1994,7 @@ with suppress(ValueError, OSError):  # ponytail: only works in main thread
     signal(SIGTERM, lambda *_: _stop_collector())
 
 # Stop the software scheduler on exit
-register(_client._stop_scheduler)  # noqa: SLF001
+register(_client._stop_scheduler)
 
 # ============================================================
 # MCP TOOLS — only convenience tools are exposed to the agent.
@@ -1997,21 +2007,21 @@ _name_desc = "Device name. Omit if only one device."
 
 def _list_devices() -> dict[str, Any]:
     """List all GREE AC units with live status."""
-    with _client._lock:  # noqa: SLF001
-        _client._ensure()  # noqa: SLF001
+    with _client._lock:
+        _client._ensure()
         devices = []
-        for mac, d in _client._state["devices"].items():  # noqa: SLF001
-            r = _client._bind_dev(d, refresh=True)  # noqa: SLF001
+        for mac, d in _client._state["devices"].items():
+            r = _client._bind_dev(d, refresh=True)
             if isinstance(r, str):
                 devices.append({"mac": mac, "name": d["name"], "error": r})
             else:
                 devices.append(_client.decode(d, r[1], r[1].get("status", {})))
-        _client._persist(None, None)  # noqa: SLF001
+        _client._persist(None, None)
     return {"devices": devices}
 
 
-def _generate_temp_graph(  # noqa: PLR0911
-    range: str | None = None,  # noqa: A002
+def _generate_temp_graph(
+    range: str | None = None,
     mac: str | None = None,
     name: str | None = None,
 ) -> dict[str, Any]:
@@ -2057,10 +2067,10 @@ def _generate_temp_graph(  # noqa: PLR0911
         }
 
     try:
-        dev, _ = _client._resolve_one(mac, name)  # noqa: SLF001
+        dev, _ = _client._resolve_one(mac, name)
     except ValueError as e:
         return {"error": str(e)}
-    dev_mac = _client._norm(dev["mac"])  # noqa: SLF001
+    dev_mac = _client._norm(dev["mac"])
 
     readings = _query_readings(start, end, mac=dev_mac)
     if not readings:
@@ -2270,7 +2280,7 @@ def set_home_ac(
 
 @tool
 def graph_home_ac(
-    range: Annotated[  # noqa: A002
+    range: Annotated[
         str | None,
         Field(
             description="Time range: number + unit (h/d/w), e.g. '6h', '3d', '2w'. Or 'YYYY-MM-DD to YYYY-MM-DD'. Default: '1w'.",
@@ -2287,7 +2297,7 @@ def graph_home_ac(
 @tool
 def restart_ac_data_collection() -> dict[str, Any]:
     """Restart the background data collection thread (auto-started on MCP init, polls every 1min)."""
-    global _collector_thread  # noqa: PLW0603
+    global _collector_thread
     _stop_event.set()
     if _collector_thread:
         _collector_thread.join(timeout=5)
@@ -2304,10 +2314,9 @@ def ac_data_collection_status() -> dict[str, Any]:
     """Check if data collection and scheduler are running, and how much data exists."""
     collector_running = _collector_thread is not None and _collector_thread.is_alive()
     scheduler_running = (
-        _client._sched_thread is not None  # noqa: SLF001
-        and _client._sched_thread.is_alive()  # noqa: SLF001
+        _client._sched_thread is not None and _client._sched_thread.is_alive()
     )
-    total_schedules = sum(len(s) for s in _client._schedules.values())  # noqa: SLF001
+    total_schedules = sum(len(s) for s in _client._schedules.values())
     return {
         "collector_running": collector_running,
         "scheduler_running": scheduler_running,
@@ -2315,9 +2324,7 @@ def ac_data_collection_status() -> dict[str, Any]:
         "total_files": len(list(_DATA_DIR.glob("*/telemetry/*.jsonl"))),
         "active_schedules": total_schedules,
         "devices": {
-            mn: len(scheds)
-            for mn, scheds in _client._schedules.items()  # noqa: SLF001
-            if scheds
+            mn: len(scheds) for mn, scheds in _client._schedules.items() if scheds
         },
     }
 

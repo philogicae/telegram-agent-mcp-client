@@ -1,5 +1,28 @@
+target-version = "py314"  # minimum Python version
+line-length = 88         # Black-compatible width
+
 [lint]
-select = ["ALL"]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "SIM",    # flake8-simplify
+    "RUF",    # Ruff-specific
+    "ASYNC",  # flake8-async
+    "S",      # flake8-bandit (security)
+    "T20",    # flake8-print
+    "PTH",    # flake8-use-pathlib
+    "LOG",    # flake8-logging
+    "G",      # flake8-logging-format
+    "PT",     # flake8-pytest-style
+    "TRY",    # tryceratops
+    "PERF",   # perflint
+    "FURB",   # refurb
+]
 exclude = [
     ".git/**",
     "__pycache__/**",
@@ -9,63 +32,73 @@ exclude = [
     "dist/**",
 ]
 ignore = [
-    "ANN204",   # Missing return type annotation for special method - Allow omitting returns in __init__
-    "ANN401",   # Dynamically typed expressions (typing.Any) - Allow Any for flexibility
-    "ARG004",   # Unused static method argument - Allow unused args in static methods
-    "ARG005",   # Unused lambda argument - Allow unused args in lambdas for callbacks
-    "ASYNC240", # Async functions should not use pathlib.Path methods
-    "ASYNC250", # Blocking call to `input()` in async context
-    "B905",     # zip() without an explicit strict= parameter - Allow zip without strict for compatibility
-    "BLE001",   # Do not catch blind exception - TODO: Should be fixed in future refactoring
-    "C901",     # Too complex - Allow complex functions for readability
-    "COM812",   # Missing trailing comma - Allow no trailing commas for cleaner code
-    "D102",     # Missing docstring in public method - Allow omitting docstrings for simple methods
-    "D105",     # Missing docstring in magic method - Allow omitting docstrings in magic methods
-    "D203",     # one-blank-line-before-class (incompatible with D211) - Use D211 instead
-    "D205",     # 1 blank line required between summary line and description - Allow compact docstrings
-    "D212",     # multi-line-summary-first-line (incompatible with D213) - Use D213 instead
-    "D401",     # First line of docstring should be in imperative mood - Allow flexible docstring style
-    "D107",     # Missing docstring in __init__ - Allow omitting docstrings in __init__ when obvious
-    "E402",     # Module level import not at top of file - Allow imports outside of top level
-    "E501",     # Line too long - Allow longer lines for readability
-    "EM101",    # Exception must not use a string literal - Allow string messages in exceptions
-    "EM102",    # Exception must not use an f-string literal - Allow f-strings in exceptions
-    "ERA001",   # Found commented-out code - Allow commented-out code
-    "FBT001",   # Boolean-typed positional argument - Allow boolean flags as positional args
-    "FBT002",   # Boolean default positional argument - Allow boolean defaults in functions
-    "FIX002",   # Line contains TODO - Allow TODO comments
-    "G004",     # Logging statement uses f-string - Allow f-strings in logging for convenience
-    "G201",     # Logging .exception(...) should be used instead of .error(..., exc_info=True) - Allow .error with exc_info
-    "PGH003",   # Use specific rule codes when ignoring type issues - Allow general type: ignore comments
-    "PLC0415",  # Import should be at the top-level of a file - Allow conditional imports
-    "PLR0912",  # Too many branches - Allow multiple branches for complex logic
-    "PLR0913",  # Too many arguments - Allow functions with many parameters when needed
-    "PLR0915",  # Too many statements - Allow long functions for complex operations
-    "PLR2004",  # Magic value used in comparison - Allow magic numbers for clarity
-    "RUF022",   # __all__ is not sorted - Allow custom ordering of exports
-    "S104",     # Possible binding to all interfaces - Allow binding to 0.0.0.0 for servers
-    "S311",     # Standard pseudo-random generators are not suitable for cryptographic purposes - Allow random() for jitter
-    "SIM102",   # Use a single if statement instead of nested if - Allow nested ifs for clarity
-    "SIM103",   # Return the condition directly - Allow explicit if/else for readability
-    "T201",     # print found - Allow print statements throughout the codebase
-    "TC001",    # Move application import into a type-checking block - Allow runtime imports
-    "TC002",    # Move third-party import into a type-checking block - Allow runtime imports
-    "TC003",    # Move standard library import into a type-checking block - Allow runtime imports
-    "TD002",    # Missing author in TODO - Allow TODO without author
-    "TD003",    # Missing issue link on the line following this TODO - Allow TODO without link
-    "TID252",   # Prefer absolute imports over relative imports from parent modules - Allow relative imports
-    "TRY003",   # Avoid specifying long messages outside the exception class - Allow custom error messages
-    "TRY300",   # Consider moving this statement to an else block - Allow try/except/else patterns
-    "TRY301",   # Abstract raise to an inner function - Allow direct raises in try blocks
-    "S112",     # bare-except - Required for UDP broadcast noise in GREE protocol
-    "S305",     # insecure ECB mode - Required by GREE protocol spec
+    # Formatter conflicts
+    "E501",   # line-too-long — ruff fmt handles this
+    "COM812", # missing trailing comma — ruff fmt handles this
+    "ISC001", # single-line-implicit-concatenation — ruff fmt handles this
+    "E402",   # module-level import not at top — intentional _PYDANTIC_V1_ANCHOR pattern
+    # Already accepted technical debt / style
+    "BLE001",   # blind except — fix gradually
+    "G201",     # .exception vs .error(exc_info=True)
+    # High-noise, low-value
+    "G004",     # f-string in logging — modern & readable
+    "T201",     # print — intentional CLI scripts
+    "S104",     # 0.0.0.0 binding — intentional for server
+    "LOG004",   # .exception() outside handlers
+    "TRY300",   # move to else block
+    "TRY003",   # long messages outside exception class
+    "TRY301",   # abstract raise to inner function
+    "TRY400",   # use logging.exception instead of .error
+    # False positives / intentional
+    "ASYNC250", # blocking methods in async
+    "S105",     # "bearer" is not a password
+    "S107",     # same
+    "S311",     # random for non-crypto jitter / test data
+    "S608",     # f-string SQL — project uses safe column params/constants
+    "S324",     # md5 for non-cryptographic hashing is fine
+    "RUF002",   # intentional Greek letters (σ)
+    "RUF003",   # intentional × / other unicode in comments
 ]
 
 [lint.per-file-ignores]
-"__init__.py" = ["F401"]      # Allow unused imports in __init__ files
-"config/**/*.py" = ["INP001"] # Allow missing __init__.py files in config
+"tests/**/*.py" = [
+    # pytest / test style
+    "S101",  # assert used in tests
+    "S104",  # bind to all interfaces in tests
+    "S105",  # hardcoded password in test fixtures
+    "S106",  # hardcoded password in test calls
+    "S108",  # hardcoded temp file path in tests
+    "S311",  # pseudo-random in test data
+    # annotations & docs
+    "ANN001",  # missing type annotation (onerous in tests)
+    "ANN201",  # missing return type annotation
+    "D100",    # missing module docstring
+    "D101",    # missing class docstring
+    "D103",    # missing function docstring
+    "D104",    # missing package docstring
+    "D400",    # docstring must end with period
+    "D415",    # docstring first line must end with period
+    # boolean traps & magic values
+    "FBT001",  # boolean positional arg
+    "FBT002",  # boolean default arg
+    "FBT003",  # boolean comparison in function call
+    "PLR2004", # magic number comparison
+    # other test realities
+    "ARG001",    # unused function arg (ok in test helpers)
+    "ASYNC109",  # async function with timeout
+    "ASYNC210",  # blocking calls in async test setup
+    "ASYNC230",  # open() in async test helpers
+    "ASYNC240",  # pathlib in async test helpers
+    "F811",      # redefinition of function (pytest fixtures)
+    "RUF012",    # mutable class default
+    "RUF059",    # unary negation
+    "SLF001",    # access to private member of another class
+    "T201",      # print in tests
+    "TRY003",    # long message outside exception class
+]
 
 [format]
-quote-style = "double" # Use double quotes for strings
-indent-style = "space" # Use spaces for indentation (not tabs)
-line-ending = "lf"     # Use LF line endings (Unix style)
+quote-style = "double"     # consistent with project convention
+indent-style = "space"     # spaces over tabs
+line-ending = "lf"         # consistent Unix line endings
+docstring-code-format = true  # auto-format code in docstrings
