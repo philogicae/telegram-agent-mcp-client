@@ -1,11 +1,12 @@
 """Telegram bot handlers."""
 
-from asyncio import gather, sleep, to_thread
+from asyncio import gather, sleep
+from contextlib import suppress
 from io import BytesIO
 from os import getenv
-from pathlib import Path
 from traceback import print_exc
 
+import aiofiles.os  # ty: explicit submodule import
 from dotenv import load_dotenv
 from langchain.messages import HumanMessage
 from telebot.types import InputFile, InputMediaPhoto, Message
@@ -16,6 +17,11 @@ from ..utils import str_size, unpack_user
 
 load_dotenv()
 TELEGRAM_CHAT_DEV = getenv("TELEGRAM_CHAT_DEV")
+
+
+async def _read_image(path: str) -> bytes:
+    async with aiofiles.open(path, "rb") as f:
+        return await f.read()
 
 
 def _is_multimodal() -> bool:
@@ -137,23 +143,23 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
             if not done:
                 await sleep(0.5)  # No need to spam
             elif extra.get("images"):
-                paths = [p for p in extra["images"] if Path(p).exists()]
+                paths = [p for p in extra["images"] if await aiofiles.os.path.exists(p)]
                 if paths:
                     if len(paths) == 1:
-                        img_bytes = await to_thread(Path(paths[0]).read_bytes)
+                        async with aiofiles.open(paths[0], "rb") as f:
+                            img_bytes = await f.read()
                         await instance.bot.core.send_photo(msg.chat.id, img_bytes)
                     else:
                         for i in range(0, len(paths), 10):
                             batch = paths[i : i + 10]
-                            imgs = await gather(
-                                *(to_thread(Path(p).read_bytes) for p in batch)
-                            )
+                            imgs = await gather(*(_read_image(p) for p in batch))
                             media = [
                                 InputMediaPhoto(InputFile(BytesIO(b))) for b in imgs
                             ]
                             await instance.bot.core.send_media_group(msg.chat.id, media)
                     for p in paths:
-                        Path(p).unlink(missing_ok=True)
+                        with suppress(FileNotFoundError):
+                            await aiofiles.os.unlink(p)
     except Exception as e:
         print_exc()
         await telegram_report_issue(instance, msg, reply, e)
@@ -179,7 +185,7 @@ async def telegram_file(instance: AgenticBot, msg: Message) -> None:
     except Exception as e:
         if str(e).endswith("too big"):
             await instance.managers["document"].file_too_large(
-                msg.chat.id, str(file_name)
+                msg.chat.id, str(getattr(msg.document, "file_name", "unknown"))
             )
             instance.log.warning("File: too big. Redirected to Docs UI.")
         else:

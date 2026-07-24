@@ -27,10 +27,10 @@ CONFIG_DIR = getenv("CONFIG") or "./config"
 class PruneHistory(AgentMiddleware):
     """Middleware to prune conversation history before agent execution."""
 
-    def before_agent(self, state: Any, runtime: Any) -> dict[str, Any] | None:  # noqa: ARG002
+    def before_agent(self, state: Any, runtime: Any) -> dict[str, Any] | None:
         return pre_agent_hook(state)
 
-    async def abefore_agent(self, state: Any, runtime: Any) -> dict[str, Any] | None:  # noqa: ARG002
+    async def abefore_agent(self, state: Any, runtime: Any) -> dict[str, Any] | None:
         return pre_agent_hook(state)
 
 
