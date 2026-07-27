@@ -217,7 +217,9 @@ async def get_tools(
 ) -> list[BaseTool]:
     """Load and configure all available MCP tools."""
     tools: list[BaseTool] = []
-    only_file = only_file.rstrip(".json").rstrip(".py") if only_file else None
+    only_file = (
+        only_file.removesuffix(".json").removesuffix(".py") if only_file else None
+    )
     py_tools = _load_python_tools(only_file)
     mcp_config, mcp_filter_config = _load_tool_config(only_file)
 

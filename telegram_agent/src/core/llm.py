@@ -1,5 +1,6 @@
 """LLM provider configuration and management."""
 
+from logging import getLogger
 from os import getenv
 from typing import Any
 
@@ -13,6 +14,7 @@ from langchain_google_genai import (
 )
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
+from openai import AsyncOpenAI
 
 from ..utils import Singleton
 
@@ -33,10 +35,15 @@ class LLM(Singleton):
 
     provider: Any
     llm: dict[str, BaseChatModel]
+    extra: dict[str, Any]
 
     def __init__(self) -> None:
+        if hasattr(self, "_initialized"):
+            return
+        self._initialized = True
         self.provider = LLM_CHOICE
         self.llm = {}
+        self.extra = {}
 
     @staticmethod
     def get(provider: str | None = None) -> BaseChatModel:
@@ -118,8 +125,39 @@ class LLM(Singleton):
                     disable_streaming="tool_calling",
                 )
 
+        if not obj.extra:
+            # TTS (Text-to-Speech via OpenRouter, OpenAI-compatible audio modality)
+            openrouter_api_key: Any = getenv("OPENROUTER_API_KEY")
+            if openrouter_api_key:
+                obj.extra["tts"] = AsyncOpenAI(
+                    base_url="https://openrouter.ai/api/v1",
+                    api_key=openrouter_api_key,
+                ).audio.speech
+
         chosen_provider: str = provider or obj.provider
         llm: BaseChatModel | None = obj.llm.get(chosen_provider)
         if llm:
             return llm
         raise ValueError(f"LLM {chosen_provider} not found")
+
+    @staticmethod
+    async def tts(text: str) -> bytes | None:
+        """Generate speech audio bytes from text using the TTS LLM."""
+        try:
+            openrouter_tts_model = getenv(
+                "OPENROUTER_TTS_MODEL", "x-ai/grok-voice-tts-1.0"
+            )
+            openrouter_tts_voice = getenv("OPENROUTER_TTS_VOICE", "eve")
+            tts = LLM().extra.get("tts")
+            if not tts:
+                return None
+            response = await tts.create(
+                input=text,
+                model=openrouter_tts_model,
+                voice=openrouter_tts_voice,
+                response_format="mp3",
+            )
+            return response.content
+        except Exception:
+            getLogger(__name__).warning("TTS generation failed", exc_info=True)
+        return None

@@ -1,9 +1,11 @@
 """Telegram bot handlers."""
 
-from asyncio import gather, sleep
+from asyncio import create_subprocess_exec, gather, sleep
 from contextlib import suppress
 from io import BytesIO
 from os import getenv
+from re import DOTALL, sub
+from subprocess import DEVNULL, PIPE
 from traceback import print_exc
 
 import aiofiles.os  # ty: explicit submodule import
@@ -93,11 +95,20 @@ async def telegram_report_issue(
 
 
 @handler
-async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
+async def telegram_chat(
+    instance: AgenticBot, msg: Message, overwrite: Message | None = None
+) -> None:
     """Handle chat messages and orchestrate agent responses."""
     timer = instance.log.received(msg)
     if msg.text in ["/start", "/help"]:
         await instance.bot.send(msg, "🌟 Welcome! How can I help you?")
+        return
+    if msg.text == "/tts":
+        user_id = msg.from_user.id if msg.from_user else 0
+        current = instance.tts_enabled.get(user_id, False)
+        instance.tts_enabled[user_id] = not current
+        state = "on 🔊" if not current else "off 🔇"
+        await instance.bot.send(msg, f"TTS is now {state}")
         return
 
     # Consume pending images for this chat
@@ -120,8 +131,11 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
             description = await _media_to_text(media_dicts, msg.text or "")
             msg.text = f"{msg.text or ''}\n\n[Image context: {description}]".strip()
 
-    init = instance.bot.reply if msg.chat.type != "private" else instance.bot.send
-    reply, prev = await init(msg), ""
+    if overwrite is None:
+        init = instance.bot.reply if msg.chat.type != "private" else instance.bot.send
+        overwrite = await init(msg)
+    reply = overwrite
+    prev = ""
     try:
         async for agent, step, done, extra in instance.agent.chat(msg):
             if step != prev:
@@ -160,6 +174,31 @@ async def telegram_chat(instance: AgenticBot, msg: Message) -> None:
                     for p in paths:
                         with suppress(FileNotFoundError):
                             await aiofiles.os.unlink(p)
+            # TTS: send audio of the final response if enabled
+            if done and msg.from_user and instance.tts_enabled.get(msg.from_user.id):
+                clean = sub(r"```\w*\n.*?```", "", step, flags=DOTALL)
+                clean = sub(r"[*_`~#|\[\]()>==]", "", clean).strip()
+                audio_bytes = await LLM.tts(clean or step)
+                if audio_bytes:
+                    # Telegram voice messages require OGG/OPUS
+                    proc = await create_subprocess_exec(
+                        "ffmpeg",
+                        "-i",
+                        "pipe:0",
+                        "-c:a",
+                        "libopus",
+                        "-f",
+                        "ogg",
+                        "pipe:1",
+                        stdin=PIPE,
+                        stdout=PIPE,
+                        stderr=DEVNULL,
+                    )
+                    ogg, _ = await proc.communicate(audio_bytes)
+                    voice = ogg if proc.returncode == 0 and ogg else audio_bytes
+                    await instance.bot.core.send_voice(
+                        msg.chat.id, InputFile(BytesIO(voice), file_name="voice.ogg")
+                    )
     except Exception as e:
         print_exc()
         await telegram_report_issue(instance, msg, reply, e)
@@ -196,10 +235,14 @@ async def telegram_file(instance: AgenticBot, msg: Message) -> None:
 @handler
 async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
     """Handle voice messages: attach audio as media and process through agent."""
+    reply = None
     try:
         voice = msg.voice
         if not voice:
             return
+        # Send "I'm listening..." immediately, before download/transcription
+        init = instance.bot.reply if msg.chat.type != "private" else instance.bot.send
+        reply = await init(msg, "🎤 I'm listening...")
         file_info = await instance.bot.core.get_file(voice.file_id)
         audio = await instance.bot.core.download_file(file_info.file_path)
         media = [{"type": "media", "data": audio, "mime_type": "audio/ogg"}]
@@ -209,10 +252,16 @@ async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
         else:
             transcription = await _media_to_text(media)
             msg.text = f"🎤 [voice message]: {transcription}"
-        await telegram_chat(instance, msg)
+        # Replace "I'm listening..." with "I'm thinking..." and set up edit cache
+        await instance.bot.edit(reply, instance.bot.waiting, replace=True)
+        instance.bot.edit_cache[reply.id] = {  # ty: ignore[unresolved-attribute]
+            "current": 0,
+            "content": [instance.bot.waiting],
+        }
+        await telegram_chat(instance, msg, overwrite=reply)
     except Exception as e:
         print_exc()
-        await telegram_report_issue(instance, msg, msg, e)
+        await telegram_report_issue(instance, msg, reply or msg, e)
 
 
 # Media group accumulation: {media_group_id: {"images": [], "msg": Message}}

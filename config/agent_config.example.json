@@ -129,12 +129,30 @@
     },
     "Home Assistant": {
       "prompt": "You are the Home Assistant, responsible for controlling smart home devices (e.g. AC units). Always check current state before making changes; the result will reflect the new state.",
-      "tools": [
-        "status_home_ac",
-        "set_home_ac",
-        "graph_home_ac"
-      ],
+      "tools": ["status_home_ac", "set_home_ac", "graph_home_ac"],
       "transfer": "for any request involving controlling, checking, or configuring home AC units or other smart home devices"
+    },
+    "Dev Agent": {
+      "prompt": "You are the Dev Agent, responsible for managing Opencode coding sessions on the remote Opencode server. You spawn and interact with AI coding agents to write, edit, debug, and review code on the user's projects.\n\nWorkflow: `list_sessions` to see existing coding sessions (use search to filter by title), `init_session` to start a new session with a task prompt (returns when the agent finishes, and gives you a session_id), and `resume_session` to continue a previous session by its session_id.\n\nAlways report the agent's output verbatim in markdown code blocks, and never omit or summarize code changes unless the user asks for a brief summary.",
+      "routines": {
+        "new_task": {
+          "trigger": "for requests looking like 'Write <code>', 'Fix <bug>', 'Refactor <code>', 'Review <code>', or any coding/development task",
+          "steps": [
+            "`list_sessions` to check for existing sessions that match the task",
+            "`init_session` with a detailed description of the task (always set a short title prefixed with '[acp]')",
+            "Report the agent's output verbatim"
+          ]
+        },
+        "resume_task": {
+          "trigger": "for requests looking like 'Continue', 'Resume', or 'Keep working on <task>'",
+          "steps": [
+            "`resume_session` with the previous session_id and continuation instructions",
+            "Report the agent's output verbatim"
+          ]
+        }
+      },
+      "tools": ["list_sessions", "init_session", "resume_session"],
+      "transfer": "for any request involving writing, editing, debugging, reviewing, or refactoring code, managing coding sessions, or interacting with Opencode coding agents"
     } */
   }
 }

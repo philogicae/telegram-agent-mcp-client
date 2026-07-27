@@ -201,6 +201,7 @@ class AgenticBot(ABC):
         self.dev = dev
         self.managers = {k: v(self) for k, v in managers.items()} if managers else {}
         self.pending_media: dict[int, list[bytes]] = {}
+        self.tts_enabled: dict[int, bool] = {}
 
     def __enter__(self) -> Self:
         return self

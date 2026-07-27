@@ -7,7 +7,7 @@ from typing import Any, ClassVar
 
 import aiohttp
 from telebot.async_telebot import AsyncTeleBot
-from telebot.types import CallbackQuery, LinkPreviewOptions, Message
+from telebot.types import BotCommand, CallbackQuery, LinkPreviewOptions, Message
 from telebot.util import smart_split
 
 from ..abstract import Bot
@@ -103,7 +103,12 @@ class TelegramBot(Bot):
 
     async def initialize(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
         """Set up message handlers for the bot."""
-        await self.core.set_my_commands([])
+        await self.core.set_my_commands(
+            [
+                BotCommand("start", "Start the bot"),
+                BotCommand("tts", "Toggle TTS on/off"),
+            ]
+        )
         me = await self.core.get_me()
 
         # Handlers

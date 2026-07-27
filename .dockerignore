@@ -1,0 +1,34 @@
+# IDE
+.vscode
+.github
+
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.ruff_cache
+.mypy_cache
+.pytest_cache
+.venv
+
+# Envs
+.env
+.env.*
+**/*.env
+docker-envs/
+
+# Data & config
+data
+config
+tmp.json
+
+# Docs UI (separate build)
+docs_ui/
+
+# Misc
+.git
+*_graph.png
+scripts/.*
