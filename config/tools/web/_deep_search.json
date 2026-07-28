@@ -1,4 +1,5 @@
 {
+  "description": "Advanced deep search using Linkup for thorough research, returning comprehensive content from the most relevant sources for in-depth information gathering.",
   //  Free: 1000 standard or 100 deep queries by month. Create API KEY: https://app.linkup.so/
   "url": "https://mcp.linkup.so/mcp?apiKey={ENV:DEEP_SEARCH_API_KEY}",
   "enable": ["linkup-search"],
@@ -9,8 +10,3 @@
     }
   }
 }
-/* all found tools: 4
-linkup-fetch
-linkup-get-research
-linkup-research
-linkup-search */

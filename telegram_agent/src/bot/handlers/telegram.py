@@ -1,10 +1,8 @@
 """Telegram bot handlers."""
 
 from asyncio import create_subprocess_exec, gather, sleep
-from contextlib import suppress
 from io import BytesIO
 from os import getenv
-from re import DOTALL, sub
 from subprocess import DEVNULL, PIPE
 from traceback import print_exc
 
@@ -171,14 +169,16 @@ async def telegram_chat(
                                 InputMediaPhoto(InputFile(BytesIO(b))) for b in imgs
                             ]
                             await instance.bot.core.send_media_group(msg.chat.id, media)
-                    for p in paths:
-                        with suppress(FileNotFoundError):
-                            await aiofiles.os.unlink(p)
             # TTS: send audio of the final response if enabled
             if done and msg.from_user and instance.tts_enabled.get(msg.from_user.id):
-                clean = sub(r"```\w*\n.*?```", "", step, flags=DOTALL)
-                clean = sub(r"[*_`~#|\[\]()>==]", "", clean).strip()
-                audio_bytes = await LLM.tts(clean or step)
+                instance.log.info(f"[{msg.chat.id}] Generating TTS voice message...")
+                recording = await instance.bot.send(msg, "🎙️ I'm recording...")
+                adapted = await LLM.tts_adapt(step)
+                audio_bytes = await LLM.tts(adapted)
+                if not audio_bytes:
+                    instance.log.warning(
+                        f"[{msg.chat.id}] TTS generation returned no audio"
+                    )
                 if audio_bytes:
                     # Telegram voice messages require OGG/OPUS
                     proc = await create_subprocess_exec(
@@ -199,6 +199,8 @@ async def telegram_chat(
                     await instance.bot.core.send_voice(
                         msg.chat.id, InputFile(BytesIO(voice), file_name="voice.ogg")
                     )
+                    instance.log.info(f"[{msg.chat.id}] TTS voice message sent")
+                await instance.bot.delete(recording)
     except Exception as e:
         print_exc()
         await telegram_report_issue(instance, msg, reply, e)

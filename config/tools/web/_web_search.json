@@ -1,0 +1,8 @@
+{
+  "description": "DuckDuckGo web search via the ddg_search MCP server, enabling quick web queries with result titles, URLs, and summaries.",
+  "command": "npx -y @oevortex/ddg_search@latest",
+  "edit": {
+    "web-search": { "name": "web_search" }
+  },
+  "enable": ["web-search"]
+}

@@ -1,0 +1,12 @@
+{
+  "description": "Multi-engine web search with parallel query support, enabling searches across multiple search engines simultaneously and returning detailed results including titles, URLs, and summaries.",
+  "command": "SEARXNG_URL={ENV:SEARXNG_BASE_URL}:{ENV:SEARXNG_PORT:-8080} npx -y searxng-mul-mcp",
+  "edit": {
+    "search": {
+      "name": "web_search",
+      "description": "Perform web search(es) across multiple search engines, support searching multiple queries in parallel, and return detailed results including titles, URLs, and summaries."
+    }
+  }
+}
+/* all found tools: 1
+search */

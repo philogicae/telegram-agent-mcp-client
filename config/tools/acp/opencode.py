@@ -1,10 +1,11 @@
 """Opencode bridge: drive remote coding sessions over the HTTP API of `opencode acp`."""
 
+from contextlib import suppress
 from datetime import UTC, datetime
 from json import JSONDecodeError, loads
 from os import getenv
 from typing import Annotated, Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import quote, urlsplit, urlunsplit
 
 from aiohttp import BasicAuth, ClientError, ClientSession, ClientTimeout
 from dotenv import load_dotenv
@@ -24,20 +25,32 @@ _PASSWORD = getenv("OPENCODE_SERVER_PASSWORD", "")
 _TIMEOUT = float(getenv("OPENCODE_SERVER_TIMEOUT", "1200"))
 _MAX_OUTPUT = int(getenv("OPENCODE_SERVER_MAX_OUTPUT", "20000"))
 _NOT_CONFIGURED = "OPENCODE_ACP_URL not set"
+_ERRORS = (ClientError, PermissionError, RuntimeError, TimeoutError)
 
 
 def _parse_url(raw: str) -> tuple[str, BasicAuth | None]:
     """Split a server URL into a clean base URL and its basic-auth credentials."""
     if not raw.strip():
         return "", None
-    parts = urlsplit(raw.strip() if "//" in raw else f"http://{raw.strip()}")
-    netloc = parts.hostname or ""
-    if parts.port:
-        netloc = f"{netloc}:{parts.port}"
+    raw = raw.strip()
+    try:
+        parts = urlsplit(raw if "//" in raw else f"http://{raw}")
+        netloc = parts.hostname or ""
+        if parts.port:
+            netloc = f"{netloc}:{parts.port}"
+    except ValueError:
+        raise RuntimeError(f"Invalid OPENCODE_ACP_URL: {raw!r}") from None
     base = urlunsplit((parts.scheme or "http", netloc, parts.path.rstrip("/"), "", ""))
     user = parts.username or _USERNAME
     password = parts.password or _PASSWORD
-    return base, BasicAuth(user, password) if password else None
+    if not password:
+        if parts.username:
+            raise RuntimeError(
+                "OPENCODE_ACP_URL has a username but no password; "
+                "embed both (http://user:pass@host) or set OPENCODE_SERVER_PASSWORD"
+            )
+        return base, None
+    return base, BasicAuth(user, password)
 
 
 _BASE_URL, _AUTH = _parse_url(_RAW_URL)
@@ -109,14 +122,26 @@ class OpencodeClient:
 
     async def session(self, session_id: str) -> dict[str, Any]:
         """Return a single session."""
-        return await self._request("GET", f"/session/{session_id}") or {}
+        return (
+            await self._request("GET", f"/session/{quote(session_id, safe='')}") or {}
+        )
+
+    async def delete_session(self, session_id: str) -> None:
+        """Delete a session."""
+        await self._request("DELETE", f"/session/{quote(session_id, safe='')}")
+
+    async def abort(self, session_id: str) -> None:
+        """Abort the current run of a session."""
+        await self._request("POST", f"/session/{quote(session_id, safe='')}/abort")
 
     async def prompt(self, session_id: str, text: str) -> dict[str, Any]:
         """Send a prompt and block until the agent finishes its turn."""
         payload: dict[str, Any] = {"parts": [{"type": "text", "text": text}]}
         return (
             await self._request(
-                "POST", f"/session/{session_id}/message", payload=payload
+                "POST",
+                f"/session/{quote(session_id, safe='')}/message",
+                payload=payload,
             )
             or {}
         )
@@ -181,7 +206,7 @@ def _format_session(s: dict[str, Any]) -> dict[str, Any]:
         "created": _ms_iso(time.get("created")),
         "updated": _ms_iso(time.get("updated")),
         "cost": s.get("cost"),
-        "tokens": tokens.get("input", 0) + tokens.get("output", 0) or None,
+        "tokens": (tokens.get("input", 0) + tokens.get("output", 0)) or None,
         "files": (s.get("summary") or {}).get("files") or None,
     }
 
@@ -224,25 +249,25 @@ async def list_sessions(
     search: Annotated[
         str | None,
         Field(
-            description="Optional case-insensitive title filter (e.g. 'refactor' to find sessions with that in the title)",
+            description="Case-insensitive substring filter on session titles (e.g. 'refactor'). Omit to list all recent sessions.",
             default=None,
         ),
     ] = None,
     limit: Annotated[
         int,
         Field(
-            description="Maximum number of sessions to return (default 20)",
+            description="Maximum number of sessions to return, 1-100 (default 20).",
             default=20,
         ),
     ] = 20,
 ) -> dict[str, Any]:
     """
     List Opencode coding sessions on the remote server, newest first.
-    Usage: Call this to find session_ids for `resume_session`, or to check what tasks have been run.
+    Usage: Call this to discover session_ids for `resume_session` or `abort_session`, or to review past tasks and their cost.
 
     Args:
         search: Optional case-insensitive title filter.
-        limit: Maximum sessions to return (default 20).
+        limit: Maximum sessions to return, clamped to 1-100 (default 20).
 
     Returns:
         A dict with a list of sessions (session_id, title, agent, model,
@@ -253,8 +278,10 @@ async def list_sessions(
         return {"error": _NOT_CONFIGURED}
 
     try:
-        sessions = await _client.list_sessions(limit=limit, search=search)
-    except (ClientError, PermissionError, RuntimeError, TimeoutError) as e:
+        sessions = await _client.list_sessions(
+            limit=max(1, min(limit, 100)), search=search
+        )
+    except _ERRORS as e:
         return {"error": f"Opencode server error: {e}"}
 
     return {"sessions": [_format_session(s) for s in sessions]}
@@ -265,27 +292,27 @@ async def init_session(
     prompt: Annotated[
         str,
         Field(
-            description="Detailed, self-contained task for the coding agent: what to do, in which files/project, and the expected result"
+            description="Detailed, self-contained task for the coding agent: goal, relevant files/project paths, constraints, and the expected outcome. The agent has no prior context, so include everything it needs."
         ),
     ],
     title: Annotated[
         str | None,
         Field(
-            description="Short session title, must be prefixed with '[acp]' (e.g. '[acp] fix auth bug')",
+            description="Short session title, must be prefixed with '[acp]' (e.g. '[acp] fix auth bug'). Defaults to the first 60 chars of the prompt.",
             default=None,
         ),
     ] = None,
 ) -> dict[str, Any]:
     """
     Start a new Opencode coding session and run a task on it, blocking until the agent finishes.
-    Usage: For any coding/development task (write, fix, refactor, review code).
+    Usage: For any coding/development task (write, fix, refactor, review code). Prefer this over `resume_session` for unrelated tasks.
 
     Args:
         prompt: Detailed, self-contained description of the task.
-        title: Optional short session title.
+        title: Optional short session title prefixed with '[acp]'.
 
     Returns:
-        A dict with session_id (reuse it with `resume_session`), message_id,
+        A dict with session_id (pass it to `resume_session` for follow-ups or `abort_session` to stop a run), message_id,
         agent, model, output, tool_calls, files_changed, usage, or an error.
         Long runs can take several minutes.
 
@@ -293,13 +320,17 @@ async def init_session(
     if not _BASE_URL:
         return {"error": _NOT_CONFIGURED}
 
+    session_id: str | None = None
     try:
         session = await _client.create_session(title or prompt[:60])
         session_id = session.get("id")
         if not session_id:
             return {"error": "Opencode server did not return a session id"}
         message = await _client.prompt(session_id, prompt)
-    except (ClientError, PermissionError, RuntimeError, TimeoutError) as e:
+    except _ERRORS as e:
+        if session_id:
+            with suppress(*_ERRORS):
+                await _client.delete_session(session_id)
         return {"error": f"Opencode server error: {e}"}
 
     return _format_run(session_id, message)
@@ -310,23 +341,23 @@ async def resume_session(
     session_id: Annotated[
         str,
         Field(
-            description="Session id returned by a previous `init_session` call (e.g. 'ses_...')"
+            description="Session id from a previous `init_session` or `resume_session` result (e.g. 'ses_...')"
         ),
     ],
     prompt: Annotated[
         str,
         Field(
-            description="Continuation instructions; the agent keeps the full history of that session"
+            description="Follow-up instructions; the agent keeps the full history and working state of that session, so only describe what changes relative to it"
         ),
     ],
 ) -> dict[str, Any]:
     """
     Continue a previous Opencode coding session with new instructions, keeping its full context.
-    Usage: For 'continue', 'resume', or follow-up changes on an earlier run.
+    Usage: For 'continue', 'resume', or follow-up changes on an earlier run. Use `init_session` instead for unrelated tasks.
 
     Args:
-        session_id: Session id returned by a previous `init_session` call.
-        prompt: Continuation instructions.
+        session_id: Session id from a previous run.
+        prompt: Follow-up instructions, relative to the session's existing context.
 
     Returns:
         A dict with session_id, message_id, agent, model, output, tool_calls,
@@ -340,7 +371,40 @@ async def resume_session(
 
     try:
         message = await _client.prompt(session_id.strip(), prompt)
-    except (ClientError, PermissionError, RuntimeError, TimeoutError) as e:
+    except _ERRORS as e:
         return {"error": f"Opencode server error: {e}"}
 
     return _format_run(session_id.strip(), message)
+
+
+@tool
+async def abort_session(
+    session_id: Annotated[
+        str,
+        Field(
+            description="Session id of the run to stop (e.g. 'ses_...'), from `init_session`, `resume_session`, or `list_sessions`"
+        ),
+    ],
+) -> dict[str, Any]:
+    """
+    Abort the currently running task of an Opencode session, without deleting the session or its history.
+    Usage: When a run is stuck, taking too long, or the user asks to stop/cancel it. The session can still be resumed afterwards.
+
+    Args:
+        session_id: Session id of the run to abort.
+
+    Returns:
+        A dict confirming the abort, or an error.
+
+    """
+    if not _BASE_URL:
+        return {"error": _NOT_CONFIGURED}
+    if not session_id or not session_id.strip():
+        return {"error": "session_id is required"}
+
+    try:
+        await _client.abort(session_id.strip())
+    except _ERRORS as e:
+        return {"error": f"Opencode server error: {e}"}
+
+    return {"aborted": session_id.strip()}

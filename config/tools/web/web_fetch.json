@@ -1,0 +1,9 @@
+{
+  "description": "Direct URL content retrieval from single or multiple web pages, enabling fetching of web page content from specified URLs for content extraction and analysis.",
+  "command": "PLAYWRIGHT_BROWSERS_PATH=$HOME/.playwright npx -y fetcher-mcp",
+  "disable": ["browser_install"]
+}
+/* all found tools: 3
+browser_install
+fetch_url
+fetch_urls */

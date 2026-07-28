@@ -1,4 +1,5 @@
 {
+  "description": "Wiki search and article retrieval with optional filtering and sorting, enabling discovery and fetching of encyclopedic information from Wiki articles.",
   "command": "uvx grokipedia-mcp",
   "enable": ["search", "get_page_content"],
   "edit": {
@@ -12,11 +13,3 @@
     }
   }
 }
-/* all found tools: 7
-get_page
-get_page_citations
-get_page_content
-get_page_section
-get_page_sections
-get_related_pages
-search */

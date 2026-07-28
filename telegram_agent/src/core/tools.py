@@ -31,9 +31,18 @@ _console = Console()
 
 
 def _replace_env_var(match: Any) -> str:
-    """Replace environment variables in tool config."""
+    """Replace environment variables in tool config.
+
+    Supports {ENV:VAR} and {ENV:VAR:-default} syntax.
+    """
     env_name = match.group(1)
-    return getenv(env_name) or ENV_NOT_FOUND
+    default = match.group(2)
+    value = getenv(env_name)
+    if value:
+        return value
+    if default is not None:
+        return default
+    return ENV_NOT_FOUND
 
 
 def _load_server_configs(only_file: str | None = None) -> ServerConfig:
@@ -51,7 +60,7 @@ def _load_server_configs(only_file: str | None = None) -> ServerConfig:
         try:
             with filepath.open(encoding="utf-8") as f:
                 content = f.read()
-                content = sub(r"\{ENV:(\w+)\}", _replace_env_var, content)
+                content = sub(r"\{ENV:(\w+)(?::-(.*?))?\}", _replace_env_var, content)
                 if ENV_NOT_FOUND in content:
                     _console.print(
                         f"Ignored '{server_path}': Missing environment variable",
@@ -115,6 +124,9 @@ def _process_server_configs(mcp_servers: ServerConfig) -> ToolConfig:
         edit = settings.pop("edit", {})
         if edit and isinstance(edit, dict):
             server_filters["edit"] = edit
+
+        # Remove description (metadata only, not passed to MCP client)
+        settings.pop("description", None)
 
         # Store filters if any exist
         if server_filters:
@@ -267,6 +279,9 @@ async def get_tools(
                     _apply_tool_edits(tool, edit_config) for tool in filtered_tools
                 )
             except Exception as e:
+                # Unwrap ExceptionGroup (TaskGroup) to show the real error
+                while isinstance(e, BaseExceptionGroup) and e.exceptions:
+                    e = e.exceptions[0]
                 _console.print(f"{e}\n[red]Error loading tools from: {server}[/red]")
 
     if display:

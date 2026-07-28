@@ -1,11 +1,13 @@
 """LLM provider configuration and management."""
 
+import re
 from logging import getLogger
 from os import getenv
 from typing import Any
 
 from dotenv import load_dotenv
 from langchain.chat_models import BaseChatModel
+from langchain.messages import HumanMessage
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import (
     ChatGoogleGenerativeAI,
@@ -141,6 +143,56 @@ class LLM(Singleton):
         raise ValueError(f"LLM {chosen_provider} not found")
 
     @staticmethod
+    async def tts_adapt(text: str) -> str:
+        """Adapt a formatted text message into a concise, voice-friendly version.
+
+        Uses the utils LLM to strip markdown, remove code blocks and links,
+        and rephrase the content so it sounds natural when spoken aloud.
+        Falls back to the original text if the LLM call fails.
+        """
+        prompt = (
+            "You are leaving a quick voice message for a friend. "
+            "Summarize the following chat message the way a human would "
+            "when leaving a voice note — fast, casual, hitting only the "
+            "key points, skipping fluff and details.\n\n"
+            "Rules:\n"
+            "- Drastically shorten the message. Keep only the essential "
+            "information a person needs to know. Drop examples, dates, "
+            "episode numbers, and minor details unless they are the main "
+            "point.\n"
+            "- Talk like you're leaving a voice note: conversational, "
+            "natural, to the point. No bullet points, no lists.\n"
+            "- Strip all markdown (bold, italic, code blocks, links, "
+            "headers, tables, list markers).\n"
+            "- Replace URLs with a short verbal description or drop them.\n"
+            "- Convert emojis into emotion tags like [laughs], [smiles], "
+            "[sadly], [excited] — never read emoji names literally.\n"
+            "- Keep the original language, tone, and intention — if the "
+            "message is excited, sarcastic, apologetic, or playful, the "
+            "summary should feel the same way.\n"
+            "- Target length: 2-4 short sentences max, no matter how "
+            "long the original is.\n"
+            "- Return ONLY the spoken text, no preamble, no quotes.\n\n"
+            "Message:\n"
+            f"{text}"
+        )
+        try:
+            llm = LLM.get(LLM_UTILS)
+            response = await llm.ainvoke([HumanMessage(content=prompt)])
+            content = response.content
+            if isinstance(content, list):
+                content = " ".join(
+                    part["text"]
+                    for part in content
+                    if isinstance(part, dict) and "text" in part
+                )
+            adapted = content.strip()
+            return adapted or text
+        except Exception:
+            getLogger(__name__).warning("TTS adaptation failed", exc_info=True)
+            return text
+
+    @staticmethod
     async def tts(text: str) -> bytes | None:
         """Generate speech audio bytes from text using the TTS LLM."""
         try:
@@ -151,11 +203,28 @@ class LLM(Singleton):
             tts = LLM().extra.get("tts")
             if not tts:
                 return None
+            # Strip emotion tags (e.g. [excited], [smiles]) from the text
+            # so the TTS model never reads them aloud. The detected emotions
+            # are passed through the instructions parameter instead.
+            emotions = re.findall(r"\[([a-zA-Z]+)\]", text)
+            clean_text = re.sub(r"\s*\[([a-zA-Z]+)\]\s*", " ", text).strip()
+            emotion_hint = ""
+            if emotions:
+                unique = list(dict.fromkeys(emotions))
+                emotion_hint = (
+                    f" The speaker is feeling {', '.join(unique)} at various "
+                    "points — reflect this in your delivery."
+                )
             response = await tts.create(
-                input=text,
+                input=clean_text,
                 model=openrouter_tts_model,
                 voice=openrouter_tts_voice,
                 response_format="mp3",
+                instructions=(
+                    "Default tone: chill, relaxed, and playful, but always match the "
+                    "emotion of the text — upset, sad, excited, etc."
+                    f"{emotion_hint}"
+                ),
             )
             return response.content
         except Exception:

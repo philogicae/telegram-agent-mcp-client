@@ -1,0 +1,15 @@
+{
+  "description": "Adaptive web scraping framework with AI-assisted data extraction. Features: intelligent element tracking that survives website changes, anti-bot bypass (Cloudflare Turnstile), multiple fetchers (HTTP/browser automation), session management, proxy rotation, CSS/XPath selectors, and optimized content extraction to reduce token usage. Supports concurrent crawling, pause/resume, and streaming results. To use when you struggle to fetch data from websites during standard searches.",
+  "url": "{ENV:SCRAPLING_BASE_URL}:{ENV:SCRAPLING_PORT:-8081}/mcp"
+}
+/* all found tools: 10
+bulk_fetch
+bulk_get
+bulk_stealthy_fetch
+close_session
+fetch
+get
+list_sessions
+open_session
+screenshot
+stealthy_fetch */

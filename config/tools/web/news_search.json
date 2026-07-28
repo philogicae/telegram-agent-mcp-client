@@ -1,17 +1,23 @@
 {
+  "description": "Specialized news search via Brave Search for current events, ideal for gathering news and articles about recent developments and broad information gathering.",
   // Free: 2000 queries by month. Create API KEY: https://brave.com/search/api/
-  "command": "npx -y @modelcontextprotocol/server-brave-search",
+  "command": "npx -y @brave/brave-search-mcp-server",
   "env": {
     "BRAVE_API_KEY": "{ENV:BRAVE_API_KEY}"
   },
-  "enable": ["brave_web_search"],
+  "enable": ["brave_news_search"],
   "edit": {
-    "brave_web_search": {
-      "name": "news_search",
-      "description": "Search news on the web using Brave Search, ideal for news and articles. Use this for broad information gathering and recent events. Always add 'news' keyword if missing. Only call this tool if the request is news-related."
+    "brave_news_search": {
+      "name": "news_search"
     }
   }
 }
-/* all found tools: 2
+/* all found tools: 8
+brave_image_search
+brave_llm_context
 brave_local_search
+brave_news_search
+brave_place_search
+brave_summarizer
+brave_video_search
 brave_web_search */

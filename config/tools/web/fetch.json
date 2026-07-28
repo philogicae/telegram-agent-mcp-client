@@ -1,8 +1,0 @@
-{
-  "command": "PLAYWRIGHT_BROWSERS_PATH=$HOME/.playwright npx -y fetcher-mcp",
-  "disable": ["browser_install"]
-}
-/* all found tools: 3
-browser_install
-fetch_url
-fetch_urls */
