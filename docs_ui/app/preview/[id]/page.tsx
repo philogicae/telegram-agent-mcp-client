@@ -80,7 +80,7 @@ export default function Preview({
         <Button
           size="sm"
           onPress={handleDownload}
-          disabled={downloading}
+          isDisabled={downloading}
           className="inline-flex cursor-pointer rounded-lg text-white bg-black gap-2 text-md font-bold disabled:text-cyan-200 border border-black ring-2 ring-black border-offset-1 hover:text-cyan-200 items-center justify-center"
         >
           <FiDownload className="text-md" />

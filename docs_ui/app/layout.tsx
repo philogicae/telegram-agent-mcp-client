@@ -1,5 +1,4 @@
 import "./globals.css"
-import HeroUI from "@layout/HeroUI"
 import Navbar from "@layout/Navbar"
 import { Roboto } from "next/font/google"
 import { Suspense } from "react"
@@ -19,11 +18,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={font.className}>
       <body>
-        <HeroUI>
-          <Navbar>
-            <Suspense fallback={<Loading />}>{children}</Suspense>
-          </Navbar>
-        </HeroUI>
+        <Navbar>
+          <Suspense fallback={<Loading />}>{children}</Suspense>
+        </Navbar>
       </body>
     </html>
   )

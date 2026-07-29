@@ -1,6 +1,6 @@
 "use client"
 import Restricted from "@components/Restricted"
-import { Button, Card, CardBody, Progress } from "@heroui/react"
+import { Button, Card, ProgressBar } from "@heroui/react"
 import { cn } from "@utils/tw"
 import {
   ACCEPTED_EXTENSIONS,
@@ -250,7 +250,7 @@ export default function Upload({
                     key={file.name}
                     className="flex items-center justify-start hover:bg-gray-100 dark:hover:bg-gray-900 border border-gray-500 rounded-lg gap-2 p-1 text-gray-700 dark:text-gray-300"
                   >
-                    <FiFileText className="flex-shrink-0" />
+                    <FiFileText className="shrink-0" />
                     <span className="truncate">{file.name}</span>
                   </li>
                 ))}
@@ -270,7 +270,7 @@ export default function Upload({
             onPress={resetState}
             className="inline-flex cursor-pointer rounded-lg text-white bg-black px-8 py-4 text-md font-bold disabled:bg-gray-300 disabled:text-gray-500 border border-black ring-2 ring-black border-offset-1 hover:text-cyan-400 w-52"
           >
-            <FiUpload className="h-5 w-5 mr-2 flex-shrink-0" />
+            <FiUpload className="h-5 w-5 mr-2 shrink-0" />
             Upload More Files
           </Button>
         </Card>
@@ -313,29 +313,29 @@ export default function Upload({
       {error && (
         <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-right-full">
           <Card className="border-red-600 bg-red-100 dark:border-red-400 dark:bg-red-900/50 shadow-lg">
-            <CardBody className="p-4">
+            <Card.Content className="p-4">
               <div className="flex items-center space-x-2 text-red-900 dark:text-red-200">
-                <FiAlertCircle className="h-5 w-5 flex-shrink-0" />
+                <FiAlertCircle className="h-5 w-5 shrink-0" />
                 <p className="font-bold">{error}</p>
               </div>
-            </CardBody>
+            </Card.Content>
           </Card>
         </div>
       )}
       {success && (
         <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-right-full">
           <Card className="border-green-600 bg-green-100 dark:border-green-400 dark:bg-green-900/50 shadow-lg">
-            <CardBody className="p-4">
+            <Card.Content className="p-4">
               <div className="flex items-center space-x-2 text-green-900 dark:text-green-200">
-                <FiCheckCircle className="h-5 w-5 flex-shrink-0" />
+                <FiCheckCircle className="h-5 w-5 shrink-0" />
                 <p className="font-bold">{success}</p>
               </div>
-            </CardBody>
+            </Card.Content>
           </Card>
         </div>
       )}
       <Card className="flex flex-col w-full sm:w-4/5 md:w-3/4 lg:w-2/3 xl:w-1/2 h-full shadow-none">
-        <CardBody className="p-4 items-center justify-center gap-3 dark:bg-black bg-white w-full h-full">
+        <Card.Content className="p-4 items-center justify-center gap-3 dark:bg-black bg-white w-full h-full">
           <button
             className={cn(
               "w-full border-2 border-dashed rounded-lg p-4 text-center transition-all duration-200 cursor-pointer",
@@ -383,7 +383,9 @@ export default function Upload({
                 <Button
                   size="md"
                   onPress={handleUpload}
-                  disabled={files.length === 0 || uploadStatus === "uploading"}
+                  isDisabled={
+                    files.length === 0 || uploadStatus === "uploading"
+                  }
                   className="inline-flex cursor-pointer rounded-lg text-white bg-black px-8 py-4 text-md font-bold disabled:bg-gray-300 disabled:text-gray-500 border border-black ring-2 ring-black border-offset-1 hover:text-green-400 w-full"
                 >
                   {uploadStatus === "uploading"
@@ -401,7 +403,7 @@ export default function Upload({
                   <Button
                     size="md"
                     onPress={handleUpload}
-                    disabled={
+                    isDisabled={
                       files.length === 0 || uploadStatus === "uploading"
                     }
                     className="inline-flex cursor-pointer rounded-lg text-white bg-black px-8 py-4 text-md font-bold disabled:bg-gray-300 disabled:text-gray-500 border border-black ring-2 ring-black border-offset-1 hover:text-green-400"
@@ -415,7 +417,7 @@ export default function Upload({
                   <Button
                     size="sm"
                     onPress={clearAllFiles}
-                    disabled={uploadStatus === "uploading"}
+                    isDisabled={uploadStatus === "uploading"}
                     className="text-white text-sm hover:text-red-500 w-full bg-black border border-black ring-2 ring-black border-offset-1"
                   >
                     Clear All
@@ -429,7 +431,7 @@ export default function Upload({
                     className="flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-900 border border-gray-500 rounded-lg gap-4 p-1 text-gray-700 dark:text-gray-300"
                   >
                     <div className="flex flex-row items-center gap-2">
-                      <FiFile className="h-6 w-6 flex-shrink-0" />
+                      <FiFile className="h-6 w-6 shrink-0" />
                       <span className="text-black dark:text-white font-sans font-semibold">
                         {file.name}
                       </span>
@@ -455,7 +457,7 @@ export default function Upload({
           )}
           {uploadStatus === "uploading" && (
             <div className="w-full pt-4">
-              <Progress
+              <ProgressBar
                 isIndeterminate
                 aria-label="Uploading..."
                 className="w-full"
@@ -466,7 +468,7 @@ export default function Upload({
               </p>
             </div>
           )}
-        </CardBody>
+        </Card.Content>
       </Card>
     </div>
   )

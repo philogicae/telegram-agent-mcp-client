@@ -1,5 +1,9 @@
+allowBuilds:
+  "@heroui/shared-utils": true
+  core-js: true
+  sharp: true
 onlyBuiltDependencies:
-  - '@heroui/shared-utils'
-  - '@tailwindcss/oxide'
+  - "@heroui/shared-utils"
+  - "@tailwindcss/oxide"
   - core-js
   - sharp
