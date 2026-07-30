@@ -162,7 +162,7 @@ class Agent:
 
     async def chat(
         self, content: str | TelegramMessage | Any
-    ) -> AsyncGenerator[tuple[str, str, bool, dict[str, str]]]:
+    ) -> AsyncGenerator[tuple[str, str, bool, dict[str, Any]]]:
         thread_id, user = "test", "Developer"
         date = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
         media: list[dict] = []
@@ -436,6 +436,15 @@ class Agent:
                                     pass
                         elif not tool_calls:  # Final result
                             step, done = text, True
+                        elif (
+                            msg_type == "model"
+                        ):  # Explanatory text alongside tool calls
+                            yield (
+                                swarm.active[thread_id],
+                                text,
+                                False,
+                                {"model_text": True},
+                            )
 
                     if tool_calls:
                         if str(called_tool).startswith(

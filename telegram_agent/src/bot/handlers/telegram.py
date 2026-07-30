@@ -138,14 +138,20 @@ async def telegram_chat(
         async for agent, step, done, extra in instance.agent.chat(msg):
             if step != prev:
                 prev = step
-                await instance.bot.edit(reply, step, final=done, agent=agent)
-                if not done and step[0] == "✅":
+                await instance.bot.edit(
+                    reply,
+                    step,
+                    final=done,
+                    agent=agent,
+                    model_text=extra.get("model_text", False),
+                )
+                if not done and not extra.get("model_text") and step[0] == "✅":
                     tool = extra.get("tool")
                     if tool and tool in instance.managers:
                         await instance.managers[tool].notify(
                             msg.chat.id, extra.get("output")
                         )
-                elif not done and step[0] == "❌":
+                elif not done and not extra.get("model_text") and step[0] == "❌":
                     await telegram_report_issue(
                         instance,
                         msg,

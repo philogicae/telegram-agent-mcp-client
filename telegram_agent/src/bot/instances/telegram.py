@@ -232,6 +232,7 @@ class TelegramBot(Bot):
         replace: bool = False,
         final: bool = False,
         agent: str | None = None,
+        model_text: bool = False,
     ) -> Message | bool:
         """Edit an existing message."""
         if not replace and message.id not in self.edit_cache:
@@ -242,14 +243,29 @@ class TelegramBot(Bot):
             content = cache.get("content")
             if not content:
                 return False
-            orig = self.logify(agent, content)
+
+            def build_display(c: list[str], m: str) -> list[str]:
+                d = list(c)
+                if m:
+                    d = [x for x in d if x != self.waiting]
+                    d.append("\x00" + m)
+                return d
+
+            mt = cache.get("model_text", "")
+            orig = self.logify(agent, build_display(content, mt))
             if final:
-                edited = (self.logify(agent, content[:-1]) + f"\n{text}").strip()
+                tool_logs = [c for c in content if c != self.waiting]
+                edited = (self.logify(agent, tool_logs) + f"\n{text}").strip()
+            elif model_text:
+                cache["model_text"] = text
+                edited = self.logify(agent, build_display(content, text))
             else:
                 content[-1] = text  # Tool result edit / Tool call init or logs
                 if not content[-1].endswith("..."):
                     content.append(self.waiting)
-                edited = self.logify(agent, content)
+                edited = self.logify(
+                    agent, build_display(content, cache.get("model_text", ""))
+                )
         msg: Message | bool = False
         if edited != orig:
             content_html = self.fixed(edited)

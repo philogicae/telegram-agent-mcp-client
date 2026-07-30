@@ -165,7 +165,9 @@ def logify_telegram(
     if not logs:
         return ""
     label = agent.replace(" ", "-") if agent else "Logs"
-    inner = "\n".join(logs).replace("<", "&lt;").replace(">", "&gt;")
+    inner = (
+        "\n".join(logs).replace("\x00", "").replace("<", "&lt;").replace(">", "&gt;")
+    )
     return f'<pre><code class="language-{label}">{inner}\n</code></pre>'
 
 
