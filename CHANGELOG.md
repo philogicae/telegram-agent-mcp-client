@@ -444,6 +444,10 @@
 - .gitignore: ignore `TODO.md`
 - compose.yaml: shfmt YAML anchor spacing
 - uv.lock: langsmith 0.10.14, posthog 7.35.4
+- Feat: persist opencode sessions to JSONL, rework ACP dev agent persona
+
+- opencode.py: new persistence layer — per-server dir (host_port) under DATA_DIR/opencode, upserts sessions into opencode_sessions.jsonl keyed by id, sorted newest-first by time.created, 0777 chmod; best-effort (suppress) persist calls in list_sessions, init_session, resume_session
+- agent_config.example.json: rename "Dev Agent" → "Opencode Dev"; rewrite prompt — casual teammate tone, no verbatim tool dumps (except list_sessions results, which must be reported truthfully), no sycophancy, TTS-friendly output; new_task no longer pre-checks list_sessions, resume_task now looks up session_id via list_sessions when unknown; drop \n\n escapes from prompts
 
 ### 🐛 Bug Fixes
 
@@ -729,3 +733,7 @@
 - Chore: update Transmission trackers and pin to v4.0.6 until latest is fixed
 - Chore: update deps
 - Chore: update deps
+- Chore: update CHANGELOG with recent commits, refresh Transmission trackers
+
+- CHANGELOG.md: append summaries from commits 7c01b4c through d0bd308 (network-aware retry backoff, image inspection tools, TTS features, web search overhaul, HeroUI v3 migration, Python 3.14 bump, etc.)
+- transmission.config.json: refresh default-trackers list (add zer0day.ch, tracker2.dler.org, tracker.0x7c0.com; remove dead/duplicate entries)
