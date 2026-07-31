@@ -2,8 +2,9 @@
 
 from contextlib import suppress
 from datetime import UTC, datetime
-from json import JSONDecodeError, loads
+from json import JSONDecodeError, dumps, loads
 from os import getenv
+from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import quote, urlsplit, urlunsplit
 
@@ -54,6 +55,73 @@ def _parse_url(raw: str) -> tuple[str, BasicAuth | None]:
 
 
 _BASE_URL, _AUTH = _parse_url(_RAW_URL)
+
+
+# ============================================================
+# PERSISTENCE
+# ============================================================
+
+_DATA_DIR = Path(getenv("DATA_DIR", "./data")) / "opencode"
+_DATA_DIR.mkdir(parents=True, exist_ok=True)
+with suppress(PermissionError):
+    _DATA_DIR.chmod(0o777)
+
+
+def _server_code(base_url: str) -> str:
+    """Normalize the server URL into a filesystem-safe code (like gree_ac MAC)."""
+    try:
+        parts = urlsplit(base_url)
+        host = (parts.hostname or "localhost").replace(".", "-")
+        port = f"_{parts.port}" if parts.port else ""
+        return f"{host}{port}"
+    except Exception:
+        return "default"
+
+
+_SERVER_DIR = _DATA_DIR / _server_code(_BASE_URL)
+_SERVER_DIR.mkdir(parents=True, exist_ok=True)
+with suppress(PermissionError):
+    _SERVER_DIR.chmod(0o777)
+
+_SESSIONS_FILE = _SERVER_DIR / "opencode_sessions.jsonl"
+
+
+def _persist_sessions(sessions: list[dict[str, Any]]) -> None:
+    """Upsert sessions into the JSONL file, keyed by session id (newest first)."""
+    if not sessions:
+        return
+    now = datetime.now(UTC).isoformat()
+    # Read existing entries into a dict keyed by session id
+    existing: dict[str, dict[str, Any]] = {}
+    if _SESSIONS_FILE.exists():
+        for line in _SESSIONS_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = loads(line)
+                if sid := entry.get("id"):
+                    existing[sid] = entry
+            except JSONDecodeError:
+                continue
+    # Upsert new sessions
+    for s in sessions:
+        sid = s.get("id")
+        if not sid:
+            continue
+        entry = dict(s)
+        entry["fetched_at"] = now
+        existing[sid] = entry
+
+    # Write back, sorted by created time descending (newest first)
+    def _sort_key(e: dict[str, Any]) -> int:
+        t = e.get("time") or {}
+        return int(t.get("created") or 0)
+
+    ordered = sorted(existing.values(), key=_sort_key, reverse=True)
+    with _SESSIONS_FILE.open("w", encoding="utf-8") as f:
+        for entry in ordered:
+            f.write(dumps(entry, ensure_ascii=False) + "\n")
 
 
 # ============================================================
@@ -284,6 +352,9 @@ async def list_sessions(
     except _ERRORS as e:
         return {"error": f"Opencode server error: {e}"}
 
+    with suppress(Exception):
+        _persist_sessions(sessions)
+
     return {"sessions": [_format_session(s) for s in sessions]}
 
 
@@ -333,6 +404,11 @@ async def init_session(
                 await _client.delete_session(session_id)
         return {"error": f"Opencode server error: {e}"}
 
+    with suppress(Exception):
+        full = await _client.session(session_id)
+        if full:
+            _persist_sessions([full])
+
     return _format_run(session_id, message)
 
 
@@ -373,6 +449,11 @@ async def resume_session(
         message = await _client.prompt(session_id.strip(), prompt)
     except _ERRORS as e:
         return {"error": f"Opencode server error: {e}"}
+
+    with suppress(Exception):
+        full = await _client.session(session_id.strip())
+        if full:
+            _persist_sessions([full])
 
     return _format_run(session_id.strip(), message)
 
