@@ -1,8 +1,10 @@
 """Telegram bot handlers."""
 
-from asyncio import create_subprocess_exec, gather, sleep
+from asyncio import Event, create_subprocess_exec, gather, sleep
+from datetime import datetime
 from io import BytesIO
 from os import getenv
+from pathlib import Path
 from subprocess import DEVNULL, PIPE
 from traceback import print_exc
 
@@ -17,6 +19,16 @@ from ..utils import str_size, unpack_user
 
 load_dotenv()
 TELEGRAM_CHAT_DEV = getenv("TELEGRAM_CHAT_DEV")
+_RECEIVED_DIR = Path(getenv("DATA_DIR", "./data")) / "image_received"
+_RECEIVED_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _save_received_image(img_bytes: bytes) -> str:
+    """Persist a received image to disk and return its path."""
+    ts = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
+    path = _RECEIVED_DIR / f"img_{ts}.jpg"
+    path.write_bytes(img_bytes)
+    return str(path)
 
 
 async def _read_image(path: str) -> bytes:
@@ -109,25 +121,64 @@ async def telegram_chat(
         await instance.bot.send(msg, f"TTS is now {state}")
         return
 
+    chat_id = msg.chat.id
+    if msg.text == "/cancel":
+        if chat_id in instance.cancel_events:
+            instance.cancel_events[chat_id].set()
+            await instance.bot.send(msg, "⏹️ Cancelling...")
+        else:
+            await instance.bot.send(msg, "Nothing to cancel.")
+        return
+
+    # Rate limiting: reject if this chat already has an active agent run
+    if chat_id in instance.cancel_events:
+        await instance.bot.send(
+            msg, "⏳ I'm still working on your previous message. Send /cancel to abort."
+        )
+        return
+
+    # Claim the slot immediately to prevent concurrent runs in the same chat.
+    # This must happen before any await to avoid a TOCTOU race.
+    cancel_event = Event()
+    instance.cancel_events[chat_id] = cancel_event
+
     # Consume pending images for this chat
     pending = instance.pending_media.pop(msg.chat.id, [])
     if pending:
+        img_paths = [p for _, p in pending]
         if _is_multimodal():
             existing = getattr(msg, "media", [])
             msg.media = [  # ty: ignore[unresolved-attribute]
                 *existing,
                 *[
                     {"type": "media", "data": img, "mime_type": "image/jpeg"}
-                    for img in pending
+                    for img, _ in pending
                 ],
             ]
+            paths_str = "\n".join(f"  - {p}" for p in img_paths)
+            msg.text = (
+                f"{msg.text or ''}\n\n[Received image files:]\n{paths_str}".strip()
+            )
         else:
-            media_dicts = [
-                {"type": "media", "data": img, "mime_type": "image/jpeg"}
-                for img in pending
-            ]
-            description = await _media_to_text(media_dicts, msg.text or "")
-            msg.text = f"{msg.text or ''}\n\n[Image context: {description}]".strip()
+            # Describe each image individually and persist descriptions to disk
+            # so the agent can reference them later even after context loss.
+            desc_parts = []
+            for img_bytes, img_path in pending:
+                media_dicts = [
+                    {"type": "media", "data": img_bytes, "mime_type": "image/jpeg"}
+                ]
+                desc = await _media_to_text(media_dicts, msg.text or "")
+                desc_path = str(
+                    Path(img_path).parent / f"{Path(img_path).stem}_desc.txt"
+                )
+                async with aiofiles.open(desc_path, "w", encoding="utf-8") as f:
+                    await f.write(desc)
+                desc_parts.append(
+                    f"  - {img_path}\n    Description: {desc_path}\n    Context: {desc}"
+                )
+            msg.text = (
+                f"{msg.text or ''}\n\n[Received images:]\n" + "\n".join(desc_parts)
+            ).strip()
 
     if overwrite is None:
         init = instance.bot.reply if msg.chat.type != "private" else instance.bot.send
@@ -136,6 +187,8 @@ async def telegram_chat(
     prev = ""
     try:
         async for agent, step, done, extra in instance.agent.chat(msg):
+            if cancel_event.is_set():
+                break
             if step != prev:
                 prev = step
                 await instance.bot.edit(
@@ -163,10 +216,17 @@ async def telegram_chat(
             elif extra.get("images"):
                 paths = [p for p in extra["images"] if await aiofiles.os.path.exists(p)]
                 if paths:
+                    await instance.bot.core.send_chat_action(
+                        msg.chat.id, "upload_photo"
+                    )
                     if len(paths) == 1:
                         async with aiofiles.open(paths[0], "rb") as f:
                             img_bytes = await f.read()
-                        await instance.bot.core.send_photo(msg.chat.id, img_bytes)
+                        await instance.bot.core.send_photo(
+                            msg.chat.id,
+                            img_bytes,
+                            show_caption_above_media=True,
+                        )
                     else:
                         for i in range(0, len(paths), 10):
                             batch = paths[i : i + 10]
@@ -178,12 +238,16 @@ async def telegram_chat(
             # TTS: send audio of the final response if enabled
             if done and msg.from_user and instance.tts_enabled.get(msg.from_user.id):
                 instance.log.info(f"[{msg.chat.id}] Generating TTS voice message...")
+                await instance.bot.core.send_chat_action(msg.chat.id, "upload_voice")
                 recording = await instance.bot.send(msg, "🎙️ I'm recording...")
                 adapted = await LLM.tts_adapt(step)
                 audio_bytes = await LLM.tts(adapted)
                 if not audio_bytes:
                     instance.log.warning(
                         f"[{msg.chat.id}] TTS generation returned no audio"
+                    )
+                    await instance.bot.send(
+                        msg, "🎙️ TTS failed — check logs for details."
                     )
                 if audio_bytes:
                     # Telegram voice messages require OGG/OPUS
@@ -210,6 +274,8 @@ async def telegram_chat(
     except Exception as e:
         print_exc()
         await telegram_report_issue(instance, msg, reply, e)
+    finally:
+        instance.cancel_events.pop(chat_id, None)
     instance.log.sent(msg, timer)
 
 
@@ -248,9 +314,19 @@ async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
         voice = msg.voice
         if not voice:
             return
+        # Rate limiting: reject early before expensive download/transcription
+        if msg.chat.id in instance.cancel_events:
+            await instance.bot.send(
+                msg,
+                "⏳ I'm still working on your previous message. Send /cancel to abort.",
+            )
+            return
+        # Claim the slot immediately to prevent concurrent runs.
+        cancel_event = Event()
+        instance.cancel_events[msg.chat.id] = cancel_event
         # Send "I'm listening..." immediately, before download/transcription
         init = instance.bot.reply if msg.chat.type != "private" else instance.bot.send
-        reply = await init(msg, "🎤 I'm listening...")
+        reply = await init(msg, "🔊 I'm listening...")
         file_info = await instance.bot.core.get_file(voice.file_id)
         audio = await instance.bot.core.download_file(file_info.file_path)
         media = [{"type": "media", "data": audio, "mime_type": "audio/ogg"}]
@@ -266,10 +342,15 @@ async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
             "current": 0,
             "content": [instance.bot.waiting],
         }
+        # telegram_chat will claim the slot we already set; pass overwrite so
+        # it skips the init() call and reuses our reply.
+        instance.cancel_events.pop(msg.chat.id, None)
         await telegram_chat(instance, msg, overwrite=reply)
     except Exception as e:
         print_exc()
         await telegram_report_issue(instance, msg, reply or msg, e)
+    finally:
+        instance.cancel_events.pop(msg.chat.id, None)
 
 
 # Media group accumulation: {media_group_id: {"images": [], "msg": Message}}
@@ -282,17 +363,25 @@ async def telegram_image(instance: AgenticBot, msg: Message) -> None:
     try:
         if not msg.photo:
             return
+        # Rate limiting: reject early before expensive download
+        if msg.chat.id in instance.cancel_events:
+            await instance.bot.send(
+                msg,
+                "⏳ I'm still working on your previous message. Send /cancel to abort.",
+            )
+            return
         # Download highest resolution
         photo = msg.photo[-1]
         file_info = await instance.bot.core.get_file(photo.file_id)
         img_bytes = await instance.bot.core.download_file(file_info.file_path)
+        img_path = _save_received_image(img_bytes)
 
         if msg.media_group_id:
             # Album: accumulate images, debounce processing
             group_id = msg.media_group_id
             if group_id not in _media_groups:
                 _media_groups[group_id] = {"images": [], "msg": msg}
-            _media_groups[group_id]["images"].append(img_bytes)
+            _media_groups[group_id]["images"].append((img_bytes, img_path))
             my_count = len(_media_groups[group_id]["images"])
             # Wait briefly for more images in this group
             await sleep(1.0)
@@ -304,21 +393,22 @@ async def telegram_image(instance: AgenticBot, msg: Message) -> None:
             images = data["images"]
             album_msg = data["msg"]
         else:
-            images = [img_bytes]
+            images = [(img_bytes, img_path)]
             album_msg = msg
 
         caption = (album_msg.caption or "").strip()
-        media_dicts = [
-            {"type": "media", "data": img, "mime_type": "image/jpeg"} for img in images
-        ]
         if caption:
-            # Caption present: process immediately through agent
-            if _is_multimodal():
-                album_msg.text = caption
-                album_msg.media = media_dicts  # ty: ignore[invalid-assignment]
-            else:
-                description = await _media_to_text(media_dicts, caption)
-                album_msg.text = f"{caption}\n\n[Image context: {description}]"
+            # Caption present: process immediately through agent.
+            # Check rate limiting BEFORE storing pending media so we don't
+            # leak orphaned images into pending_media if telegram_chat rejects.
+            if album_msg.chat.id in instance.cancel_events:
+                await instance.bot.send(
+                    album_msg,
+                    "⏳ I'm still working on your previous message. Send /cancel to abort.",
+                )
+                return
+            instance.pending_media.setdefault(album_msg.chat.id, []).extend(images)
+            album_msg.text = caption
             await telegram_chat(instance, album_msg)
         else:
             # No caption: store as pending, wait for next text/voice

@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from enum import Enum
 from json import dumps
+from os import getenv
 from pathlib import Path
 from re import sub
 from typing import Any, cast
@@ -70,7 +71,7 @@ def checkpointer(dev: bool = False, persist: bool = False) -> BaseCheckpointSave
     """Create a checkpoint saver for the graph."""
     if dev or not persist:
         return InMemorySaver()
-    data_folder = Path("/app/data")
+    data_folder = Path(getenv("DATA_DIR", "./data"))
     data_folder.mkdir(parents=True, exist_ok=True)
     return AsyncSqliteSaver(connect(str(data_folder / "checkpointer.sqlite")))
 

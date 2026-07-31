@@ -26,6 +26,36 @@ msg_params: dict[str, Any] = {
 }
 
 
+def _is_private_or_reply(m: Message, bot_id: int) -> bool:
+    """Check if a message is from a private chat or a reply to the bot."""
+    return m.chat.type == "private" or (
+        m.reply_to_message is not None
+        and m.reply_to_message.from_user is not None
+        and m.reply_to_message.from_user.id == bot_id
+    )
+
+
+def _render_logify(
+    logify: Callable[..., str],
+    waiting: str,
+    agent: str | None,
+    content: list[str],
+    model_text: str = "",
+) -> str:
+    """Render tool logs in a code block, with model text after the block.
+
+    The agent log (model_text) is always unique/replaced on each update, so
+    it is kept out of the tool-logs code block and appended as plain text
+    after it. The waiting marker is only kept inside the block when there is
+    no model text to show (indicating the agent is still processing).
+    """
+    tool_logs = [c for c in content if c != waiting] if model_text else list(content)
+    rendered = logify(agent, tool_logs)
+    if model_text:
+        rendered = (rendered + f"\n{model_text}").strip()
+    return rendered
+
+
 class TelegramBot(Bot):
     """Telegram bot implementation using AsyncTeleBot."""
 
@@ -107,6 +137,7 @@ class TelegramBot(Bot):
             [
                 BotCommand("start", "Start the bot"),
                 BotCommand("tts", "Toggle TTS on/off"),
+                BotCommand("cancel", "Cancel the current response"),
             ]
         )
         me = await self.core.get_me()
@@ -119,16 +150,12 @@ class TelegramBot(Bot):
         handle_voice = kwargs.get("voice")
         handle_image = kwargs.get("image")
 
-        def _is_private_or_reply(m: Message) -> bool:
-            return m.chat.type == "private" or (
-                m.reply_to_message is not None
-                and m.reply_to_message.from_user is not None
-                and m.reply_to_message.from_user.id == me.id
-            )
+        bot_id = me.id
 
         @self.core.message_handler(
             func=lambda m: (
-                _is_private_or_reply(m) or m.text.startswith(self.group_msg_trigger)
+                _is_private_or_reply(m, bot_id)
+                or m.text.startswith(self.group_msg_trigger)
             ),
             content_types=["text"],
         )
@@ -154,7 +181,7 @@ class TelegramBot(Bot):
         if handle_document:
 
             @self.core.message_handler(
-                func=_is_private_or_reply,
+                func=lambda m: _is_private_or_reply(m, bot_id),
                 content_types=["document"],
             )
             async def _handle_file(message: Message) -> None:
@@ -163,7 +190,7 @@ class TelegramBot(Bot):
         if handle_voice:
 
             @self.core.message_handler(
-                func=_is_private_or_reply,
+                func=lambda m: _is_private_or_reply(m, bot_id),
                 content_types=["voice"],
             )
             async def _handle_voice(message: Message) -> None:
@@ -172,7 +199,7 @@ class TelegramBot(Bot):
         if handle_image:
 
             @self.core.message_handler(
-                func=_is_private_or_reply,
+                func=lambda m: _is_private_or_reply(m, bot_id),
                 content_types=["photo"],
             )
             async def _handle_photo(message: Message) -> None:
@@ -213,7 +240,9 @@ class TelegramBot(Bot):
         """Reply to a specific message."""
         if text and len(text) > self._dynamic_length(text):
             return await self.paginated(
-                self.core.reply_to, to_message, self.fixed(text)
+                self.core.reply_to,
+                to_message,
+                self.fixed(text),
             )
         msg: Message = await self._exec(
             self.core.reply_to,
@@ -244,49 +273,53 @@ class TelegramBot(Bot):
             if not content:
                 return False
 
-            def build_display(c: list[str], m: str) -> list[str]:
-                d = list(c)
-                if m:
-                    d = [x for x in d if x != self.waiting]
-                    d.append("\x00" + m)
-                return d
-
             mt = cache.get("model_text", "")
-            orig = self.logify(agent, build_display(content, mt))
+            orig = _render_logify(self.logify, self.waiting, agent, content, mt)
             if final:
                 tool_logs = [c for c in content if c != self.waiting]
-                edited = (self.logify(agent, tool_logs) + f"\n{text}").strip()
+                edited = self.logify(agent, tool_logs)
+                if text:
+                    edited = (edited + f"\n{text}").strip()
             elif model_text:
                 cache["model_text"] = text
-                edited = self.logify(agent, build_display(content, text))
+                edited = _render_logify(self.logify, self.waiting, agent, content, text)
             else:
-                content[-1] = text  # Tool result edit / Tool call init or logs
+                content[-1] = text
                 if not content[-1].endswith("..."):
                     content.append(self.waiting)
-                edited = self.logify(
-                    agent, build_display(content, cache.get("model_text", ""))
+                edited = _render_logify(
+                    self.logify,
+                    self.waiting,
+                    agent,
+                    content,
+                    cache.get("model_text", ""),
                 )
         msg: Message | bool = False
         if edited != orig:
-            content_html = self.fixed(edited)
             if final:
+                content_html = self.fixed(edited, classic=False)
                 await self.delete(message)
                 msg = await self._send_rich(message.chat.id, content_html)
-            elif len(content_html) > self._dynamic_length(content_html):
-                msg = await self.paginated(
-                    self.core.edit_message_text,
-                    (message.chat.id, message.id),
-                    content_html,
-                    cache.get("current"),
-                )
             else:
-                msg = await self._exec(
-                    self.core.edit_message_text,
-                    content_html,
-                    message.chat.id,
-                    message.id,
-                    **msg_params,
-                )
+                classic_html = self.fixed(edited)
+                try:
+                    if len(classic_html) > self._dynamic_length(classic_html):
+                        msg = await self.paginated(
+                            self.core.edit_message_text,
+                            (message.chat.id, message.id),
+                            classic_html,
+                            cache.get("current"),
+                        )
+                    else:
+                        msg = await self._exec(
+                            self.core.edit_message_text,
+                            classic_html,
+                            message.chat.id,
+                            message.id,
+                            **msg_params,
+                        )
+                except Exception as exc:
+                    logger.warning("Edit failed for msg %s: %s", message.id, exc)
             if (replace or final) and message.id in self.edit_cache:
                 del self.edit_cache[message.id]
         return msg

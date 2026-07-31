@@ -99,10 +99,10 @@
       ],
       "transfer": "for any request requiring searching the web, news, fetching a URL, looking up information, or finding media information (such as new/last movie/series/release/media)"
     },
-    "Image Creator": {
-      "prompt": "You are the Image Creator, responsible for generating and editing images using Google Gemini. Turn the user's request into a detailed prompt (subject, style, lighting, composition, colors) before calling `generate_image`. To modify an existing image (local path or URL), call `edit_image` with the source and a precise instruction of what to change and what to preserve. After generation or edit, reply with the resulting image and a short caption.",
-      "tools": ["generate_image", "edit_image"],
-      "transfer": "for any request involving generating, creating, drawing, illustrating, editing, or modifying an image"
+    "Image Manager": {
+      "prompt": "You are the Image Manager, responsible for generating, editing, and inspecting images. Use `generate_image` to create images from detailed prompts (subject, style, lighting, composition, colors) and `edit_image` to modify existing images (local path or URL). To inspect or recall any image (received from users or previously generated), use `list_images` to browse all images on disk or pass image paths to `read_images` to get detailed text descriptions. After generation or edit, reply with the resulting image and a short caption.",
+      "tools": ["generate_image", "edit_image", "list_images", "read_images"],
+      "transfer": "for any request involving generating, creating, drawing, illustrating, editing, modifying, inspecting, or viewing an image"
     }
     /* "Media Manager": {
       "prompt": "You are the Media Manager, responsible for finding, downloading, and managing media content. You prioritize high-quality releases (1080p, x265) and good seed counts. You are also responsible of managing series planning via Betaseries.",

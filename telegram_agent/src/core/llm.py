@@ -77,9 +77,10 @@ class LLM(Singleton):
                 common: dict[str, Any] = {
                     "disable_streaming": "tool_calling",
                     "safety_settings": {
-                        cat: HarmBlockThreshold.OFF
-                        for i, cat in enumerate(HarmCategory)
-                        if 0 < i < 5
+                        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
                     },
                 }
                 specifics: dict[str, Any] = (
@@ -144,34 +145,39 @@ class LLM(Singleton):
 
     @staticmethod
     async def tts_adapt(text: str) -> str:
-        """Adapt a formatted text message into a concise, voice-friendly version.
+        """Adapt a formatted text message into a voice-friendly version.
 
         Uses the utils LLM to strip markdown, remove code blocks and links,
         and rephrase the content so it sounds natural when spoken aloud.
-        Falls back to the original text if the LLM call fails.
+        Preserves the full message content — only reformats for speech,
+        does not summarize. Falls back to the original text if the LLM
+        call fails.
         """
         prompt = (
-            "You are leaving a quick voice message for a friend. "
-            "Summarize the following chat message the way a human would "
-            "when leaving a voice note — fast, casual, hitting only the "
-            "key points, skipping fluff and details.\n\n"
+            "You are reading a message aloud to a friend over voice chat. "
+            "Convert the following chat message into spoken language that "
+            "sounds natural when read aloud — faithful to the original "
+            "content, not a summary.\n\n"
             "Rules:\n"
-            "- Drastically shorten the message. Keep only the essential "
-            "information a person needs to know. Drop examples, dates, "
-            "episode numbers, and minor details unless they are the main "
-            "point.\n"
-            "- Talk like you're leaving a voice note: conversational, "
-            "natural, to the point. No bullet points, no lists.\n"
+            "- Keep all important information from the original message. "
+            "If the message is long, you may lightly condense verbose or "
+            "repetitive parts — but never drop key facts, results, names, "
+            "dates, or actionable details. The goal is to make it "
+            "speakable, not shorter.\n"
+            "- Talk like you're reading a message to someone: conversational, "
+            "natural, flowing. No bullet points, no lists, no headers.\n"
             "- Strip all markdown (bold, italic, code blocks, links, "
             "headers, tables, list markers).\n"
-            "- Replace URLs with a short verbal description or drop them.\n"
+            "- Replace URLs with a short verbal description (e.g. 'a link "
+            "to the docs' instead of the full URL).\n"
             "- Convert emojis into emotion tags like [laughs], [smiles], "
             "[sadly], [excited] — never read emoji names literally.\n"
+            "- If the message contains code or technical commands, read "
+            "them out naturally (e.g. 'the command pip install' not "
+            "'pip space install').\n"
             "- Keep the original language, tone, and intention — if the "
             "message is excited, sarcastic, apologetic, or playful, the "
-            "summary should feel the same way.\n"
-            "- Target length: 2-4 short sentences max, no matter how "
-            "long the original is.\n"
+            "spoken version should feel the same way.\n"
             "- Return ONLY the spoken text, no preamble, no quotes.\n\n"
             "Message:\n"
             f"{text}"
@@ -215,14 +221,36 @@ class LLM(Singleton):
                     f" The speaker is feeling {', '.join(unique)} at various "
                     "points — reflect this in your delivery."
                 )
+            speed_str = getenv("OPENROUTER_TTS_SPEED", "1.15")
+            try:
+                openrouter_tts_speed = float(speed_str)
+            except ValueError:
+                getLogger(__name__).error(
+                    "Invalid OPENROUTER_TTS_SPEED=%r — expected a number, "
+                    "falling back to 1.15",
+                    speed_str,
+                )
+                openrouter_tts_speed = 1.15
+            # OpenAI TTS API requires 0.25 <= speed <= 4.0; clamp out-of-range
+            # values instead of failing at call time.
+            if not 0.25 <= openrouter_tts_speed <= 4.0:
+                getLogger(__name__).warning(
+                    "OPENROUTER_TTS_SPEED=%s out of range [0.25, 4.0] — clamping.",
+                    openrouter_tts_speed,
+                )
+                openrouter_tts_speed = max(0.25, min(4.0, openrouter_tts_speed))
             response = await tts.create(
                 input=clean_text,
                 model=openrouter_tts_model,
                 voice=openrouter_tts_voice,
                 response_format="mp3",
+                speed=openrouter_tts_speed,
                 instructions=(
-                    "Default tone: chill, relaxed, and playful, but always match the "
-                    "emotion of the text — upset, sad, excited, etc."
+                    "You are a warm, expressive voice assistant. Speak clearly "
+                    "and naturally with a friendly, engaging tone. Vary your "
+                    "pace — slower for important information, faster for casual "
+                    "parts. Always match the emotion of the text: upset, sad, "
+                    "excited, amused, etc. Avoid monotone delivery."
                     f"{emotion_hint}"
                 ),
             )

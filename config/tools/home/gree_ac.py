@@ -7,6 +7,7 @@ from bisect import bisect_left
 from contextlib import suppress
 from datetime import datetime, timedelta, tzinfo
 from json import JSONDecodeError, dumps, loads
+from os import getenv
 from pathlib import Path
 from re import match
 from signal import SIGTERM, signal
@@ -44,7 +45,7 @@ IV_V2 = bytes([0x54, 0x40, 0x78, 0x44, 0x49, 0x67, 0x5A, 0x51, 0x6C, 0x5E, 0x63,
 AAD_V2 = b"qualcomm-test"
 TEMSEN_OFFSET = 40
 
-_DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "gree_ac"
+_DATA_DIR = Path(getenv("DATA_DIR", "./data")) / "gree_ac"
 _DATA_DIR.mkdir(parents=True, exist_ok=True)
 with suppress(PermissionError):
     _DATA_DIR.chmod(0o777)
@@ -1453,9 +1454,10 @@ _stop_event = Event()
 def _record_event(mac: str, action: str, **details: Any) -> None:
     """Append a user action event to the per-device telemetry stream."""
     tdir = _device_dir(mac) / "telemetry"
-    path = tdir / f"{datetime.now(_local_tz()).strftime('%Y-%m-%d')}.jsonl"
+    now = datetime.now(_local_tz())
+    path = tdir / f"{now.strftime('%Y-%m-%d')}.jsonl"
     event = {
-        "deviceTime": datetime.now(_local_tz()).strftime("%Y-%m-%d %H:%M:%S"),
+        "deviceTime": now.strftime("%Y-%m-%d %H:%M:%S"),
         "action": action,
         **details,
     }
@@ -1547,11 +1549,17 @@ def _collect() -> None:
 def _query_readings(
     start: datetime | None = None,
     end: datetime | None = None,
-    limit: int = 100000,
+    limit: int | None = None,
     mac: str | None = None,
 ) -> list[dict]:
-    """Query telemetry readings by date range. Returns sorted list oldest-first (chronological)."""
+    """Query telemetry readings by date range. Returns sorted list oldest-first (chronological).
+
+    With ``limit=None`` (the default) all matching readings are returned — the
+    caller is expected to prune via ``_dedup_unchanged`` / ``_downsample``.
+    """
     results = []
+    start_s = start.strftime("%Y-%m-%d %H:%M:%S") if start else ""
+    end_s = end.strftime("%Y-%m-%d %H:%M:%S") if end else ""
     if mac:
         files = sorted(
             (_device_dir(mac) / "telemetry").glob("*.jsonl"),
@@ -1563,7 +1571,7 @@ def _query_readings(
             _DATA_DIR.glob("*/telemetry/*.jsonl"), key=lambda p: p.name, reverse=True
         )
     for fpath in files:
-        if len(results) >= limit:
+        if limit is not None and len(results) >= limit:
             break
         with fpath.open(encoding="utf-8") as f:
             for raw_line in f:
@@ -1575,12 +1583,12 @@ def _query_readings(
                 except JSONDecodeError:
                     continue
                 dt = rec.get("deviceTime", "")
-                if start and dt < start.strftime("%Y-%m-%d %H:%M:%S"):
+                if start_s and dt < start_s:
                     continue
-                if end and dt > end.strftime("%Y-%m-%d %H:%M:%S"):
+                if end_s and dt > end_s:
                     continue
                 results.append(rec)
-                if len(results) >= limit:
+                if limit is not None and len(results) >= limit:
                     break
     results.sort(key=lambda r: r.get("deviceTime", ""))
     return results
@@ -1620,10 +1628,46 @@ def _dedup_unchanged(readings: list[dict]) -> list[dict]:
     return deduped
 
 
+def _dedup_events(events: list[dict], max_events: int = 500) -> list[dict]:
+    """
+    Collapse runs of consecutive identical events (same action + details, ignoring
+    ``deviceTime``), keeping the first and last of each run. Then downsample to
+    ``max_events`` if still above the cap.
+
+    This prevents thousands of repeated ``schedule_fired`` / ``set_power`` records
+    from bloating the response when querying long history.
+    """
+    if not events:
+        return events
+    deduped: list[dict] = []
+    run_sig: tuple | None = None
+    run_last: dict | None = None
+
+    def flush() -> None:
+        nonlocal run_last
+        if run_last is not None:
+            deduped.append(run_last)
+            run_last = None
+
+    for ev in events:
+        sig = tuple(sorted((k, v) for k, v in ev.items() if k != "deviceTime"))
+        if sig != run_sig:
+            flush()
+            deduped.append(ev)
+            run_sig = sig
+        else:
+            run_last = ev
+    flush()
+    if len(deduped) <= max_events:
+        return deduped
+    return _downsample(deduped, max_events)
+
+
 # Max points to render/return. Data is collected every 1 min, so 1w = 10080
 # raw points; anything past ~1000 is invisible noise on a chart.
 _GRAPH_MAX_POINTS = 1000
 _SERIES_MAX_POINTS = 200
+_EVENTS_MAX_POINTS = 500
 
 _CLOCK_MARKER: MplPath | None = None
 
@@ -1836,15 +1880,14 @@ def _generate_graph(
             if not ev_ts:
                 continue
             try:
-                ev_dt = datetime.strptime(ev_ts, "%Y-%m-%d %H:%M:%S")
+                ev_dt = datetime.strptime(ev_ts, "%Y-%m-%d %H:%M:%S").replace(
+                    tzinfo=_local_tz()
+                )
             except ValueError, TypeError:
                 continue
-            s, e = start, end
-            if s and s.tzinfo:
-                s = s.replace(tzinfo=None)
-            if e and e.tzinfo:
-                e = e.replace(tzinfo=None)
-            if (s is None or s <= ev_dt) and (e is None or ev_dt <= e):
+            # start/end are aware local (see _generate_temp_graph); ev_dt is
+            # made aware too, so direct comparison works without tz stripping.
+            if (start is None or start <= ev_dt) and (end is None or ev_dt <= end):
                 j = bisect_left(_valid_ts, ev_dt)
                 j = min(j, len(_valid_ts) - 1)
                 y = _valid_at[j] - 0.5
@@ -2027,44 +2070,50 @@ def _generate_temp_graph(
 ) -> dict[str, Any]:
     """Generate a temperature evolution graph (PNG) + structured data summary."""
     now = datetime.now(_local_tz())
-    period = (range or "1w").lower()
+    period = (range or "all").lower()
 
-    m = match(r"^(\d+)([hdw])$", period)
-    if m:
-        val, unit = int(m[1]), m[2]
-        unit_map = {"h": 1, "d": 24, "w": 168}
-        hours = val * unit_map[unit]
-        if hours < 1 or hours > 336:
-            return {"error": "Range must be between 1h and 2w (336h)."}
-        start, end = now - timedelta(hours=hours), now
-        title = f"Temperature - Last {val}{unit}"
-    elif "to" in period:
-        parts = period.split("to")
-        try:
-            s, e = (x.strip() for x in (parts[0], parts[1] if len(parts) > 1 else ""))
-            start = (
-                datetime.fromisoformat(s)
-                if "T" in s
-                else datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=_local_tz())
-            )
-            end = (
-                datetime.fromisoformat(e)
-                if "T" in e
-                else (
-                    datetime.strptime(e, "%Y-%m-%d").replace(tzinfo=_local_tz())
-                    if e
-                    else now
-                )
-            )
-            title = f"Temperature - {s} to {e or 'now'}"
-        except ValueError, IndexError:
-            return {
-                "error": f"Invalid date range '{period}'. Use format 'YYYY-MM-DD to YYYY-MM-DD'."
-            }
+    if period == "all":
+        start, end = None, now
+        title = "Temperature - All History"
     else:
-        return {
-            "error": f"Unknown range '{period}'. Use e.g. '6h', '3d', '2w', or 'YYYY-MM-DD to YYYY-MM-DD'."
-        }
+        m = match(r"^(\d+)([hdwm])$", period)
+        if m:
+            val, unit = int(m[1]), m[2]
+            unit_map = {"h": 1, "d": 24, "w": 168, "m": 720}
+            hours = val * unit_map[unit]
+            if hours < 1 or hours > 17280:
+                return {"error": "Range must be between 1h and 24m (17280h)."}
+            start, end = now - timedelta(hours=hours), now
+            title = f"Temperature - Last {val}{unit}"
+        elif "to" in period:
+            parts = period.split("to")
+            try:
+                s, e = (
+                    x.strip() for x in (parts[0], parts[1] if len(parts) > 1 else "")
+                )
+                start = (
+                    datetime.fromisoformat(s)
+                    if "T" in s
+                    else datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=_local_tz())
+                )
+                end = (
+                    datetime.fromisoformat(e)
+                    if "T" in e
+                    else (
+                        datetime.strptime(e, "%Y-%m-%d").replace(tzinfo=_local_tz())
+                        if e
+                        else now
+                    )
+                )
+                title = f"Temperature - {s} to {e or 'now'}"
+            except ValueError, IndexError:
+                return {
+                    "error": f"Invalid date range '{period}'. Use format 'YYYY-MM-DD to YYYY-MM-DD'."
+                }
+        else:
+            return {
+                "error": f"Unknown range '{period}'. Use e.g. '6h', '3d', '2w', '1m', 'all', or 'YYYY-MM-DD to YYYY-MM-DD'."
+            }
 
     try:
         dev, _ = _client._resolve_one(mac, name)
@@ -2079,6 +2128,13 @@ def _generate_temp_graph(
     readings = [r for r in readings if "action" not in r]
     if not readings:
         return {"error": f"No telemetry readings found for period: {period}"}
+    # Prune: collapse consecutive identical readings so long flat runs don't
+    # bloat memory or the returned series. Stats are computed on the pruned
+    # set — averages/percentages stay accurate because flat runs are
+    # represented by their first & last sample (correct time weighting is
+    # preserved by the endpoints).
+    readings = _dedup_unchanged(readings)
+    events_list = _dedup_events(events_list, _EVENTS_MAX_POINTS)
     try:
         path = _generate_graph(
             readings, title=title, start=start, end=end, events=events_list, mac=dev_mac
@@ -2283,7 +2339,7 @@ def graph_home_ac(
     range: Annotated[
         str | None,
         Field(
-            description="Time range: number + unit (h/d/w), e.g. '6h', '3d', '2w'. Or 'YYYY-MM-DD to YYYY-MM-DD'. Default: '1w'.",
+            description="Time range: number + unit (h/d/w/m), e.g. '6h', '3d', '2w', '1m'. Or 'all' for all recorded history. Or 'YYYY-MM-DD to YYYY-MM-DD'. Default: 'all'.",
             default=None,
         ),
     ] = None,

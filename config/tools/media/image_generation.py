@@ -1,4 +1,4 @@
-"""Image generation tool using Google Gemini (Nano Banana)."""
+"""Image generation and editing tools using Google Gemini (Nano Banana)."""
 
 from base64 import b64decode, b64encode
 from datetime import datetime
@@ -11,7 +11,12 @@ from urllib.request import urlopen
 from dotenv import load_dotenv
 from langchain.tools import tool
 from langchain_core.messages import HumanMessage
-from langchain_google_genai import ChatGoogleGenerativeAI, Modality
+from langchain_google_genai import (
+    ChatGoogleGenerativeAI,
+    HarmBlockThreshold,
+    HarmCategory,
+    Modality,
+)
 from pydantic import Field
 
 load_dotenv()
@@ -19,14 +24,26 @@ load_dotenv()
 _API_KEY = getenv("GEMINI_API_KEY", "")
 _MODEL = getenv("GEMINI_API_IMAGE_MODEL", "gemini-3.1-flash-image")
 
-_DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "image_generation"
+_DATA_DIR = Path(getenv("DATA_DIR", "./data")) / "image_generation"
 _DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+_SAFETY_SETTINGS = {
+    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_IMAGE_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_IMAGE_HATE: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_IMAGE_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_IMAGE_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+}
 
 _llm: ChatGoogleGenerativeAI | None = (
     ChatGoogleGenerativeAI(
         api_key=_API_KEY,
         model=_MODEL,
         response_modalities=[Modality.IMAGE],
+        safety_settings=_SAFETY_SETTINGS,
         disable_streaming="tool_calling",
     )
     if _API_KEY and _MODEL

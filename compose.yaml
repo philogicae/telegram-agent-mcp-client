@@ -25,7 +25,7 @@ services:
     volumes:
       - ${DATA_DIR:-./data}:/app/data
       - ${CONFIG_DIR:-./config}:/app/config
-    <<: [ *default-logging ]
+    <<: [*default-logging]
     network_mode: host
 
   #neo4j-community:
@@ -55,7 +55,7 @@ services:
       - "4040:4040"
     env_file:
       - .env
-    <<: [ *default-logging ]
+    <<: [*default-logging]
     network_mode: host
     deploy:
       replicas: ${DOCS_UI_URL:+1}

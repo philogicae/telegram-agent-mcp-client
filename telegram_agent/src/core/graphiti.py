@@ -5,7 +5,8 @@ from os import environ, getenv
 from typing import Any
 
 from dotenv import load_dotenv
-from google.genai.types import ThinkingConfig
+from google import genai
+from google.genai import types
 from graphiti_core import Graphiti
 from graphiti_core.cross_encoder.gemini_reranker_client import GeminiRerankerClient
 from graphiti_core.edges import EntityEdge
@@ -26,6 +27,51 @@ neo4j_uri = getenv("NEO4J_URI", "bolt://localhost:7687")
 neo4j_user = getenv("NEO4J_USER", "neo4j")
 neo4j_password = getenv("NEO4J_PASSWORD")
 api_key = getenv("GEMINI_API_KEY")
+
+# All adjustable harm categories set to BLOCK_NONE (most permissive setup).
+# Graphiti builds its own GenerateContentConfig without safety_settings, so we
+# wrap the underlying genai.Client.generate_content to inject these on every
+# call. The same wrapped client is shared by GeminiClient and
+# GeminiRerankerClient so both are covered.
+_SAFETY_SETTINGS = [
+    types.SafetySetting(
+        category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+    ),
+    types.SafetySetting(
+        category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+    ),
+    types.SafetySetting(
+        category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+    ),
+    types.SafetySetting(
+        category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+    ),
+]
+
+
+def _uncensored_client(api_key: str | None) -> genai.Client:
+    """Return a genai.Client whose generate_content injects BLOCK_NONE safety settings."""
+    client = genai.Client(api_key=api_key)
+    _generate = client.aio.models.generate_content
+
+    async def _generate_with_safety(
+        *, model: Any, contents: Any, config: Any = None, **kw: Any
+    ) -> Any:
+        if config is None:
+            config = types.GenerateContentConfig()
+        if not getattr(config, "safety_settings", None):
+            config.safety_settings = _SAFETY_SETTINGS
+        return await _generate(model=model, contents=contents, config=config, **kw)
+
+    # Typed as Any so the bound-method signature narrowing is not enforced
+    # statically (this is an intentional runtime wrapper).
+    models: Any = client.aio.models
+    models.generate_content = _generate_with_safety
+    return client
 
 
 class GraphRAG(Singleton):
@@ -52,7 +98,7 @@ class GraphRAG(Singleton):
                 temperature=obj.temperature,
             )
             thinking_config = (
-                ThinkingConfig(thinking_budget=obj.thinking_budget)
+                types.ThinkingConfig(thinking_budget=obj.thinking_budget)
                 if think and obj.thinking_budget
                 else None
             )
@@ -68,12 +114,14 @@ class GraphRAG(Singleton):
                 llm_client=GeminiClient(
                     config=llm_config,
                     thinking_config=thinking_config,
+                    client=_uncensored_client(obj.api_key),
                 ),
                 embedder=GeminiEmbedder(
                     config=embedder_config,
                 ),
                 cross_encoder=GeminiRerankerClient(
                     config=llm_config,
+                    client=_uncensored_client(obj.api_key),
                 ),
             )
             if clear:

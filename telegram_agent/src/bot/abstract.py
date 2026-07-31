@@ -1,7 +1,7 @@
 """Abstract base classes for bot architecture."""
 
 from abc import ABC, abstractmethod
-from asyncio import gather, sleep
+from asyncio import Event, gather, sleep
 from collections.abc import Awaitable, Callable
 from functools import partial, wraps
 from logging import INFO, WARNING, basicConfig, getLogger
@@ -13,6 +13,11 @@ from rich.logging import RichHandler
 
 from ..core import Agent
 from ..utils import Timer
+
+# Cap for Telegram 429 flood-wait retries (seconds). Telegram can request very
+# large retry_after values; capping prevents the retry loop from blocking for
+# the entire requested duration.
+_FLOOD_WAIT_CAP = 60.0
 
 
 class Logger(ABC):
@@ -62,7 +67,7 @@ class Logger(ABC):
         pass
 
 
-def fixed_default(_: Any, text: str) -> str:
+def fixed_default(_: Any, text: str, classic: bool = True) -> str:
     """Return text unchanged."""
     return text
 
@@ -133,13 +138,50 @@ class Bot(ABC):
                     result: Any = await method(*args, **kwargs)
                     self._called()
                     return result
-                except Exception:
+                except Exception as exc:
+                    # Abort immediately on "message to edit not found" —
+                    # retrying is pointless and wastes flood budget.
+                    exc_str = str(exc).lower()
+                    if "message to edit not found" in exc_str:
+                        raise
+                    # Handle Telegram 429 flood-wait: respect retry_after
+                    # instead of blind retrying at the default delay. Cap the
+                    # wait so an absurd retry_after (e.g. 3600s) doesn't block
+                    # the retry loop indefinitely.
+                    retry_after = self._extract_retry_after(exc)
+                    if retry_after and retry_after > 0:
+                        retry += 1
+                        if retry > max_retries:
+                            raise
+                        wait = min(retry_after, _FLOOD_WAIT_CAP)
+                        if wait < retry_after:
+                            getLogger(__name__).warning(
+                                "Telegram flood-wait retry_after=%.0fs capped to %.0fs",
+                                retry_after,
+                                wait,
+                            )
+                        await sleep(wait)
+                        self._called()
+                        continue
                     retry += 1
                     if retry > max_retries:
                         raise
                     await sleep(self.delay)
             else:
                 await sleep(self.delay)
+
+    @staticmethod
+    def _extract_retry_after(exc: Exception) -> float | None:
+        """Extract retry_after seconds from a Telegram 429 flood-wait exception."""
+        # pytelegrambotapi stores the JSON payload on result_json
+        result_json = getattr(exc, "result_json", None)
+        if isinstance(result_json, dict):
+            params = result_json.get("parameters")
+            if isinstance(params, dict):
+                retry_after = params.get("retry_after")
+                if retry_after:
+                    return float(retry_after)
+        return None
 
     @abstractmethod
     async def send(self, *args: Any, **kwargs: Any) -> Any:
@@ -200,8 +242,9 @@ class AgenticBot(ABC):
     ) -> None:
         self.dev = dev
         self.managers = {k: v(self) for k, v in managers.items()} if managers else {}
-        self.pending_media: dict[int, list[bytes]] = {}
+        self.pending_media: dict[int, list[tuple[bytes, str]]] = {}
         self.tts_enabled: dict[int, bool] = {}
+        self.cancel_events: dict[int, Event] = {}
 
     def __enter__(self) -> Self:
         return self

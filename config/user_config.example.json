@@ -3,7 +3,7 @@
     "users": ["Developer"]
   },
   "allowed": {
-    "agents": ["Friendly Agent", "Search Agent", "Image Creator"]
+    "agents": ["Friendly Agent", "Search Agent", "Image Manager"]
   },
   "restricted": {
     "agents": ["Documentalist"]

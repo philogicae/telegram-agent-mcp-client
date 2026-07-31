@@ -164,7 +164,7 @@ class Agent:
         self, content: str | TelegramMessage | Any
     ) -> AsyncGenerator[tuple[str, str, bool, dict[str, Any]]]:
         thread_id, user = "test", "Developer"
-        date = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        date = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
         media: list[dict] = []
         if isinstance(content, str):
             content = content.strip()
@@ -535,7 +535,7 @@ class Agent:
                 if retry < 3:
                     retry += 1
                     forced_messages = []
-                    end_date = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+                    end_date = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
                     state_values = self.state(swarm, thread_id).values
                     if not state_values.get("messages"):
                         state_values["messages"] = []
