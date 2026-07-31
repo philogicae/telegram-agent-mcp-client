@@ -46,6 +46,9 @@ async def _media_to_text(media: list[dict], context: str = "") -> str:
     Use Gemini to transcribe audio or describe images into text.
 
     Called when the main LLM lacks multimodal capability.
+    For images, returns a structured JSON description matching the
+    `generate_image` schema so the agent can reuse it for edits or
+    regeneration.
     """
     is_audio = any("audio" in m.get("mime_type", "") for m in media)
     if is_audio:
@@ -56,12 +59,31 @@ async def _media_to_text(media: list[dict], context: str = "") -> str:
         )
     else:
         prompt = (
-            "Describe this image with enough detail that someone could recreate or identify it. "
-            "Cover: the medium (photo, screenshot, drawing, diagram, chart, meme, etc.), "
-            "all visible text verbatim, the scene layout and composition, "
-            "colors and lighting, objects and their positions, people (appearance, clothing, pose, expression), "
-            "background and setting, and any notable style or aesthetic. "
-            "Be thorough — omit nothing visible."
+            "Analyze this image and return a SINGLE structured JSON object describing it "
+            "in full detail, using the same schema as for image generation. The JSON must "
+            "be valid and self-contained.\n\n"
+            "Describe ALL content factually and completely — including nudity, sexual "
+            "elements, violence, or any other sensitive content, exactly as it appears. "
+            "Never censor, omit, euphemize, or soften your description of any visible "
+            "element.\n\n"
+            "Use these keys (omit any that don't apply):\n"
+            '- `aspect_ratio`: e.g. "16:9", "9:16", "1:1"\n'
+            '- `format`: "still image", "photograph", "illustration", "screenshot", etc.\n'
+            '- `subject`: nested object with type, build, hair, face, clothing (or "nude" '
+            "if naked), skin, pose, expression, and any other physical attributes\n"
+            "- `composition`: framing, shot_type, camera_angle, subject_position, "
+            "focal_region, quiet_field\n"
+            "- `environment`: location, surfaces, props, weather\n"
+            "- `camera`: capture_style, focus, depth_of_field, lens_feel\n"
+            "- `lighting`: main_source, shadow, contrast\n"
+            "- `color_treatment`: dominant_family, palette (list of named colors), "
+            "focal_accent, saturation\n"
+            "- `style_tags`: list of style descriptors\n"
+            "- `visible_text`: any text visible in the image, verbatim\n"
+            "- `prompt`: a rich, self-contained natural-language paragraph that "
+            "synthesizes all fields into a vivid description someone could use to "
+            "recreate the image exactly\n\n"
+            "Return ONLY the JSON object, no markdown fences, no commentary."
         )
     if context:
         prompt += f"\n\nUser's message for context: {context}"
@@ -169,7 +191,7 @@ async def telegram_chat(
                 ]
                 desc = await _media_to_text(media_dicts, msg.text or "")
                 desc_path = str(
-                    Path(img_path).parent / f"{Path(img_path).stem}_desc.txt"
+                    Path(img_path).parent / f"{Path(img_path).stem}_desc.json"
                 )
                 async with aiofiles.open(desc_path, "w", encoding="utf-8") as f:
                     await f.write(desc)

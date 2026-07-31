@@ -1799,7 +1799,9 @@ def _generate_graph(
         if not dt_s:
             continue
         try:
-            ts.append(datetime.strptime(dt_s, "%Y-%m-%d %H:%M:%S"))
+            ts.append(
+                datetime.strptime(dt_s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=_local_tz())
+            )
         except ValueError, TypeError:
             continue
         rv = r.get("currentTemperature")

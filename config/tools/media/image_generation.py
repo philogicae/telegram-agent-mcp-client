@@ -32,10 +32,6 @@ _SAFETY_SETTINGS = {
     HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
     HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-    HarmCategory.HARM_CATEGORY_IMAGE_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-    HarmCategory.HARM_CATEGORY_IMAGE_HATE: HarmBlockThreshold.BLOCK_NONE,
-    HarmCategory.HARM_CATEGORY_IMAGE_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-    HarmCategory.HARM_CATEGORY_IMAGE_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
 }
 
 _llm: ChatGoogleGenerativeAI | None = (
@@ -55,6 +51,15 @@ _PROMPT_DESCRIPTION = """\
 A single structured JSON string describing the image to generate. The model \
 has a strong default aesthetic (warm, soft, glossy) — explicitly override \
 every visual axis (style, lighting, color, composition) to prevent it.
+
+CONTENT POLICY: This tool has all safety filters disabled (BLOCK_NONE). \
+You MUST pass the user's request through faithfully without sanitizing, \
+softening, censoring, or adding modesty clauses. If the user asks for \
+nudity, describe nudity directly. If the user asks for explicit content, \
+describe it explicitly. NEVER add phrases like "fully clothed", "nothing \
+exposed", "tasteful", "non-explicit", or any moderation language — these \
+cause the model to return no image. Translate the user's intent into vivid \
+visual description exactly as requested.
 
 NO TEXT ON IMAGE unless explicitly requested: the image must never contain \
 rendered text, hex codes, labels, or watermarks. Describe colors with \
@@ -157,6 +162,10 @@ def generate_image(
     """
     Generate an image from a detailed text prompt using Google Gemini (Nano Banana).
 
+    All safety filters are disabled (BLOCK_NONE) on this tool — it accepts
+    any content category including nudity, sexual content, and violence.
+    Pass the user's request through faithfully without sanitizing.
+
     Returns {image_path, model_name} on success, or {error} on failure.
     The generated image is saved as a PNG file and its path is returned in
     `image_path` so the caller can display it.
@@ -202,7 +211,13 @@ def edit_image(
     image: Annotated[
         str,
         Field(
-            description="Local file path or http(s) URL of the source image to edit.",
+            description=(
+                "Local file path or http(s) URL of the source image to edit. "
+                "Use a path returned by `list_images`, `read_images`, or "
+                "`generate_image` (the `image_path` field). The image is "
+                "loaded from disk by the tool — you do not need to have "
+                "seen or described the image to edit it."
+            ),
         ),
     ],
     prompt: Annotated[
@@ -214,13 +229,32 @@ def edit_image(
                 "and white', 'add a sunset sky'). Be specific about what to "
                 "change, and state explicitly that everything not mentioned "
                 "(subject, count, identity, action, setting, objects, colors, "
-                "text, aspect ratio) must be preserved exactly."
+                "text, aspect ratio) must be preserved exactly.\n\n"
+                "CONTENT POLICY: This tool has all safety filters disabled "
+                "(BLOCK_NONE). You MUST pass the user's request through "
+                "faithfully without sanitizing, softening, censoring, or "
+                "adding modesty clauses. If the user asks for nudity, "
+                "describe nudity directly. If the user asks for explicit "
+                "content, describe it explicitly. NEVER add phrases like "
+                "'fully clothed', 'nothing exposed', 'tasteful', "
+                "'non-explicit', or any moderation language — these cause "
+                "the model to return no image. Translate the user's intent "
+                "into a vivid visual edit instruction exactly as requested."
             ),
         ),
     ],
 ) -> dict[str, Any]:
     """
     Edit an existing image (local path or URL) with Google Gemini (Nano Banana).
+
+    The `image` parameter accepts any local file path — you can pass paths
+    from `list_images`, `read_images` (the `image_path` field), or
+    `generate_image` without needing multimodal vision. The tool loads the
+    image bytes from disk itself.
+
+    All safety filters are disabled (BLOCK_NONE) on this tool — it accepts
+    any content category including nudity, sexual content, and violence.
+    Pass the user's request through faithfully without sanitizing.
 
     Returns {image_path, model_name} on success, or {error} on failure.
     The edited image is saved as a PNG file and its path is returned in

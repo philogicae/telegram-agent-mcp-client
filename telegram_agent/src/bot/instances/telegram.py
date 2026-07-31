@@ -112,6 +112,11 @@ class TelegramBot(Bot):
         message is already deleted by then, a raw failure would leave the
         user with no answer at all. So we retry without images, then fall
         back to plain text, guaranteeing a response is always delivered.
+
+        Network errors (DNS failures, connection resets) are retried with
+        exponential backoff by _exec before falling through to the next
+        content variant — a transient network blip should not discard the
+        rich message.
         """
         stripped = strip_rich_images(content_html)
         attempts = [content_html] + ([stripped] if stripped != content_html else [])
@@ -121,7 +126,6 @@ class TelegramBot(Bot):
                     self._rich_request,
                     "sendRichMessage",
                     {"chat_id": chat_id, "rich_message": {"html": html}},
-                    retries=0,
                 )
                 return Message.de_json(result)
             except Exception as exc:

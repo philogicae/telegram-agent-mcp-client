@@ -1,11 +1,35 @@
 name: telegram-agent-mcp-client
 
+x-dns: &default-dns
+  dns:
+    - 9.9.9.9
+    - 149.112.112.112
+    - 2620:fe::fe
+    - 2620:fe::9
+
 x-logging: &default-logging
   logging:
     driver: "json-file"
     options:
       max-size: "10m"
       max-file: "3"
+
+x-networks: &default-networks
+  networks:
+    - ai-agent
+
+networks:
+  ai-agent:
+    name: ai-agent
+    driver: bridge
+    enable_ipv6: true
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+        - subnet: fd28:489c:c1d1::/64
+          gateway: fd28:489c:c1d1::1
 
 services:
   telegram-agent:
@@ -25,8 +49,7 @@ services:
     volumes:
       - ${DATA_DIR:-./data}:/app/data
       - ${CONFIG_DIR:-./config}:/app/config
-    <<: [*default-logging]
-    network_mode: host
+    <<: [*default-dns, *default-logging, *default-networks]
 
   #neo4j-community:
   #  container_name: neo4j-community
@@ -41,8 +64,7 @@ services:
   #    - NEO4J_server_jvm_additional="--add-modules=jdk.incubator.vector"
   #  volumes:
   #    - ${DATA_DIR:-./data}/neo4j:/data
-  #  <<: [ *default-logging ]
-  #  network_mode: host
+  #  <<: [*default-dns, *default-logging, *default-networks]
 
   docs-ui:
     container_name: docs-ui
@@ -55,7 +77,6 @@ services:
       - "4040:4040"
     env_file:
       - .env
-    <<: [*default-logging]
-    network_mode: host
+    <<: [*default-dns, *default-logging, *default-networks]
     deploy:
       replicas: ${DOCS_UI_URL:+1}

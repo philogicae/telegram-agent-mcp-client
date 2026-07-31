@@ -19,6 +19,13 @@ from ..utils import Timer
 # the entire requested duration.
 _FLOOD_WAIT_CAP = 60.0
 
+# Network errors (DNS failures, connection resets, etc.) need longer backoff
+# than the default 0.2s delay — retrying too fast just burns through the retry
+# budget before DNS has a chance to recover. Use exponential backoff starting
+# at 1s, capped at 10s.
+_NETWORK_BACKOFF_BASE = 1.0
+_NETWORK_BACKOFF_CAP = 10.0
+
 
 class Logger(ABC):
     """Abstract base class for logging."""
@@ -163,12 +170,58 @@ class Bot(ABC):
                         await sleep(wait)
                         self._called()
                         continue
+                    # Network errors (DNS failures, connection resets, etc.)
+                    # need exponential backoff — retrying at the default 0.2s
+                    # delay burns through the budget before DNS recovers.
+                    is_network = self._is_network_error(exc)
                     retry += 1
                     if retry > max_retries:
                         raise
-                    await sleep(self.delay)
+                    if is_network:
+                        wait = min(
+                            _NETWORK_BACKOFF_BASE * (2 ** (retry - 1)),
+                            _NETWORK_BACKOFF_CAP,
+                        )
+                        getLogger(__name__).warning(
+                            "Network error on %s (attempt %d/%d), "
+                            "retrying in %.1fs: %s",
+                            getattr(method, "__name__", method),
+                            retry,
+                            max_retries,
+                            wait,
+                            exc,
+                        )
+                    else:
+                        wait = self.delay
+                    await sleep(wait)
             else:
                 await sleep(self.delay)
+
+    @staticmethod
+    def _is_network_error(exc: Exception) -> bool:
+        """Check if an exception is a network-level error needing backoff.
+
+        Only connection-level errors (DNS failures, connection resets, etc.)
+        qualify — HTTP error responses (400, 500) are NOT network errors and
+        won't resolve with retries.
+        """
+        # telebot wraps aiohttp connection errors into RequestTimeout.
+        # It only raises this for actual connection failures, not HTTP errors
+        # (those become ApiTelegramException), so this is safe.
+        exc_name = type(exc).__name__
+        if exc_name == "RequestTimeout":
+            return True
+        # Direct aiohttp errors (used by _rich_request). Only treat
+        # ClientConnectionError (DNS, reset, refused) as network errors —
+        # ClientResponseError (HTTP 400/500) is a content/server error.
+        try:
+            import aiohttp
+
+            if isinstance(exc, aiohttp.ClientConnectionError):
+                return True
+        except ImportError:
+            pass
+        return False
 
     @staticmethod
     def _extract_retry_after(exc: Exception) -> float | None:

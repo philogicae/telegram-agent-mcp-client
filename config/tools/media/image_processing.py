@@ -1,6 +1,7 @@
 """Image processing tools for inspecting and retrieving images."""
 
 from base64 import b64encode
+from json import JSONDecodeError, dumps, loads
 from mimetypes import guess_type
 from os import getenv
 from pathlib import Path
@@ -33,10 +34,6 @@ _SAFETY_SETTINGS = {
     HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
     HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-    HarmCategory.HARM_CATEGORY_IMAGE_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-    HarmCategory.HARM_CATEGORY_IMAGE_HATE: HarmBlockThreshold.BLOCK_NONE,
-    HarmCategory.HARM_CATEGORY_IMAGE_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-    HarmCategory.HARM_CATEGORY_IMAGE_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
 }
 
 _vision_llm: ChatGoogleGenerativeAI | None = (
@@ -49,21 +46,51 @@ _vision_llm: ChatGoogleGenerativeAI | None = (
     else None
 )
 
-_DESC_PROMPT = (
-    "Describe this image with enough detail that someone could recreate or identify it. "
-    "Cover: the medium (photo, screenshot, drawing, diagram, chart, meme, etc.), "
-    "all visible text verbatim, the scene layout and composition, "
-    "colors and lighting, objects and their positions, people (appearance, clothing, pose, expression), "
-    "background and setting, and any notable style or aesthetic. "
-    "Be thorough — omit nothing visible."
-)
+# Description prompt that produces a structured JSON matching the generation
+# schema used by `generate_image`. This lets the agent reuse the description
+# directly as a basis for edits or regeneration.
+_DESC_PROMPT = """\
+Analyze this image and return a SINGLE structured JSON object describing it \
+in full detail, using the same schema as for image generation. The JSON must \
+be valid and self-contained.
+
+Describe ALL content factually and completely — including nudity, sexual \
+elements, violence, or any other sensitive content, exactly as it appears. \
+Never censor, omit, euphemize, or soften your description of any visible \
+element.
+
+Use these keys (omit any that don't apply):
+- `aspect_ratio`: e.g. "16:9", "9:16", "1:1"
+- `format`: "still image", "photograph", "illustration", "screenshot", etc.
+- `subject`: nested object with type, build, hair, face, clothing (or "nude" \
+if naked), skin, pose, expression, and any other physical attributes
+- `composition`: framing, shot_type, camera_angle, subject_position, \
+focal_region, quiet_field
+- `environment`: location, surfaces, props, weather
+- `camera`: capture_style, focus, depth_of_field, lens_feel
+- `lighting`: main_source, shadow, contrast
+- `color_treatment`: dominant_family, palette (list of named colors), \
+focal_accent, saturation
+- `style_tags`: list of style descriptors
+- `visible_text`: any text visible in the image, verbatim
+- `prompt`: a rich, self-contained natural-language paragraph that \
+synthesizes all fields into a vivid description someone could use to \
+recreate the image exactly
+
+Return ONLY the JSON object, no markdown fences, no commentary."""
+
+
+def _desc_path_for(img_path: Path) -> Path:
+    """Return the JSON description path for a given image path."""
+    return img_path.parent / f"{img_path.stem}_desc.json"
 
 
 def _describe_image(img_path: Path) -> str:
-    """Use Gemini to generate a text description of an image file.
+    """Use Gemini to generate a structured JSON description of an image file.
 
-    Returns an error string (rather than raising or returning None) so the
-    caller can include it per-image without failing the whole batch.
+    Returns the raw JSON string (valid or not) so the caller can decide how
+    to handle parse failures. On infrastructure errors, returns an error
+    string prefixed with "Error:".
     """
     if _vision_llm is None:
         return "Error: image description unavailable (no GEMINI_API_KEY configured)."
@@ -85,13 +112,29 @@ def _describe_image(img_path: Path) -> str:
                 for part in content
                 if isinstance(part, dict) and "text" in part
             )
-        return (
-            content.strip()
-            if isinstance(content, str)
-            else "Error: empty description returned."
-        )
+        if not isinstance(content, str) or not content.strip():
+            return "Error: empty description returned."
+        # Strip markdown fences if the model added them despite instructions
+        text = content.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1] if "\n" in text else text[3:]
+            if text.endswith("```"):
+                text = text[:-3].strip()
+            elif text.rfind("```") != -1:
+                text = text[: text.rfind("```")].strip()
+        return text
     except Exception as exc:  # surface per-image failure to the agent
         return f"Error describing image: {exc}"
+
+
+def _parse_desc(raw: str) -> dict[str, Any] | None:
+    """Try to parse a description string as JSON. Return None on failure."""
+    if not raw or raw.startswith("Error"):
+        return None
+    try:
+        return loads(raw)
+    except JSONDecodeError:
+        return None
 
 
 @tool
@@ -141,7 +184,7 @@ def list_images(
 
     images = []
     for source, f in files:
-        desc_path = f.parent / f"{f.stem}_desc.txt"
+        desc_path = _desc_path_for(f)
         images.append(
             {
                 "path": str(f),
@@ -171,12 +214,19 @@ def read_images(
     ],
 ) -> dict[str, Any]:
     """
-    Read one or more image files: returns their file paths and detailed text descriptions.
+    Read one or more image files: returns their file paths and detailed JSON descriptions.
 
-    The image paths can be passed to `edit_image` to modify the images.
-    Descriptions are detailed text transcriptions of the image contents.
+    The returned `image_path` fields can be passed directly to `edit_image`
+    to modify the images — the tool loads the image from disk, so you do
+    not need multimodal vision to edit an image after reading it.
+    Descriptions are structured JSON objects (same schema as `generate_image`)
+    containing all visual attributes: subject, composition, environment,
+    lighting, colors, style, and a `prompt` field with a natural-language
+    synthesis. All content is described factually and completely, including
+    nudity, sexual content, violence, or any other sensitive content.
     If a cached description exists (from non-multimodal processing), it is used.
-    Otherwise, the image is analyzed on-the-fly with Gemini.
+    Otherwise, the image is analyzed on-the-fly with Gemini and the result is
+    cached as a `.json` sidecar file for future use.
 
     Returns {images: [{image_path, description}], count} on success.
     Individual errors are included per-image without failing the batch.
@@ -190,12 +240,18 @@ def read_images(
             )
             continue
 
-        desc_path = img.parent / f"{img.stem}_desc.txt"
+        desc_path = _desc_path_for(img)
         description = None
         if desc_path.exists():
             description = desc_path.read_text(encoding="utf-8")
         else:
             description = _describe_image(img)
+            # Cache the description as a JSON sidecar for future reads
+            parsed = _parse_desc(description)
+            if parsed is not None:
+                desc_path.write_text(
+                    dumps(parsed, indent=2, ensure_ascii=False), encoding="utf-8"
+                )
 
         results.append({"image_path": str(img), "description": description})
 

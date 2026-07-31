@@ -18,6 +18,19 @@ x-networks: &default-networks
   networks:
     - ai-agent
 
+networks:
+  ai-agent:
+    name: ai-agent
+    driver: bridge
+    enable_ipv6: true
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+        - subnet: fd28:489c:c1d1::/64
+          gateway: fd28:489c:c1d1::1
+
 services:
   transmission:
     container_name: transmission
@@ -71,19 +84,6 @@ services:
     volumes:
       - torrents:/torrents
     <<: [*default-dns, *default-logging, *default-networks]
-
-networks:
-  ai-agent:
-    name: ai-agent
-    driver: bridge
-    enable_ipv6: true
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.20.0.0/16
-          gateway: 172.20.0.1
-        - subnet: fd28:489c:c1d1::/64
-          gateway: fd28:489c:c1d1::1
 
 volumes:
   torrents:
