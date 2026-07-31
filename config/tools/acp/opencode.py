@@ -313,7 +313,7 @@ def _format_run(session_id: str, message: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool
-async def list_sessions(
+async def list_dev_sessions(
     search: Annotated[
         str | None,
         Field(
@@ -331,7 +331,7 @@ async def list_sessions(
 ) -> dict[str, Any]:
     """
     List Opencode coding sessions on the remote server, newest first.
-    Usage: Call this to discover session_ids for `resume_session` or `abort_session`, or to review past tasks and their cost.
+    Usage: Call this to discover session_ids for `resume_dev_session` or `abort_dev_session`, or to review past tasks and their cost.
 
     Args:
         search: Optional case-insensitive title filter.
@@ -359,7 +359,7 @@ async def list_sessions(
 
 
 @tool
-async def init_session(
+async def init_dev_session(
     prompt: Annotated[
         str,
         Field(
@@ -376,14 +376,14 @@ async def init_session(
 ) -> dict[str, Any]:
     """
     Start a new Opencode coding session and run a task on it, blocking until the agent finishes.
-    Usage: For any coding/development task (write, fix, refactor, review code). Prefer this over `resume_session` for unrelated tasks.
+    Usage: For any coding/development task (write, fix, refactor, review code). Prefer this over `resume_dev_session` for unrelated tasks.
 
     Args:
         prompt: Detailed, self-contained description of the task.
         title: Optional short session title prefixed with '[acp]'.
 
     Returns:
-        A dict with session_id (pass it to `resume_session` for follow-ups or `abort_session` to stop a run), message_id,
+        A dict with session_id (pass it to `resume_dev_session` for follow-ups or `abort_dev_session` to stop a run), message_id,
         agent, model, output, tool_calls, files_changed, usage, or an error.
         Long runs can take several minutes.
 
@@ -413,11 +413,11 @@ async def init_session(
 
 
 @tool
-async def resume_session(
+async def resume_dev_session(
     session_id: Annotated[
         str,
         Field(
-            description="Session id from a previous `init_session` or `resume_session` result (e.g. 'ses_...')"
+            description="Session id from a previous `init_dev_session` or `resume_dev_session` result (e.g. 'ses_...')"
         ),
     ],
     prompt: Annotated[
@@ -429,7 +429,7 @@ async def resume_session(
 ) -> dict[str, Any]:
     """
     Continue a previous Opencode coding session with new instructions, keeping its full context.
-    Usage: For 'continue', 'resume', or follow-up changes on an earlier run. Use `init_session` instead for unrelated tasks.
+    Usage: For 'continue', 'resume', or follow-up changes on an earlier run. Use `init_dev_session` instead for unrelated tasks.
 
     Args:
         session_id: Session id from a previous run.
@@ -459,11 +459,11 @@ async def resume_session(
 
 
 @tool
-async def abort_session(
+async def abort_dev_session(
     session_id: Annotated[
         str,
         Field(
-            description="Session id of the run to stop (e.g. 'ses_...'), from `init_session`, `resume_session`, or `list_sessions`"
+            description="Session id of the run to stop (e.g. 'ses_...'), from `init_dev_session`, `resume_dev_session`, or `list_dev_sessions`"
         ),
     ],
 ) -> dict[str, Any]:
