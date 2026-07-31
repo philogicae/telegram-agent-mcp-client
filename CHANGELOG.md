@@ -330,6 +330,120 @@
   (COMBINED_HYBRID_SEARCH_RRF) on every search call; copy it instead
 - instances/telegram.py: drop dead duplicate branch in edit()
 - uv.lock: refresh after uv sync
+- Feat: bump to Python 3.14, v0.15.0; remove ygg-api, update Transmission, fix syntax
+
+- Bump `requires-python` to `>=3.14` and version to `0.15.0`
+- Remove `ygg-api` service and `ygg-config` volume from compose
+- Update Transmission image to `4.1.3`
+- Make `torrent_search.env` optional; drop `YGG_LOCAL_API` env
+- Adopt PEP 760 bare except syntax (`except ValueError, TypeError:`)
+- Drop forward-reference strings from type hints
+- Regenerate `uv.lock` for Python 3.14 (cp314 wheels, dep bumps)
+- Misc CI, Dockerfile, README, config updates
+- Feat: Python 3.14, ruff config overhaul, lint fixes, shell tooling
+
+- Bump target to Python 3.14 (ruff target-version, requires-python)
+- Replace ruff `select = ["ALL"]` with explicit rule sets + categorized ignores + per-file-ignores for tests
+- Remove stale `# noqa:` comments across all files (SLF001, ARG001, etc.)
+- Add explicit `strict=False` to all `zip()` calls; fix bare excepts with logging in gree_ac.py
+- Switch telegram handler file ops to async (`aiofiles.os.path.exists`, `aiofiles.os.unlink`)
+- Sort `__all__` lists alphabetically in telegram_agent package
+- Add bash formatting (`shfmt`) and linting (`shellcheck`) to `dev.sh`
+- Replace unsafe `.env` sourcing (`cat | xargs`) with `set -a; source .env` in deploy scripts
+- Alphabetically sort dependencies in pyproject.toml (no additions/removals)
+- Feat: TTS via OpenRouter, Dev Agent via Opencode ACP, infra polish
+
+- TTS: /tts toggle, LLM.tts() via OpenRouter audio API, ffmpeg OGG conversion for Telegram voice messages, "listening→thinking" flow for voice inputs
+- Dev Agent: config/tools/acp/opencode.py — async client for opencode acp HTTP API (list_sessions, init_session, resume_session), Dev Agent config with routines
+- Infra: Dockerfile ffmpeg, .dockerignore, .env.example new vars (OpenRouter, SEARXNG, OPENCODE_ACP)
+- Deps: pyTelegramBotAPI 7.31.0, fastapi 0.140.7, fastmcp 3.4.5, graphiti-core 0.29.3, langchain-mcp-adapters 0.3.1
+- Chore: rstrip→removesuffix in tool loader, singleton init guard in LLM, BotCommand registration
+- Feat: overhaul web search stack, add abort/edit tools, LLM-based TTS adaptation, Docker app user
+
+- Web tools: Add _web_search (DDG), multi_search (searxng-mul-mcp), scrapling (anti-bot), web_fetch (fetcher-mcp), wiki_search.py (intelligent wiki). Rename deep_search/wiki_search → _ disabled. Remove old fetch.json, searxng.json. Switch news_search to @brave/brave-search-mcp-server, use brave_news_search.
+- ACP: Add abort_session/delete_session. URL-encode session IDs. Validate URL/password on parse. Clean up orphaned sessions on init_session failure.
+- Image gen: Add edit_image tool (Gemini). Rewrite prompt instructions with cohesion/language rules. Add \_load_image_data_url helper.
+- Agent config: Parallel tool call guidance. Search agent: 3-phase pipeline (EXPAND→SEARCH→SYNTHESIZE), restructured routines (research/fact_check/crawl/news_briefing/scrape_page). Image Creator: edit_image tool. Coder: cancel_task routine + abort_session.
+- TTS: Replace regex sanitization with LLM.tts_adapt() — rewrites markdown/emoji/URLs for natural speech via utils LLM. Emotion-matching instructions in TTS API call. Recording status + logging in Telegram handler.
+- Playwright install: Rewrite to use patchright + @playwright/cli, colored output, npm/sys dep checks, dry-run flag.
+- Tools config: {ENV:VAR:-default} syntax, strip server descriptions, unwrap ExceptionGroup in error display.
+- Dockerfile: Add app user (uid 1000) for shared volume permissions, switch to non-root.
+- Trackers: Prune dead entries, keep verified trackers.
+- Env: SEARXNG_BASE_URL/PORT/CONFIG/SECRET, SCRAPLING_BASE_URL, updated OPENCODE_ACP_URL.
+- Feat: migrate HeroUI v2→v3, drop framer-motion, bump deps
+
+- `@heroui/react` 2→3: CardBody→Card.Content, Progress→ProgressBar, disabled→isDisabled, flex-shrink-0→shrink-0
+- Replace HeroUI tailwind plugin with `@import "@heroui/styles"`, remove HeroUIProvider wrapper
+- Drop framer-motion (bundled in HeroUI v3)
+- Dep bumps: next 16.1→16.2, react 19.2.4→19.2.8, TS 5.9→6.0, Biome 2.4→2.5, Tailwind 4.2→4.3, PostCSS 8.5→8.24, and others
+- Biome config: recommended→preset
+- Feat: stream model reasoning text alongside tool calls in Telegram
+
+- Agent.chat yields model_text events for `msg`-type messages (text alongside tool calls); extra dict typed as Any
+- TelegramBot.edit gains model_text flag: caches and displays inline reasoning (marked with \x00 sentinel, excluded from tool logs)
+- Suppress tool notifications/error reporting when emitting model_text
+- logify strips \x00 sentinel from rendered output
+- Feat: image inspection tools, per-chat cancel/rate-limit, TTS speed, telemetry pruning, README rewrite
+
+## New features
+
+- image_processing.py: new `list_images` (paginated) and `read_images` tools
+  for browsing/describing images on disk via Gemini vision; descriptions
+  cached to `*_desc.txt`, per-image errors never fail the batch
+- agent_config/user_config: rename "Image Creator" → "Image Manager" with
+  `list_images`/`read_images` tools and updated transfer prompt
+- telegram handlers: `/cancel` command + per-chat `cancel_events` rate
+  limiting (TOCTOU-safe claim before any await); voice/image handlers
+  reject early before expensive work
+- telegram handlers: persist received images to `image_received/`, pass
+  file paths to the agent (multimodal) or per-image descriptions to disk
+  (non-multimodal) so context survives across sessions
+- telegram handlers: `upload_photo`/`upload_voice` chat actions, caption
+  above media, user-facing TTS failure notice
+- llm.py: `OPENROUTER_TTS_SPEED` env var (default 1.15) with range clamp
+  to [0.25, 4.0]; rewritten TTS instructions for expressive delivery
+- llm.py: `tts_adapt` now preserves full content (speakable rewrite, not
+  a summary) and reads code/commands naturally
+- gree_ac.py: `all` range + `1m` unit (up to 24m), `_dedup_events` to
+  collapse repeated telemetry events, default range → "all"; `limit=None`
+  in `_query_readings` with pre-computed start/end strings
+- graphiti.py: wrap genai.Client to inject BLOCK_NONE safety settings on
+  every generate_content call (covers GeminiClient + reranker)
+- image_generation.py: add BLOCK_NONE safety settings
+
+## Bug fixes
+
+- image_processing.py: `_describe_image` wrapped in try/except so an LLM
+  failure returns a per-image error string instead of crashing the batch;
+  returns explicit error string (not None) when no API key configured
+- telegram_image: check `cancel_events` before storing `pending_media` to
+  prevent orphaned images leaking into the next successful message
+- abstract.py: cap 429 flood-wait `retry_after` to 60s with warning log
+- abstract.py: abort retries immediately on "message to edit not found"
+- gree_ac.py: make event markers timezone-aware (`.replace(tzinfo=_local_tz())`)
+  and remove now-unnecessary tz-stripping logic in range comparison
+
+## Refactors
+
+- utils.py: lift nested markdown→HTML helpers to module level; add `classic`
+  flag to `fixed_telegram` (rich tags for sendRichMessage, sanitized for
+  classic API); innermost-first list sanitization loop
+- instances/telegram.py: extract `_is_private_or_reply` and `_render_logify`
+  to module level; final messages use `classic=False` (rich), intermediate
+  edits use `classic=True` with try/except to swallow edit failures
+- image_generation.py / gree_ac.py / utils.py: replace `parents[3]` path
+  hack with `DATA_DIR` env var (matches compose `DATA_DIR=/app/data`)
+- agent.py: `datetime.now(UTC)` → `datetime.now().astimezone()` for local TZ
+
+## Chores
+
+- README.md: full rewrite (features, quick start, CLI, configuration,
+  project structure, development); drop PyPI badge, remove Graphiti refs
+- pyproject.toml: bump version 0.15.0 → 2.0.0
+- .env.example: document `OPENROUTER_TTS_SPEED`
+- .gitignore: ignore `TODO.md`
+- compose.yaml: shfmt YAML anchor spacing
+- uv.lock: langsmith 0.10.14, posthog 7.35.4
 
 ### 🐛 Bug Fixes
 
@@ -424,6 +538,35 @@
 - DownloadManager.start(): wrap loop in try/except so unhandled
   exceptions don't kill the manager task and stop the bot
 - Fix: replace SMA with EMA smoothing and ensure float temperature sensor values in GREE AC
+- Fix: add explicit mcp dependency with version constraint >=1.28.0,<2.0.0
+- Fix: network-aware retry backoff, structured JSON image descriptions, tz-aware AC graphs, docker network cleanup, openai bump
+
+- bot/abstract.py: detect network errors (RequestTimeout, aiohttp ClientConnectionError)
+  in \_exec retry loop; exponential backoff 1s→10s cap instead of flat 0.2s delay,
+  so DNS/connection blips don't burn the retry budget
+- bot/instances/telegram.py: rich-message send no longer forces retries=0 —
+  inherits backoff so transient network errors retry before falling back to stripped content
+- bot/handlers/telegram.py: \_media_to_text now returns a structured JSON description
+  (same schema as generate_image) with uncensored content coverage; media cache
+  sidecar renamed \_desc.txt → \_desc.json
+- tools/media/image_processing.py: description prompt reworked to emit structured
+  JSON matching the generate_image schema (subject, composition, environment,
+  lighting, colors, style, prompt synthesis) for reuse in edits/regeneration;
+  markdown-fence stripping; results cached as pretty-printed .json sidecars via
+  \_parse_desc/\_desc_path_for; all content described factually including nudity/
+  sexual/violent elements
+- tools/media/image*generation.py: drop invalid HARM_CATEGORY_IMAGE*\* entries from
+  \_SAFETY_SETTINGS (rejected by Gemini image models); add CONTENT POLICY to
+  generate/edit prompts; document disk-path editing without multimodal vision
+- tools/home/gree_ac.py: temperature graph timestamps made tz-aware (local tz)
+- agent_config.example.json: add "Untrammelled Autonomous Agent" root prompt
+  (no refusals, no safety framing) and rewrite Image Manager prompt for
+  unrestricted image generation
+- compose.yaml: move services off network_mode: host onto shared ai-agent bridge
+  network (IPv4+IPv6) with quad9 DNS (x-dns/x-networks anchors); define the
+  network here as the source of truth
+- extended.yaml: declare ai-agent network external (defined in compose.yaml) —
+  deduplicates the network definition
 
 ### 💼 Changes
 
@@ -577,3 +720,12 @@
 - Add --check flag to ruff format to verify formatting without modifying
 - Remove redundant telegram_agent path arguments (check entire project)
 - Bump version to 0.14.0
+- Chore: update deps
+- Chore: fix workflow references after CI/CD rename
+
+- Update build job dependency from test to lint
+- Update README badge URL from python-package-ci.yml to ci-cd.yml
+- Chore: update default Gemini models to 3.6-flash and 3.5-flash-lite
+- Chore: update Transmission trackers and pin to v4.0.6 until latest is fixed
+- Chore: update deps
+- Chore: update deps
