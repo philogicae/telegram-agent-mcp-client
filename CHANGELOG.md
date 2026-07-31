@@ -448,6 +448,10 @@
 
 - opencode.py: new persistence layer — per-server dir (host_port) under DATA_DIR/opencode, upserts sessions into opencode_sessions.jsonl keyed by id, sorted newest-first by time.created, 0777 chmod; best-effort (suppress) persist calls in list_sessions, init_session, resume_session
 - agent_config.example.json: rename "Dev Agent" → "Opencode Dev"; rewrite prompt — casual teammate tone, no verbatim tool dumps (except list_sessions results, which must be reported truthfully), no sycophancy, TTS-friendly output; new_task no longer pre-checks list_sessions, resume_task now looks up session_id via list_sessions when unknown; drop \n\n escapes from prompts
+- Feat: rename opencode tools to `*_dev_session` for clarity
+
+- opencode.py: `list_sessions` → `list_dev_sessions`, `init_session` → `init_dev_session`, `resume_session` → `resume_dev_session`, `abort_session` → `abort_dev_session`
+- agent_config.example.json: update Opencode Dev prompt, routines, and tools list to reference renamed tools
 
 ### 🐛 Bug Fixes
 
@@ -737,3 +741,4 @@
 
 - CHANGELOG.md: append summaries from commits 7c01b4c through d0bd308 (network-aware retry backoff, image inspection tools, TTS features, web search overhaul, HeroUI v3 migration, Python 3.14 bump, etc.)
 - transmission.config.json: refresh default-trackers list (add zer0day.ch, tracker2.dler.org, tracker.0x7c0.com; remove dead/duplicate entries)
+- Chore: update changelog
