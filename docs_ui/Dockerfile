@@ -11,7 +11,7 @@
 # Base: shared Node + pnpm toolchain. Pin pnpm to match `packageManager`
 # in package.json for reproducible builds.
 FROM platformatic/node-caged:26-alpine AS base
-ENV PNPM_VERSION=11.17.0 \
+ENV PNPM_VERSION=11.20.0 \
     NEXT_TELEMETRY_DISABLED=1
 WORKDIR /webapp
 RUN npm install -g pnpm@${PNPM_VERSION}

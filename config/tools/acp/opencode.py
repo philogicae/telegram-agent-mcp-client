@@ -1,10 +1,14 @@
 """Opencode bridge: drive remote coding sessions over the HTTP API of `opencode acp`."""
 
+import asyncio
+import base64
 from contextlib import suppress
 from datetime import UTC, datetime
+from functools import wraps
 from json import JSONDecodeError, dumps, loads
 from os import getenv
 from pathlib import Path
+from time import monotonic
 from typing import Annotated, Any
 from urllib.parse import quote, urlsplit, urlunsplit
 
@@ -12,6 +16,8 @@ from aiohttp import BasicAuth, ClientError, ClientSession, ClientTimeout
 from dotenv import load_dotenv
 from langchain.tools import tool
 from pydantic import Field
+
+from telegram_agent.src.core.progress import ProgressTracker, has_progress_sink
 
 load_dotenv()
 
@@ -23,9 +29,11 @@ load_dotenv()
 _RAW_URL = getenv("OPENCODE_ACP_URL", "")
 _USERNAME = getenv("OPENCODE_SERVER_USERNAME", "opencode")
 _PASSWORD = getenv("OPENCODE_SERVER_PASSWORD", "")
-_TIMEOUT = float(getenv("OPENCODE_SERVER_TIMEOUT", "1200"))
+_TIMEOUT = float(getenv("OPENCODE_SERVER_TIMEOUT", "600"))
 _MAX_OUTPUT = int(getenv("OPENCODE_SERVER_MAX_OUTPUT", "20000"))
-_NOT_CONFIGURED = "OPENCODE_ACP_URL not set"
+_PROGRESS_POLL = float(getenv("OPENCODE_SERVER_PROGRESS_POLL", "3"))
+_PROGRESS_LINES = int(getenv("OPENCODE_SERVER_PROGRESS_LINES", "6"))
+_WEB_URL = getenv("OPENCODE_WEB_URL", "").strip().rstrip("/")
 _ERRORS = (ClientError, PermissionError, RuntimeError, TimeoutError)
 
 
@@ -54,7 +62,28 @@ def _parse_url(raw: str) -> tuple[str, BasicAuth | None]:
     return base, BasicAuth(user, password)
 
 
-_BASE_URL, _AUTH = _parse_url(_RAW_URL)
+# Validate all required config ONCE at module load. On failure the tools stay
+# registered (so the agent can see them) but every call short-circuits with
+# the same error instead of repeating the check in each tool.
+_CONFIG_ERROR: str | None = None
+try:
+    _BASE_URL, _AUTH = _parse_url(_RAW_URL)
+except RuntimeError as e:
+    _BASE_URL, _AUTH, _CONFIG_ERROR = "", None, str(e)
+if not _BASE_URL and not _CONFIG_ERROR:
+    _CONFIG_ERROR = "OPENCODE_ACP_URL not set"
+
+
+def _require_config(func: Any) -> Any:
+    """Short-circuit a tool with the startup config error when unconfigured."""
+
+    @wraps(func)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        if _CONFIG_ERROR:
+            return {"error": _CONFIG_ERROR}
+        return await func(*args, **kwargs)
+
+    return wrapper
 
 
 # ============================================================
@@ -84,10 +113,15 @@ with suppress(PermissionError):
     _SERVER_DIR.chmod(0o777)
 
 _SESSIONS_FILE = _SERVER_DIR / "opencode_sessions.jsonl"
+_MAX_CACHED_SESSIONS = int(getenv("OPENCODE_SERVER_MAX_CACHED_SESSIONS", "100"))
 
 
 def _persist_sessions(sessions: list[dict[str, Any]]) -> None:
-    """Upsert sessions into the JSONL file, keyed by session id (newest first)."""
+    """Upsert sessions into the JSONL file, keyed by session id (newest first).
+
+    Keeps at most `_MAX_CACHED_SESSIONS` (default 100): older entries are
+    dropped, so the file never grows unbounded.
+    """
     if not sessions:
         return
     now = datetime.now(UTC).isoformat()
@@ -113,12 +147,15 @@ def _persist_sessions(sessions: list[dict[str, Any]]) -> None:
         entry["fetched_at"] = now
         existing[sid] = entry
 
-    # Write back, sorted by created time descending (newest first)
+    # Write back, sorted by created time descending (newest first),
+    # trimmed to the most recent MAX_CACHED_SESSIONS
     def _sort_key(e: dict[str, Any]) -> int:
         t = e.get("time") or {}
         return int(t.get("created") or 0)
 
-    ordered = sorted(existing.values(), key=_sort_key, reverse=True)
+    ordered = sorted(existing.values(), key=_sort_key, reverse=True)[
+        :_MAX_CACHED_SESSIONS
+    ]
     with _SESSIONS_FILE.open("w", encoding="utf-8") as f:
         for entry in ordered:
             f.write(dumps(entry, ensure_ascii=False) + "\n")
@@ -202,6 +239,10 @@ class OpencodeClient:
         """Abort the current run of a session."""
         await self._request("POST", f"/session/{quote(session_id, safe='')}/abort")
 
+    async def session_status(self) -> dict[str, Any]:
+        """Return the status of all sessions known to the server (id -> status)."""
+        return await self._request("GET", "/session/status") or {}
+
     async def prompt(self, session_id: str, text: str) -> dict[str, Any]:
         """Send a prompt and block until the agent finishes its turn."""
         payload: dict[str, Any] = {"parts": [{"type": "text", "text": text}]}
@@ -214,8 +255,113 @@ class OpencodeClient:
             or {}
         )
 
+    async def messages(self, session_id: str, limit: int = 10) -> list[dict[str, Any]]:
+        """List the most recent messages of a session (newest last)."""
+        return (
+            await self._request(
+                "GET",
+                f"/session/{quote(session_id, safe='')}/message",
+                params={"limit": limit},
+            )
+            or []
+        )
+
 
 _client = OpencodeClient(_BASE_URL, _AUTH, _TIMEOUT)
+
+
+# ============================================================
+# PROGRESS WATCHER
+# ============================================================
+
+
+def _session_url(session_id: str) -> str:
+    """Build a clickable web UI URL for a session, or '' when OPENCODE_WEB_URL is unset.
+
+    Format mirrors the opencode web proxy:
+    ``{web}/server/{base64url(web)}/session/{session_id}``
+    """
+    if not _WEB_URL or not session_id:
+        return ""
+    encoded = base64.urlsafe_b64encode(_WEB_URL.encode()).decode().rstrip("=")
+    return f"{_WEB_URL}/server/{encoded}/session/{session_id}"
+
+
+def _progress_line(part: dict[str, Any]) -> str | None:
+    """Format a single message part as a short Telegram log line."""
+    kind = part.get("type")
+    if kind == "tool":
+        state = part.get("state") or {}
+        status = state.get("status")
+        tool = part.get("tool") or "tool"
+        title = state.get("title") or ""
+        if status == "error":
+            error = state.get("error")
+            return f"❌ {tool}: {str(error)[:200]}"
+        if status == "completed":
+            return f"✅ {tool}: {title}" if title else f"✅ {tool}"
+        if status == "running":
+            return f"🔧 {tool}: {title}" if title else f"🔧 {tool}..."
+        if status == "pending":
+            return f"⏳ {tool}..."
+    if kind == "patch":
+        files = part.get("files") or []
+        if files:
+            shown = ", ".join(files[:6])
+            more = f" (+{len(files) - 6})" if len(files) > 6 else ""
+            return f"📄 {shown}{more}"
+    return None
+
+
+async def _watch_progress(session_id: str, tracker: ProgressTracker) -> None:
+    """Poll the session for new message parts while a prompt runs, emitting progress lines.
+
+    Starts at the moment of creation, so pre-existing history is not replayed.
+    `ponytail: 3s polling; switch to /event SSE if finer granularity is needed.`
+    """
+    start_ms = int(datetime.now(UTC).timestamp() * 1000) - 1000
+    emitted: dict[str, str] = {}  # part id -> last emitted text (for text parts)
+    tool_status: dict[str, str] = {}  # part id -> last seen status
+    while True:
+        try:
+            messages = await _client.messages(session_id, limit=20)
+        except Exception:
+            messages = []  # Transient poll failures must not break the run
+        for message in messages:
+            info = message.get("info") or {}
+            created = (info.get("time") or {}).get("created") or 0
+            if created < start_ms:
+                continue
+            if info.get("role") != "assistant":
+                continue  # Don't echo the user's own prompt back as progress
+            for part in message.get("parts") or []:
+                pid = part.get("id")
+                if not pid:
+                    continue
+                kind = part.get("type")
+                if kind == "tool":
+                    status = (part.get("state") or {}).get("status")
+                    if status and tool_status.get(pid) != status:
+                        tool_status[pid] = status
+                        if line := _progress_line(part):
+                            # Keyed by part id: the running line is replaced
+                            # in place by its completion line, not appended.
+                            tracker.set_line(f"tool:{pid}", line)
+                elif kind in ("text", "reasoning"):
+                    text = part.get("text") or ""
+                    last = emitted.get(pid, "")
+                    if len(text) > len(last):
+                        emitted[pid] = text
+                        if delta := text[len(last) :].strip():
+                            prefix = "💭" if kind == "reasoning" else "💬"
+                            tracker.set_line(f"{kind}:{pid}", f"{prefix} {delta}")
+                elif kind == "patch":
+                    if pid not in emitted:
+                        emitted[pid] = "patch"
+                        if line := _progress_line(part):
+                            tracker.add_line(line)
+        await tracker.emit()
+        await asyncio.sleep(_PROGRESS_POLL)
 
 
 # ============================================================
@@ -265,7 +411,7 @@ def _format_session(s: dict[str, Any]) -> dict[str, Any]:
     model = s.get("model") or {}
     time = s.get("time") or {}
     tokens = s.get("tokens") or {}
-    return {
+    result = {
         "session_id": s.get("id"),
         "title": s.get("title"),
         "agent": s.get("agent"),
@@ -277,6 +423,9 @@ def _format_session(s: dict[str, Any]) -> dict[str, Any]:
         "tokens": (tokens.get("input", 0) + tokens.get("output", 0)) or None,
         "files": (s.get("summary") or {}).get("files") or None,
     }
+    if url := _session_url(s.get("id") or ""):
+        result["session_url"] = url
+    return result
 
 
 def _format_run(session_id: str, message: dict[str, Any]) -> dict[str, Any]:
@@ -291,6 +440,8 @@ def _format_run(session_id: str, message: dict[str, Any]) -> dict[str, Any]:
         "model": model or None,
         "output": _truncate(output) or "(agent returned no text output)",
     }
+    if url := _session_url(session_id):
+        result["session_url"] = url
     if tool_calls:
         result["tool_calls"] = tool_calls
     if files:
@@ -313,6 +464,7 @@ def _format_run(session_id: str, message: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool
+@_require_config
 async def list_dev_sessions(
     search: Annotated[
         str | None,
@@ -342,8 +494,6 @@ async def list_dev_sessions(
         created, updated, cost, tokens, files), or an error.
 
     """
-    if not _BASE_URL:
-        return {"error": _NOT_CONFIGURED}
 
     try:
         sessions = await _client.list_sessions(
@@ -358,7 +508,73 @@ async def list_dev_sessions(
     return {"sessions": [_format_session(s) for s in sessions]}
 
 
+def _timeout_at() -> str:
+    """Local wall-clock time of a timeout, for the '🔸 Timeout at <time>' marker."""
+    return datetime.now().astimezone().strftime("%H:%M:%S")
+
+
+def _timeout_result(
+    session_id: str | None, url: str, extra: str = ""
+) -> dict[str, Any]:
+    """Timeout marker returned to the agent loop, which renders it as '🔸 ...'.
+
+    Not an error: the run keeps going server-side, so the session is kept and
+    the caller can re-attach with `watch_dev_session`.
+    """
+    return {
+        "timeout": True,
+        "timeout_at": _timeout_at(),
+        "session_id": session_id or "",
+        "session_url": url,
+        "message": (
+            "The session is still running on the server and its history is "
+            "preserved. Re-attach with `watch_dev_session` to wait for the "
+            "result without sending a new message." + extra
+        ),
+    }
+
+
+async def _start_tracker(session_id: str) -> ProgressTracker | None:
+    """Create a progress tracker bound to the session, with its live link."""
+    tracker = (
+        ProgressTracker(max_lines=_PROGRESS_LINES) if has_progress_sink() else None
+    )
+    if tracker:
+        tracker.set_session(session_id, _session_url(session_id))
+        await tracker.emit()
+    return tracker
+
+
+async def _run_with_watcher(
+    session_id: str, prompt: str
+) -> tuple[dict[str, Any], ProgressTracker | None]:
+    """Run a prompt with live progress streaming; returns (message, tracker).
+
+    Raises TimeoutError when the server does not finish within the configured
+    timeout — the caller decides whether to keep or drop the session.
+    """
+    tracker = await _start_tracker(session_id)
+    watcher: asyncio.Task | None = None
+    try:
+        if tracker:
+            watcher = asyncio.create_task(_watch_progress(session_id, tracker))
+        try:
+            message = await _client.prompt(session_id, prompt)
+        except TimeoutError:
+            if tracker:
+                tracker.set_status("🔸 Status: Timed out (still running)")
+                await tracker.emit()
+            raise
+    finally:
+        if watcher:
+            watcher.cancel()
+            with suppress(asyncio.CancelledError):
+                await watcher
+    return message, tracker
+
+
 @tool
+@_require_config
 async def init_dev_session(
     prompt: Annotated[
         str,
@@ -383,26 +599,34 @@ async def init_dev_session(
         title: Optional short session title prefixed with '[acp]'.
 
     Returns:
-        A dict with session_id (pass it to `resume_dev_session` for follow-ups or `abort_dev_session` to stop a run), message_id,
-        agent, model, output, tool_calls, files_changed, usage, or an error.
-        Long runs can take several minutes.
+        A dict with session_id (pass it to `resume_dev_session` for follow-ups, `watch_dev_session` to wait out a timeout, or `abort_dev_session` to stop a run), message_id,
+        agent, model, output, tool_calls, files_changed, usage, session_url, or an error.
+        While the run is in progress, a live progress panel (status, session
+        link, tool/file logs) is streamed to the chat.
+        Runs time out after 10 minutes by default; a timeout is NOT an error:
+        the session keeps running server-side, returns with `timeout: True`,
+        and can be re-attached via `watch_dev_session`.
 
     """
-    if not _BASE_URL:
-        return {"error": _NOT_CONFIGURED}
 
     session_id: str | None = None
+    tracker: ProgressTracker | None = None
     try:
         session = await _client.create_session(title or prompt[:60])
         session_id = session.get("id")
         if not session_id:
             return {"error": "Opencode server did not return a session id"}
-        message = await _client.prompt(session_id, prompt)
+        message, tracker = await _run_with_watcher(session_id, prompt)
+    except TimeoutError:
+        return _timeout_result(session_id, _session_url(session_id or ""))
     except _ERRORS as e:
         if session_id:
             with suppress(*_ERRORS):
                 await _client.delete_session(session_id)
         return {"error": f"Opencode server error: {e}"}
+    if tracker:
+        tracker.set_status("✅ Status: Done")
+        await tracker.emit()
 
     with suppress(Exception):
         full = await _client.session(session_id)
@@ -413,11 +637,12 @@ async def init_dev_session(
 
 
 @tool
+@_require_config
 async def resume_dev_session(
     session_id: Annotated[
         str,
         Field(
-            description="Session id from a previous `init_dev_session` or `resume_dev_session` result (e.g. 'ses_...')"
+            description="Session id from a previous `init_dev_session`, `resume_dev_session`, or `watch_dev_session` result (e.g. 'ses_...')"
         ),
     ],
     prompt: Annotated[
@@ -430,6 +655,7 @@ async def resume_dev_session(
     """
     Continue a previous Opencode coding session with new instructions, keeping its full context.
     Usage: For 'continue', 'resume', or follow-up changes on an earlier run. Use `init_dev_session` instead for unrelated tasks.
+    After a timeout, prefer `watch_dev_session` to wait out the running task without sending a new message.
 
     Args:
         session_id: Session id from a previous run.
@@ -437,28 +663,38 @@ async def resume_dev_session(
 
     Returns:
         A dict with session_id, message_id, agent, model, output, tool_calls,
-        files_changed, usage, or an error.
+        files_changed, usage, session_url, or an error.
+        While the run is in progress, a live progress panel (status, session
+        link, tool/file logs) is streamed to the chat.
+        Runs time out after 10 minutes by default; a timeout is NOT an error:
+        the session keeps running server-side, returns with `timeout: True`,
+        and can be re-attached via `watch_dev_session`.
 
     """
-    if not _BASE_URL:
-        return {"error": _NOT_CONFIGURED}
     if not session_id or not session_id.strip():
         return {"error": "session_id is required"}
+    sid = session_id.strip()
 
     try:
-        message = await _client.prompt(session_id.strip(), prompt)
+        message, tracker = await _run_with_watcher(sid, prompt)
+    except TimeoutError:
+        return _timeout_result(sid, _session_url(sid))
     except _ERRORS as e:
         return {"error": f"Opencode server error: {e}"}
+    if tracker:
+        tracker.set_status("✅ Status: Done")
+        await tracker.emit()
 
     with suppress(Exception):
-        full = await _client.session(session_id.strip())
+        full = await _client.session(sid)
         if full:
             _persist_sessions([full])
 
-    return _format_run(session_id.strip(), message)
+    return _format_run(sid, message)
 
 
 @tool
+@_require_config
 async def abort_dev_session(
     session_id: Annotated[
         str,
@@ -478,8 +714,6 @@ async def abort_dev_session(
         A dict confirming the abort, or an error.
 
     """
-    if not _BASE_URL:
-        return {"error": _NOT_CONFIGURED}
     if not session_id or not session_id.strip():
         return {"error": "session_id is required"}
 
@@ -488,4 +722,81 @@ async def abort_dev_session(
     except _ERRORS as e:
         return {"error": f"Opencode server error: {e}"}
 
-    return {"aborted": session_id.strip()}
+    sid = session_id.strip()
+    result: dict[str, Any] = {"aborted": sid}
+    if url := _session_url(sid):
+        result["session_url"] = url
+    return result
+
+
+@tool
+@_require_config
+async def watch_dev_session(
+    session_id: Annotated[
+        str,
+        Field(
+            description="Session id of a run that timed out (e.g. 'ses_...'), from the `timeout` result of `init_dev_session` or `resume_dev_session`"
+        ),
+    ],
+    max_wait: Annotated[
+        int,
+        Field(
+            description="Max seconds to wait for the run to finish (default 600 = 10 min).",
+            default=600,
+        ),
+    ] = 600,
+) -> dict[str, Any]:
+    """
+    Re-attach to a session whose run timed out and wait for it to finish WITHOUT sending a new message.
+    Usage: After `init_dev_session`/`resume_dev_session` returned `timeout: true`, the task is still running
+    server-side. Call this with the same session_id to stream its progress and get the final result.
+    Also useful to check whether a previous run already completed.
+
+    Args:
+        session_id: Session id from the `timeout` result.
+        max_wait: Max seconds to wait before returning another `timeout` marker.
+
+    Returns:
+        A dict with session_id, message_id, agent, model, output, tool_calls,
+        files_changed, usage, session_url, or a `timeout` marker (not an error)
+        when the run is still going after `max_wait` seconds.
+
+    """
+    if not session_id or not session_id.strip():
+        return {"error": "session_id is required"}
+    sid = session_id.strip()
+
+    tracker = await _start_tracker(sid)
+    watcher: asyncio.Task | None = None
+    deadline = monotonic() + max_wait
+    try:
+        if tracker:
+            watcher = asyncio.create_task(_watch_progress(sid, tracker))
+        while monotonic() < deadline:
+            status = (await _client.session_status()) or {}
+            state = (status.get(sid) or {}).get("type")
+            if state is None or state == "idle":
+                break  # Run finished (or session never ran): grab latest message
+            await asyncio.sleep(_PROGRESS_POLL)
+        else:
+            if tracker:
+                tracker.set_status("🔸 Status: Timed out (still running)")
+                await tracker.emit()
+            return _timeout_result(sid, _session_url(sid))
+        messages = await _client.messages(sid, limit=1)
+        newest = messages[-1] if messages else None
+        if not newest:
+            return {"error": "No messages found for this session"}
+        if tracker:
+            tracker.set_status("✅ Status: Done")
+            await tracker.emit()
+        return _format_run(sid, newest)
+    except TimeoutError:
+        return _timeout_result(sid, _session_url(sid))
+    except _ERRORS as e:
+        return {"error": f"Opencode server error: {e}"}
+    finally:
+        if watcher:
+            watcher.cancel()
+            with suppress(asyncio.CancelledError):
+                await watcher

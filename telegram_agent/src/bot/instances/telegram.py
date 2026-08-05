@@ -41,15 +41,20 @@ def _render_logify(
     agent: str | None,
     content: list[str],
     model_text: str = "",
+    tool_block: str = "",
 ) -> str:
-    """Render tool logs in a code block, with model text after the block.
+    """Render ONE tool-logs code block, with the progress panel after it.
 
-    The agent log (model_text) is always unique/replaced on each update, so
-    it is kept out of the tool-logs code block and appended as plain text
-    after it. The waiting marker is only kept inside the block when there is
-    no model text to show (indicating the agent is still processing).
+    The tool block (live multi-call status) is folded into the code block.
+    The progress panel (model_text: status line, session link, logs) is
+    appended after the block as plain text and replaced on each update, so
+    it reads as temporary progress info — never confused with the final
+    response. The waiting marker is only kept inside the block when there
+    is no panel to show.
     """
     tool_logs = [c for c in content if c != waiting] if model_text else list(content)
+    if tool_block:
+        tool_logs = [*tool_logs, tool_block]
     rendered = logify(agent, tool_logs)
     if model_text:
         rendered = (rendered + f"\n{model_text}").strip()
@@ -266,6 +271,7 @@ class TelegramBot(Bot):
         final: bool = False,
         agent: str | None = None,
         model_text: bool = False,
+        tool_block: bool = False,
     ) -> Message | bool:
         """Edit an existing message."""
         if not replace and message.id not in self.edit_cache:
@@ -278,15 +284,25 @@ class TelegramBot(Bot):
                 return False
 
             mt = cache.get("model_text", "")
-            orig = _render_logify(self.logify, self.waiting, agent, content, mt)
+            tb = cache.get("tool_block", "")
+            orig = _render_logify(self.logify, self.waiting, agent, content, mt, tb)
             if final:
                 tool_logs = [c for c in content if c != self.waiting]
+                if tb:
+                    tool_logs = [*tool_logs, tb]
                 edited = self.logify(agent, tool_logs)
                 if text:
                     edited = (edited + f"\n{text}").strip()
             elif model_text:
                 cache["model_text"] = text
-                edited = _render_logify(self.logify, self.waiting, agent, content, text)
+                edited = _render_logify(
+                    self.logify, self.waiting, agent, content, text, tb
+                )
+            elif tool_block:
+                cache["tool_block"] = text
+                edited = _render_logify(
+                    self.logify, self.waiting, agent, content, mt, text
+                )
             else:
                 content[-1] = text
                 if not content[-1].endswith("..."):
@@ -297,6 +313,7 @@ class TelegramBot(Bot):
                     agent,
                     content,
                     cache.get("model_text", ""),
+                    cache.get("tool_block", ""),
                 )
         msg: Message | bool = False
         if edited != orig:

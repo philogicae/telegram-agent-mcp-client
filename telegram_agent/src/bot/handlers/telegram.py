@@ -7,6 +7,7 @@ from os import getenv
 from pathlib import Path
 from subprocess import DEVNULL, PIPE
 from traceback import print_exc
+from typing import Any
 
 import aiofiles.os  # ty: explicit submodule import
 from dotenv import load_dotenv
@@ -14,6 +15,7 @@ from langchain.messages import HumanMessage
 from telebot.types import InputFile, InputMediaPhoto, Message
 
 from ...core.llm import LLM, LLM_CHOICE, LLM_UTILS
+from ...core.progress import reset_progress_sink, set_progress_sink
 from ..abstract import AgenticBot, handler
 from ..utils import str_size, unpack_user
 
@@ -97,6 +99,20 @@ async def _media_to_text(media: list[dict], context: str = "") -> str:
             if isinstance(part, dict) and "text" in part
         )
     return content.strip()
+
+
+def _make_progress_sink(instance: AgenticBot, reply: Message) -> Any:
+    """Build a progress sink that live-edits the reply message with a progress panel.
+
+    Tools render their own panel (status line, session link, rolling logs)
+    and emit it as one string; this sink replaces the model-text slot below
+    the tool logs, so only actual panel changes trigger an edit.
+    """
+
+    async def sink(line: str) -> None:
+        await instance.bot.edit(reply, line, model_text=True)
+
+    return sink
 
 
 @handler
@@ -207,6 +223,9 @@ async def telegram_chat(
         overwrite = await init(msg)
     reply = overwrite
     prev = ""
+    # Long-running tools (e.g. opencode sessions) stream a live progress panel
+    # that is rendered in the model-text slot below the tool logs.
+    sink_token = set_progress_sink(_make_progress_sink(instance, reply))
     try:
         async for agent, step, done, extra in instance.agent.chat(msg):
             if cancel_event.is_set():
@@ -219,14 +238,19 @@ async def telegram_chat(
                     final=done,
                     agent=agent,
                     model_text=extra.get("model_text", False),
+                    tool_block=extra.get("tool_block", False),
                 )
-                if not done and not extra.get("model_text") and step[0] == "✅":
+                if not done and not extra.get("model_text") and extra.get("tool_ok"):
                     tool = extra.get("tool")
                     if tool and tool in instance.managers:
                         await instance.managers[tool].notify(
                             msg.chat.id, extra.get("output")
                         )
-                elif not done and not extra.get("model_text") and step[0] == "❌":
+                elif (
+                    not done
+                    and not extra.get("model_text")
+                    and extra.get("tool_ok") is False
+                ):
                     await telegram_report_issue(
                         instance,
                         msg,
@@ -297,6 +321,7 @@ async def telegram_chat(
         print_exc()
         await telegram_report_issue(instance, msg, reply, e)
     finally:
+        reset_progress_sink(sink_token)
         instance.cancel_events.pop(chat_id, None)
     instance.log.sent(msg, timer)
 
@@ -382,6 +407,7 @@ _media_groups: dict[str, dict] = {}
 @handler
 async def telegram_image(instance: AgenticBot, msg: Message) -> None:
     """Handle image/photo messages: attach images as media and process through agent."""
+    reply = None
     try:
         if not msg.photo:
             return
@@ -392,19 +418,36 @@ async def telegram_image(instance: AgenticBot, msg: Message) -> None:
                 "⏳ I'm still working on your previous message. Send /cancel to abort.",
             )
             return
+        is_album = bool(msg.media_group_id)
+        if not is_album:
+            # Send "I'm analyzing..." immediately, before download
+            init = (
+                instance.bot.reply if msg.chat.type != "private" else instance.bot.send
+            )
+            reply = await init(msg, "🔍 I'm analyzing...")
         # Download highest resolution
         photo = msg.photo[-1]
         file_info = await instance.bot.core.get_file(photo.file_id)
         img_bytes = await instance.bot.core.download_file(file_info.file_path)
         img_path = _save_received_image(img_bytes)
 
-        if msg.media_group_id:
+        if is_album:
             # Album: accumulate images, debounce processing
             group_id = msg.media_group_id
             if group_id not in _media_groups:
-                _media_groups[group_id] = {"images": [], "msg": msg}
-            _media_groups[group_id]["images"].append((img_bytes, img_path))
-            my_count = len(_media_groups[group_id]["images"])
+                _media_groups[group_id] = {"images": [], "msg": msg, "reply": None}
+            group = _media_groups[group_id]
+            group["images"].append((img_bytes, img_path))
+            my_count = len(group["images"])
+            # First callback of the group sends "I'm analyzing..." once,
+            # before the remaining images are debounced.
+            if group["reply"] is None:
+                init = (
+                    instance.bot.reply
+                    if msg.chat.type != "private"
+                    else instance.bot.send
+                )
+                group["reply"] = await init(msg, "🔍 I'm analyzing...")
             # Wait briefly for more images in this group
             await sleep(1.0)
             # Only the last callback to arrive processes the group
@@ -414,6 +457,7 @@ async def telegram_image(instance: AgenticBot, msg: Message) -> None:
             data = _media_groups.pop(group_id)
             images = data["images"]
             album_msg = data["msg"]
+            reply = data["reply"]
         else:
             images = [(img_bytes, img_path)]
             album_msg = msg
@@ -424,25 +468,35 @@ async def telegram_image(instance: AgenticBot, msg: Message) -> None:
             # Check rate limiting BEFORE storing pending media so we don't
             # leak orphaned images into pending_media if telegram_chat rejects.
             if album_msg.chat.id in instance.cancel_events:
-                await instance.bot.send(
-                    album_msg,
+                await instance.bot.edit(
+                    reply,
                     "⏳ I'm still working on your previous message. Send /cancel to abort.",
+                    replace=True,
                 )
                 return
             instance.pending_media.setdefault(album_msg.chat.id, []).extend(images)
             album_msg.text = caption
-            await telegram_chat(instance, album_msg)
+            # Replace "I'm analyzing..." with "I'm thinking..." and set up edit cache
+            await instance.bot.edit(reply, instance.bot.waiting, replace=True)
+            instance.bot.edit_cache[reply.id] = {  # ty: ignore[unresolved-attribute]
+                "current": 0,
+                "content": [instance.bot.waiting],
+            }
+            # telegram_chat will claim the slot; pass overwrite so it skips
+            # the init() call and reuses our reply.
+            await telegram_chat(instance, album_msg, overwrite=reply)
         else:
             # No caption: store as pending, wait for next text/voice
             instance.pending_media.setdefault(album_msg.chat.id, []).extend(images)
             timer = instance.log.received(album_msg)
-            await instance.bot.reply(
-                album_msg,
+            await instance.bot.edit(
+                reply,
                 "📷 Got it! Send a text or voice message with your instruction.",
+                replace=True,
             )
             instance.log.sent(album_msg, timer)
     except Exception as e:
         if msg.media_group_id and msg.media_group_id in _media_groups:
             _media_groups.pop(msg.media_group_id, None)
         print_exc()
-        await telegram_report_issue(instance, msg, msg, e)
+        await telegram_report_issue(instance, msg, reply or msg, e)

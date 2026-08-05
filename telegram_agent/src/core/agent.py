@@ -2,6 +2,7 @@
 
 import sys
 from collections.abc import AsyncGenerator, Callable, Sequence
+from contextlib import suppress
 from datetime import UTC, datetime
 from json import JSONDecodeError, loads
 from os import getenv
@@ -301,6 +302,7 @@ class Agent:
             called_tool: str | None = None
             called_tool_timer: Timer | None = None
             ignore_tool_result: bool = False
+            tool_block: dict[str, str] = {}  # tool name -> live status line
             start_time = end_time = datetime.now(UTC).timestamp()
             usage: Usage = Usage()
             forced_messages: list[AnyMessage] = []
@@ -414,26 +416,40 @@ class Agent:
                                 and called_tool != "think"
                                 and not str(called_tool).startswith("transfer_to_")
                             ):
-                                step = "✅"
-                                sample = text.lower()[:50]
-                                for flag in Flag:
-                                    if flag.value in sample:
-                                        step = "❌"
-                                        break
-                                step += f" {format_called_tool(called_tool)}"
-                                if called_tool_timer:
-                                    step += f": {called_tool_timer.done()}"
-                                extra = {"tool": called_tool, "output": text}
-                                try:
+                                result: Any = None
+                                with suppress(JSONDecodeError, TypeError):
                                     result = loads(text)
-                                    if isinstance(result, dict):
-                                        pending_images.extend(
-                                            result[key]
-                                            for key in ("graph_path", "image_path")
-                                            if result.get(key)
-                                        )
-                                except JSONDecodeError, TypeError:
-                                    pass
+                                if isinstance(result, dict):
+                                    pending_images.extend(
+                                        result[key]
+                                        for key in ("graph_path", "image_path")
+                                        if result.get(key)
+                                    )
+                                if isinstance(result, dict) and result.get("timeout"):
+                                    elapsed = (
+                                        called_tool_timer.done()
+                                        if called_tool_timer
+                                        else result.get("timeout_at", "?")
+                                    )
+                                    step = f"🔸 {format_called_tool(called_tool)}: Timeout after {elapsed}"
+                                    extra["tool_ok"] = None  # Timeout: not an error
+                                else:
+                                    step = "✅"
+                                    sample = text.lower()[:50]
+                                    for flag in Flag:
+                                        if flag.value in sample:
+                                            step = "❌"
+                                            break
+                                    step += f" {format_called_tool(called_tool)}"
+                                    if called_tool_timer:
+                                        step += f": {called_tool_timer.done()}"
+                                    extra["tool_ok"] = step.startswith("✅")
+                                if called_tool in tool_block:
+                                    tool_block[called_tool] = step
+                                    step = "\n".join(tool_block.values())
+                                    extra["tool_block"] = True
+                                extra["tool"] = called_tool
+                                extra["output"] = text
                         elif not tool_calls:  # Final result
                             step, done = text, True
                         elif (
@@ -480,11 +496,27 @@ class Agent:
                                     border_style="red",
                                 )
                             )
-                            tools_display = ", ".join(
-                                format_called_tool(t.get("name"))
-                                for t in msg.tool_calls
+                            for t in msg.tool_calls:
+                                name = t.get("name")
+                                if name and not str(name).startswith("transfer_to_"):
+                                    prev = tool_block.get(name, "")
+                                    if not prev or prev[0] in "✅❌🔸":
+                                        tool_block[name] = (
+                                            f"🛠️ {format_called_tool(name)}..."
+                                        )
+                            fallback = next(
+                                (
+                                    format_called_tool(t.get("name"))
+                                    for t in msg.tool_calls
+                                    if t.get("name")
+                                    and not str(t.get("name")).startswith(
+                                        "transfer_to_"
+                                    )
+                                ),
+                                format_called_tool(called_tool or "tool"),
                             )
-                            step = f"🛠️ {tools_display}..."
+                            step = "\n".join(tool_block.values()) or f"🛠️ {fallback}..."
+                            extra["tool_block"] = True
 
                     # Usage
                     if hasattr(msg, "usage_metadata") and msg.usage_metadata:
@@ -516,7 +548,9 @@ class Agent:
                                 f"{swarm.active[thread_id]} -> YIELD: {step_text}"
                             )
                             if extra:
-                                intermediate_step += f" {extra['tool']} {step_timer}"
+                                intermediate_step += (
+                                    f" {extra.get('tool', '')} {step_timer}"
+                                )
                             self.console.print(intermediate_step)
                         yield swarm.active[thread_id], step, False, extra
 
