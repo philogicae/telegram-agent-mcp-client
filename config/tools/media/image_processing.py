@@ -85,8 +85,11 @@ def _desc_path_for(img_path: Path) -> Path:
     return img_path.parent / f"{img_path.stem}_desc.json"
 
 
-def _describe_image(img_path: Path) -> str:
+def _describe_image(img_path: Path, user_prompt: str = "") -> str:
     """Use Gemini to generate a structured JSON description of an image file.
+
+    `user_prompt`, when non-empty, is appended to the base description
+    prompt to steer the description toward what the caller asked for.
 
     Returns the raw JSON string (valid or not) so the caller can decide how
     to handle parse failures. On infrastructure errors, returns an error
@@ -98,10 +101,15 @@ def _describe_image(img_path: Path) -> str:
         data = img_path.read_bytes()
         mime = guess_type(img_path.name)[0] or "image/jpeg"
         data_url = f"data:{mime};base64,{b64encode(data).decode()}"
+        text = (
+            f"{_DESC_PROMPT}\n\nAdditional user request: {user_prompt}"
+            if user_prompt
+            else _DESC_PROMPT
+        )
         message = HumanMessage(
             content=[
                 {"type": "image_url", "image_url": {"url": data_url}},
-                {"type": "text", "text": _DESC_PROMPT},
+                {"type": "text", "text": text},
             ]
         )
         response = _vision_llm.invoke([message])
@@ -212,6 +220,14 @@ def read_images(
             "Works with any local image files.",
         ),
     ],
+    prompt: Annotated[
+        str,
+        Field(
+            description="Optional custom instruction to steer the image description "
+            "(e.g. 'focus on the clothing and colors'). When omitted, the default "
+            "full description is generated. Appended to the base description prompt.",
+        ),
+    ] = "",
 ) -> dict[str, Any]:
     """
     Read one or more image files: returns their file paths and detailed JSON descriptions.
@@ -227,6 +243,9 @@ def read_images(
     If a cached description exists (from non-multimodal processing), it is used.
     Otherwise, the image is analyzed on-the-fly with Gemini and the result is
     cached as a `.json` sidecar file for future use.
+    When a `prompt` is provided, the cache is bypassed and the image is
+    re-described on-the-fly with the custom instruction appended to the base
+    description prompt.
 
     Returns {images: [{image_path, description}], count} on success.
     Individual errors are included per-image without failing the batch.
@@ -242,10 +261,10 @@ def read_images(
 
         desc_path = _desc_path_for(img)
         description = None
-        if desc_path.exists():
+        if desc_path.exists() and not prompt:
             description = desc_path.read_text(encoding="utf-8")
         else:
-            description = _describe_image(img)
+            description = _describe_image(img, prompt)
             # Cache the description as a JSON sidecar for future reads
             parsed = _parse_desc(description)
             if parsed is not None:
