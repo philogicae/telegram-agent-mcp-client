@@ -74,7 +74,7 @@ services:
     container_name: torrent-search-mcp
     image: philogicae/torrent-search-mcp:latest
     pull_policy: always
-    command: torrent-search-mcp --mode sse
+    command: torrent-search-mcp --mode http
     restart: unless-stopped
     ports:
       - 8005:8000

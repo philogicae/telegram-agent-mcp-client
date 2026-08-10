@@ -1,5 +1,5 @@
 {
-  "url": "{ENV:TORRENT_SEARCH_URL}/sse"
+  "url": "{ENV:TORRENT_SEARCH_URL}/mcp"
 }
 /* all found tools: 2
 get_torrent
