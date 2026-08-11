@@ -159,7 +159,7 @@ def parse_structured_output(raw: str | AIMessage, model: type[BaseModel]) -> Bas
     return model.model_validate_json(text)
 
 
-def summarize_and_rephrase(
+async def summarize_and_rephrase(
     state: StateSnapshot, user_msg: str, provider: str | None = LLM_UTILS
 ) -> ReContext:
     """Summarize chat history and rephrase the user message."""
@@ -194,13 +194,15 @@ Rephrased: 'Bob: Download the complete season 1 of Dexter that you found'"""
     )
     llm: Any = LLM.get(provider)
     if provider in SUPPORT_STRUCTURED_OUTPUT:
-        raw_result = llm.with_structured_output(schema=ReContext).invoke(chat_history)
+        raw_result = await llm.with_structured_output(schema=ReContext).ainvoke(
+            chat_history
+        )
     else:
-        raw_result = parse_structured_output(llm.invoke(chat_history), ReContext)
+        raw_result = parse_structured_output(await llm.ainvoke(chat_history), ReContext)
     return cast("ReContext", raw_result)
 
 
-def filter_relevant_memories(
+async def filter_relevant_memories(
     memories: str, context: str, user_msg: str, provider: str | None = LLM_UTILS
 ) -> str:
     """Filter episodic memories for relevance to the current context."""
@@ -229,11 +231,13 @@ Identify and return ONLY the memories that are directly relevant to the user's c
         HumanMessage(f"# User Message\n{user_msg}"),
     ]
     if provider in SUPPORT_STRUCTURED_OUTPUT:
-        raw_result = llm.with_structured_output(schema=FilteredMemories).invoke(
+        raw_result = await llm.with_structured_output(schema=FilteredMemories).ainvoke(
             chat_history
         )
     else:
-        raw_result = parse_structured_output(llm.invoke(chat_history), FilteredMemories)
+        raw_result = parse_structured_output(
+            await llm.ainvoke(chat_history), FilteredMemories
+        )
     result = cast("FilteredMemories", raw_result)
     return (
         "\n".join(result.memories)

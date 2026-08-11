@@ -12,6 +12,7 @@ from time import monotonic
 from typing import Annotated, Any
 from urllib.parse import quote, urlsplit, urlunsplit
 
+import aiofiles
 from aiohttp import BasicAuth, ClientError, ClientSession, ClientTimeout
 from dotenv import load_dotenv
 from langchain.tools import tool
@@ -114,9 +115,11 @@ with suppress(PermissionError):
 
 _SESSIONS_FILE = _SERVER_DIR / "opencode_sessions.jsonl"
 _MAX_CACHED_SESSIONS = int(getenv("OPENCODE_SERVER_MAX_CACHED_SESSIONS", "100"))
+# Serializes file access so concurrent tool calls don't corrupt the JSONL.
+_sessions_lock = asyncio.Lock()
 
 
-def _persist_sessions(sessions: list[dict[str, Any]]) -> None:
+async def _persist_sessions(sessions: list[dict[str, Any]]) -> None:
     """Upsert sessions into the JSONL file, keyed by session id (newest first).
 
     Keeps at most `_MAX_CACHED_SESSIONS` (default 100): older entries are
@@ -125,40 +128,42 @@ def _persist_sessions(sessions: list[dict[str, Any]]) -> None:
     if not sessions:
         return
     now = datetime.now(UTC).isoformat()
-    # Read existing entries into a dict keyed by session id
-    existing: dict[str, dict[str, Any]] = {}
-    if _SESSIONS_FILE.exists():
-        for line in _SESSIONS_FILE.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
+    async with _sessions_lock:
+        # Read existing entries into a dict keyed by session id
+        existing: dict[str, dict[str, Any]] = {}
+        if _SESSIONS_FILE.exists():
+            async with aiofiles.open(_SESSIONS_FILE, encoding="utf-8") as f:
+                async for raw_line in f:
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = loads(line)
+                        if sid := entry.get("id"):
+                            existing[sid] = entry
+                    except JSONDecodeError:
+                        continue
+        # Upsert new sessions
+        for s in sessions:
+            sid = s.get("id")
+            if not sid:
                 continue
-            try:
-                entry = loads(line)
-                if sid := entry.get("id"):
-                    existing[sid] = entry
-            except JSONDecodeError:
-                continue
-    # Upsert new sessions
-    for s in sessions:
-        sid = s.get("id")
-        if not sid:
-            continue
-        entry = dict(s)
-        entry["fetched_at"] = now
-        existing[sid] = entry
+            entry = dict(s)
+            entry["fetched_at"] = now
+            existing[sid] = entry
 
-    # Write back, sorted by created time descending (newest first),
-    # trimmed to the most recent MAX_CACHED_SESSIONS
-    def _sort_key(e: dict[str, Any]) -> int:
-        t = e.get("time") or {}
-        return int(t.get("created") or 0)
+        # Write back, sorted by created time descending (newest first),
+        # trimmed to the most recent MAX_CACHED_SESSIONS
+        def _sort_key(e: dict[str, Any]) -> int:
+            t = e.get("time") or {}
+            return int(t.get("created") or 0)
 
-    ordered = sorted(existing.values(), key=_sort_key, reverse=True)[
-        :_MAX_CACHED_SESSIONS
-    ]
-    with _SESSIONS_FILE.open("w", encoding="utf-8") as f:
-        for entry in ordered:
-            f.write(dumps(entry, ensure_ascii=False) + "\n")
+        ordered = sorted(existing.values(), key=_sort_key, reverse=True)[
+            :_MAX_CACHED_SESSIONS
+        ]
+        async with aiofiles.open(_SESSIONS_FILE, "w", encoding="utf-8") as f:
+            for entry in ordered:
+                await f.write(dumps(entry, ensure_ascii=False) + "\n")
 
 
 # ============================================================
@@ -503,7 +508,7 @@ async def list_dev_sessions(
         return {"error": f"Opencode server error: {e}"}
 
     with suppress(Exception):
-        _persist_sessions(sessions)
+        await _persist_sessions(sessions)
 
     return {"sessions": [_format_session(s) for s in sessions]}
 
@@ -676,7 +681,7 @@ async def init_dev_session(
     with suppress(Exception):
         full = await _client.session(session_id)
         if full:
-            _persist_sessions([full])
+            await _persist_sessions([full])
 
     return _format_run(session_id, message)
 
@@ -733,7 +738,7 @@ async def resume_dev_session(
     with suppress(Exception):
         full = await _client.session(sid)
         if full:
-            _persist_sessions([full])
+            await _persist_sessions([full])
 
     return _format_run(sid, message)
 

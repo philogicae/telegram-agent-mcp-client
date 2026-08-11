@@ -1,12 +1,12 @@
 """Abstract base classes for bot architecture."""
 
 from abc import ABC, abstractmethod
-from asyncio import Event, gather, sleep
+from asyncio import Event, Lock, gather, sleep
 from collections.abc import Awaitable, Callable
 from functools import partial, wraps
 from logging import INFO, WARNING, basicConfig, getLogger
 from logging import Logger as Logging
-from time import time
+from time import monotonic
 from typing import Any, Self
 
 from rich.logging import RichHandler
@@ -92,7 +92,6 @@ class Bot(ABC):
     """Abstract base class for bot implementations."""
 
     core: Any
-    last_call: float = 0
     delay: float = 0.2
     group_msg_trigger: str = "!"
     waiting: str = "💭 I'm thinking..."
@@ -115,6 +114,11 @@ class Bot(ABC):
             self.waiting = waiting
         if retries:
             self.retries = retries
+        # Async rate limiter: enforces a minimum gap between consecutive
+        # Telegram API calls across all chats, but yields to the event loop
+        # while waiting so other handlers can run concurrently.
+        self._api_lock: Lock = Lock()
+        self._last_api_call: float = 0.0
 
     @abstractmethod
     async def initialize(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
@@ -124,11 +128,19 @@ class Bot(ABC):
     async def start(self) -> None:
         pass
 
-    def _called(self) -> None:
-        self.last_call = time()
+    async def _throttle(self) -> None:
+        """Wait if the last API call was too recent, then record the call.
 
-    def _is_free(self) -> bool:
-        return self.last_call + self.delay < time()
+        Uses an async lock so only one task checks/updates the timestamp at a
+        time, but the wait is done with ``await sleep`` which yields to the
+        event loop — other handlers keep running during the gap.
+        """
+        async with self._api_lock:
+            now = monotonic()
+            gap = now - self._last_api_call
+            if gap < self.delay:
+                await sleep(self.delay - gap)
+            self._last_api_call = monotonic()
 
     async def _exec(
         self,
@@ -140,62 +152,57 @@ class Bot(ABC):
         max_retries = self.retries if retries is None else retries
         retry = 0
         while True:
-            if self._is_free():
-                try:
-                    result: Any = await method(*args, **kwargs)
-                    self._called()
-                    return result
-                except Exception as exc:
-                    # Abort immediately on "message to edit not found" —
-                    # retrying is pointless and wastes flood budget.
-                    exc_str = str(exc).lower()
-                    if "message to edit not found" in exc_str:
-                        raise
-                    # Handle Telegram 429 flood-wait: respect retry_after
-                    # instead of blind retrying at the default delay. Cap the
-                    # wait so an absurd retry_after (e.g. 3600s) doesn't block
-                    # the retry loop indefinitely.
-                    retry_after = self._extract_retry_after(exc)
-                    if retry_after and retry_after > 0:
-                        retry += 1
-                        if retry > max_retries:
-                            raise
-                        wait = min(retry_after, _FLOOD_WAIT_CAP)
-                        if wait < retry_after:
-                            getLogger(__name__).warning(
-                                "Telegram flood-wait retry_after=%.0fs capped to %.0fs",
-                                retry_after,
-                                wait,
-                            )
-                        await sleep(wait)
-                        self._called()
-                        continue
-                    # Network errors (DNS failures, connection resets, etc.)
-                    # need exponential backoff — retrying at the default 0.2s
-                    # delay burns through the budget before DNS recovers.
-                    is_network = self._is_network_error(exc)
+            await self._throttle()
+            try:
+                result: Any = await method(*args, **kwargs)
+                return result
+            except Exception as exc:
+                # Abort immediately on "message to edit not found" —
+                # retrying is pointless and wastes flood budget.
+                exc_str = str(exc).lower()
+                if "message to edit not found" in exc_str:
+                    raise
+                # Handle Telegram 429 flood-wait: respect retry_after
+                # instead of blind retrying at the default delay. Cap the
+                # wait so an absurd retry_after (e.g. 3600s) doesn't block
+                # the retry loop indefinitely.
+                retry_after = self._extract_retry_after(exc)
+                if retry_after and retry_after > 0:
                     retry += 1
                     if retry > max_retries:
                         raise
-                    if is_network:
-                        wait = min(
-                            _NETWORK_BACKOFF_BASE * (2 ** (retry - 1)),
-                            _NETWORK_BACKOFF_CAP,
-                        )
+                    wait = min(retry_after, _FLOOD_WAIT_CAP)
+                    if wait < retry_after:
                         getLogger(__name__).warning(
-                            "Network error on %s (attempt %d/%d), "
-                            "retrying in %.1fs: %s",
-                            getattr(method, "__name__", method),
-                            retry,
-                            max_retries,
+                            "Telegram flood-wait retry_after=%.0fs capped to %.0fs",
+                            retry_after,
                             wait,
-                            exc,
                         )
-                    else:
-                        wait = self.delay
                     await sleep(wait)
-            else:
-                await sleep(self.delay)
+                    continue
+                # Network errors (DNS failures, connection resets, etc.)
+                # need exponential backoff — retrying at the default 0.2s
+                # delay burns through the budget before DNS recovers.
+                is_network = self._is_network_error(exc)
+                retry += 1
+                if retry > max_retries:
+                    raise
+                if is_network:
+                    wait = min(
+                        _NETWORK_BACKOFF_BASE * (2 ** (retry - 1)),
+                        _NETWORK_BACKOFF_CAP,
+                    )
+                    getLogger(__name__).warning(
+                        "Network error on %s (attempt %d/%d), retrying in %.1fs: %s",
+                        getattr(method, "__name__", method),
+                        retry,
+                        max_retries,
+                        wait,
+                        exc,
+                    )
+                else:
+                    wait = self.delay
+                await sleep(wait)
 
     @staticmethod
     def _is_network_error(exc: Exception) -> bool:

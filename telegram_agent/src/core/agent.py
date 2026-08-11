@@ -221,7 +221,7 @@ class Agent:
                 recontext_logs = content
             else:
                 mem_timer = Timer()
-                recontext = summarize_and_rephrase(state, content)
+                recontext = await summarize_and_rephrase(state, content)
                 recontext_summary = recontext.summary
                 summary = (
                     f"Chat Summary: {recontext.summary}"
@@ -235,7 +235,7 @@ class Agent:
                         max_tokens=2000,
                     ).get("messages", [])
                     messages.append(HumanMessage("# " + summary))
-                    new_thread_id = f"{thread_id}:{uuid4().hex[:8]}"
+                    new_thread_id = f"{base_thread_id}:{uuid4().hex[:8]}"
                     self.thread_mappings[base_thread_id] = new_thread_id
                     swarm.active[new_thread_id] = swarm.active.pop(thread_id)
                     thread_id = new_thread_id
@@ -262,7 +262,7 @@ class Agent:
                 mem_stats = found_memories["stats"]
                 memories = f"{found_memories['nodes']}{found_memories['edges']}".strip()
                 if memories:
-                    filtered_memories = filter_relevant_memories(
+                    filtered_memories = await filter_relevant_memories(
                         memories, recontext_summary, content
                     )
                     if filtered_memories:
@@ -293,7 +293,7 @@ class Agent:
                 messages.append(HumanMessage(f"[{date}] {content}"))
             config: Any = {
                 "configurable": {"thread_id": thread_id},
-                "max_concurrency": 1,
+                "max_concurrency": 4,
                 "recursion_limit": 100,
             }
             total_agent_calls, total_tool_calls = 0, 0

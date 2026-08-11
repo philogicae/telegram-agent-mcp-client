@@ -342,8 +342,8 @@ class TelegramBot(Bot):
                         )
                 except Exception as exc:
                     logger.warning("Edit failed for msg %s: %s", message.id, exc)
-            if (replace or final) and message.id in self.edit_cache:
-                del self.edit_cache[message.id]
+            if replace or final:
+                self.edit_cache.pop(message.id, None)
         return msg
 
     async def paginated(

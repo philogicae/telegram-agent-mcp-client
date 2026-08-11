@@ -25,11 +25,12 @@ _RECEIVED_DIR = Path(getenv("DATA_DIR", "./data")) / "image_received"
 _RECEIVED_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _save_received_image(img_bytes: bytes) -> str:
+async def _save_received_image(img_bytes: bytes) -> str:
     """Persist a received image to disk and return its path."""
     ts = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
     path = _RECEIVED_DIR / f"img_{ts}.jpg"
-    path.write_bytes(img_bytes)
+    async with aiofiles.open(path, "wb") as f:
+        await f.write(img_bytes)
     return str(path)
 
 
@@ -258,7 +259,7 @@ async def telegram_chat(
                         f"{agent} -> Tool error = {extra.get('tool')}",
                     )
             if not done:
-                await sleep(0.5)  # No need to spam
+                await sleep(0.1)  # No need to spam
             elif extra.get("images"):
                 paths = [p for p in extra["images"] if await aiofiles.os.path.exists(p)]
                 if paths:
@@ -429,7 +430,7 @@ async def telegram_image(instance: AgenticBot, msg: Message) -> None:
         photo = msg.photo[-1]
         file_info = await instance.bot.core.get_file(photo.file_id)
         img_bytes = await instance.bot.core.download_file(file_info.file_path)
-        img_path = _save_received_image(img_bytes)
+        img_path = await _save_received_image(img_bytes)
 
         if is_album:
             # Album: accumulate images, debounce processing
