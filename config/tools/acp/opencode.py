@@ -545,6 +545,42 @@ async def _start_tracker(session_id: str) -> ProgressTracker | None:
     return tracker
 
 
+async def _wait_for_idle(
+    session_id: str, deadline: float, tracker: ProgressTracker | None
+) -> None:
+    """Poll /session/status until the session is idle or the deadline passes."""
+    while monotonic() < deadline:
+        status = (await _client.session_status()) or {}
+        state = (status.get(session_id) or {}).get("type")
+        if state is None or state == "idle":
+            return
+        await asyncio.sleep(_PROGRESS_POLL)
+    if tracker:
+        tracker.set_status("🔸 Status: Timed out (still running)")
+        await tracker.emit()
+    raise TimeoutError
+
+
+async def _wait_for_message(
+    session_id: str, deadline: float, role: str = "assistant"
+) -> dict[str, Any] | None:
+    """Poll /session/{id}/message for the latest message matching `role`.
+
+    If the deadline passes before a matching message appears, the most
+    recent message of any role (if any) is returned as a fallback.
+    """
+    last: dict[str, Any] | None = None
+    while monotonic() < deadline:
+        messages = await _client.messages(session_id, limit=10)
+        if messages:
+            last = messages[-1]
+        for m in reversed(messages):
+            if (m.get("info") or {}).get("role") == role:
+                return m
+        await asyncio.sleep(_PROGRESS_POLL)
+    return last
+
+
 async def _run_with_watcher(
     session_id: str, prompt: str
 ) -> tuple[dict[str, Any], ProgressTracker | None]:
@@ -553,18 +589,27 @@ async def _run_with_watcher(
     Raises TimeoutError when the server does not finish within the configured
     timeout — the caller decides whether to keep or drop the session.
     """
+    start = monotonic()
+    deadline = start + _TIMEOUT
     tracker = await _start_tracker(session_id)
     watcher: asyncio.Task | None = None
     try:
         if tracker:
             watcher = asyncio.create_task(_watch_progress(session_id, tracker))
         try:
-            message = await _client.prompt(session_id, prompt)
+            message = await asyncio.wait_for(
+                _client.prompt(session_id, prompt),
+                timeout=deadline - monotonic(),
+            )
         except TimeoutError:
             if tracker:
                 tracker.set_status("🔸 Status: Timed out (still running)")
                 await tracker.emit()
             raise
+        await _wait_for_idle(session_id, deadline, tracker)
+        newest = await _wait_for_message(session_id, deadline)
+        if newest and (newest.get("info") or {}).get("role") == "assistant":
+            message = newest
     finally:
         if watcher:
             watcher.cancel()
@@ -772,19 +817,8 @@ async def watch_dev_session(
     try:
         if tracker:
             watcher = asyncio.create_task(_watch_progress(sid, tracker))
-        while monotonic() < deadline:
-            status = (await _client.session_status()) or {}
-            state = (status.get(sid) or {}).get("type")
-            if state is None or state == "idle":
-                break  # Run finished (or session never ran): grab latest message
-            await asyncio.sleep(_PROGRESS_POLL)
-        else:
-            if tracker:
-                tracker.set_status("🔸 Status: Timed out (still running)")
-                await tracker.emit()
-            return _timeout_result(sid, _session_url(sid))
-        messages = await _client.messages(sid, limit=1)
-        newest = messages[-1] if messages else None
+        await _wait_for_idle(sid, deadline, tracker)
+        newest = await _wait_for_message(sid, deadline)
         if not newest:
             return {"error": "No messages found for this session"}
         if tracker:
