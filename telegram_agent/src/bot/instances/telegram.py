@@ -52,7 +52,8 @@ def _render_logify(
     response. The waiting marker is only kept inside the block when there
     is no panel to show.
     """
-    tool_logs = [c for c in content if c != waiting] if model_text else list(content)
+    has_panel = bool(model_text or tool_block)
+    tool_logs = [c for c in content if c != waiting] if has_panel else list(content)
     if tool_block:
         tool_logs = [*tool_logs, tool_block]
     rendered = logify(agent, tool_logs)
