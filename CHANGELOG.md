@@ -452,6 +452,30 @@
 
 - opencode.py: `list_sessions` → `list_dev_sessions`, `init_session` → `init_dev_session`, `resume_session` → `resume_dev_session`, `abort_session` → `abort_dev_session`
 - agent_config.example.json: update Opencode Dev prompt, routines, and tools list to reference renamed tools
+- Feat: add optional prompt param to read_images tool
+- Feat: live progress streaming, timeout re-attach, and instant image acknowledgment
+
+- Add `progress.py`: ContextVar-based progress sink + ProgressTracker (rolling
+  status/session-link/logs panel, dedup-on-emit, in-place line updates, HTML-escaped)
+- Add `watch_dev_session` tool: re-attach to a timed-out run, poll until idle,
+  return the final result without sending a new message
+- Stream live progress (tool/reasoning/text/patch parts) to Telegram chat via a
+  parallel watcher polling `/message` every OPENCODE_SERVER_PROGRESS_POLL seconds
+- Treat timeouts as non-error markers (`timeout: true`), not failures; lower the
+  default timeout from 1200 s to 600 s
+- Add `session_url` (base64url-encoded web link) to all session/run result shapes
+- Accumulate per-turn `tool_block` live status across multiple tool calls; switch
+  the handler from `step[0]` emoji sniffing to the `extra["tool_ok"]` flag
+- Fold the live tool block into the tool-logs code block, separate from model text
+- Rework `telegram_image`: send "🔍 I'm analyzing..." immediately on photo/album
+  receipt, then edit in place through waiting → final result; albums send the ack
+  once from the first callback before debounce
+- Refactor opencode config: single `_CONFIG_ERROR` at startup + `@_require_config`
+  decorator, removing repeated `if not _BASE_URL` checks
+- Trim `_persist_sessions` JSONL cache to `_MAX_CACHED_SESSIONS` (default 100)
+- Update Opencode Dev persona and routines: `wait_task` routine, session-link
+  reporting, `watch_dev_session` in the tools list
+- Add env vars: OPENCODE_WEB_URL, OPENCODE_SERVER_PROGRESS_POLL/LINES, OPENCODE_SERVER_MAX_CACHED_SESSIONS
 
 ### 🐛 Bug Fixes
 
@@ -575,6 +599,14 @@
   network here as the source of truth
 - extended.yaml: declare ai-agent network external (defined in compose.yaml) —
   deduplicates the network definition
+- Fix: switch torrent-search-mcp from SSE to HTTP mode, refresh tracker list
+
+- config/tools/media/torrent_search.json: change endpoint from `/sse` to `/mcp`
+- extended.yaml: update torrent-search-mcp command from `--mode sse` to `--mode http`
+- docker-envs/transmission.trackers.txt: refresh tracker list (add archive.torrentonline.cc, obey.torrentonline.cc, whybother.torrentonline.cc, tracker.breizh.pm, tracker.nyaa.net, lucke.fenesisu.moe; remove zer0day.ch, tracker.wildkat.net, tracker.dler.org, tracker.0
+- Fix: keep waiting marker in tool logs when panel is absent (model_text or tool_block)
+
+- \_render_logify: replace `if model_text` condition with `has_panel = bool(model_text or tool_block)` to strip waiting marker when either panel component exists, not just model_text
 
 ### 💼 Changes
 
@@ -583,6 +615,31 @@
 - Config: add LangSmith environment variables and enable n8n runners
 - Merge branch 'graph-rag'
 - Init docs ui
+- Fix concurrent user request handling and event-loop blocking
+
+The bot could not handle multiple users simultaneously due to several
+event-loop blockers and a global rate-limit gate that serialized all
+Telegram API calls across chats.
+
+- utils: convert summarize_and_rephrase and filter_relevant_memories
+  from sync .invoke() to async .ainvoke() — these blocked the entire
+  event loop during ReContext and memory filtering (2-10s freezes)
+- abstract: replace last_call/\_is_free busy-wait with asyncio.Lock +
+  monotonic throttle that yields during the gap, so cross-chat API
+  calls run concurrently instead of serializing on a shared timestamp
+- agent: raise max_concurrency 1→4 so multiple tools in one turn run
+  in parallel; await the now-async utils functions at their call sites
+- agent: fix ReContext thread_id accumulation — derive new thread_id
+  from base_thread_id instead of the resolved one, preventing suffix
+  stacking on repeated compressions
+- handlers: reduce per-step sleep 0.5s→0.1s for faster UI updates;
+  make \_save_received_image async with aiofiles instead of sync
+  write_bytes that blocked the event loop
+- instances: use edit_cache.pop(id, None) instead of check-then-del
+  to avoid KeyError on concurrent access
+- opencode: make \_persist_sessions async with aiofiles and protect
+  the full read-modify-write cycle with asyncio.Lock to prevent
+  lost-update races on the sessions JSONL file
 
 ### 🚜 Refactor
 
@@ -614,6 +671,11 @@
 - Refactor: clarify agent handoff message to prevent delegation behavior
 - Refactor: update CHANGELOG.md format and git-cliff configuration
 - Refactor: consolidate langchain dependencies using extras syntax and add error handling to dev.sh
+- Refactor: extract idle/message polling into reusable helpers, unify timeout handling
+
+- Extract `_wait_for_idle` and `_wait_for_message` from `watch_dev_session` into standalone async helpers
+- `_run_with_watcher`: wrap `_client.prompt` in `asyncio.wait_for` with deadline-based timeout, then poll for idle + newest assistant message to ensure we capture the final result even if the prompt call returns early
+- `watch_dev_session`: replace inline polling loops with `_wait_for_idle` + `_wait_for_message`
 
 ### 📚 Documentation
 
@@ -741,4 +803,5 @@
 
 - CHANGELOG.md: append summaries from commits 7c01b4c through d0bd308 (network-aware retry backoff, image inspection tools, TTS features, web search overhaul, HeroUI v3 migration, Python 3.14 bump, etc.)
 - transmission.config.json: refresh default-trackers list (add zer0day.ch, tracker2.dler.org, tracker.0x7c0.com; remove dead/duplicate entries)
+- Chore: update changelog
 - Chore: update changelog
