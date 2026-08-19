@@ -49,7 +49,7 @@ def get_agent_config(
     only_agents: list[str] | None = None,
     display: bool = True,
     verbose: bool = False,
-) -> AgentConfig:
+) -> AgentConfig | None:
     """Load and configure agents from the configuration file."""
     config_file = Path(CONFIG_DIR) / "agent_config.json"
     if not config_file.exists():
@@ -64,6 +64,8 @@ def get_agent_config(
         if only_agents is None or k in only_agents
     }
     if len(agent_config) < 1:
+        if only_agents:
+            return None
         raise ValueError("No agents found in agent_config.json")
 
     # Parse common settings

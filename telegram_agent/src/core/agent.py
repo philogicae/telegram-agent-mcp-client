@@ -90,26 +90,32 @@ class Agent:
             all_tools, only_agents=["Documentalist"], config_name="Restricted"
         )
         restricted.active = {}
-        restricted.agent = create_swarm(
-            agents=restricted.config.agents,
-            default_active_agent=restricted.config.active,
-        ).compile(checkpointer=checkpointer(dev, persist), debug=debug)
-        if generate_png:
-            graph_file = CONFIG_DIR + "/restricted_graph.png"
-            restricted.agent.get_graph().draw_mermaid_png(output_file_path=graph_file)
-            print(f"Restricted Graph saved to {graph_file}")
+        if restricted.config:
+            restricted.agent = create_swarm(
+                agents=restricted.config.agents,
+                default_active_agent=restricted.config.active,
+            ).compile(checkpointer=checkpointer(dev, persist), debug=debug)
+            if generate_png:
+                graph_file = CONFIG_DIR + "/restricted_graph.png"
+                restricted.agent.get_graph().draw_mermaid_png(
+                    output_file_path=graph_file
+                )
+                print(f"Restricted Graph saved to {graph_file}")
 
         # Create swarm per group from user config
         for group_name, group_config in self.user_config.items():
             if group_name in self.agents:
                 continue
             group_agents = group_config.get("agents") or []
-            swarm = self.agents[group_name] = Dict()
-            swarm.config = get_agent_config(
+            config = get_agent_config(
                 all_tools,
                 only_agents=group_agents or None,
                 config_name=group_name.title(),
             )
+            if not config:
+                continue
+            swarm = self.agents[group_name] = Dict()
+            swarm.config = config
             swarm.active = {}
             swarm.agent = create_swarm(
                 agents=swarm.config.agents,
