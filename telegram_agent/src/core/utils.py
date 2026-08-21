@@ -156,13 +156,13 @@ def parse_structured_output(raw: str | AIMessage, model: type[BaseModel]) -> Bas
     brace_start, brace_end = text.find("{"), text.rfind("}")
     if brace_start != -1 and brace_end > brace_start:
         candidates.append(text[brace_start : brace_end + 1])
-    error: ValidationError | None = None
+    errors: list[ValidationError] = []
     for candidate in candidates or [""]:
         try:
             return model.model_validate_json(candidate)
         except ValidationError as e:
-            error = e
-    raise error or ValidationError.from_exception(model.__name__, [])
+            errors.append(e)
+    raise errors[0]
 
 
 async def summarize_and_rephrase(

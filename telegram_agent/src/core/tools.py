@@ -4,6 +4,7 @@ from importlib.util import module_from_spec, spec_from_file_location
 from inspect import getmembers
 from os import getenv
 from os import name as os_name
+from os.path import expandvars
 from pathlib import Path
 from re import DOTALL, sub
 from re import compile as re_compile
@@ -77,10 +78,60 @@ def _load_server_configs(only_file: str | None = None) -> ServerConfig:
     return servers
 
 
+_ENV_PREFIX_RE = re_compile(r"[A-Za-z_]\w*=")
+
+# Whitelisted config keys per transport: recent langchain-mcp-adapters
+# forwards every key verbatim to the session builder, which rejects
+# unknown kwargs (e.g. metadata like 'description').
+_TRANSPORT_KEYS = {
+    "stdio": {
+        "transport",
+        "command",
+        "args",
+        "env",
+        "cwd",
+        "encoding",
+        "encoding_error_handler",
+        "session_kwargs",
+    },
+    "sse": {
+        "transport",
+        "url",
+        "headers",
+        "timeout",
+        "sse_read_timeout",
+        "session_kwargs",
+        "httpx_client_factory",
+        "auth",
+    },
+    "streamable_http": {
+        "transport",
+        "url",
+        "headers",
+        "timeout",
+        "sse_read_timeout",
+        "terminate_on_close",
+        "session_kwargs",
+        "httpx_client_factory",
+        "auth",
+    },
+    "websocket": {"transport", "url", "session_kwargs"},
+}
+
+
 def _configure_transport(settings: ServerConfig) -> None:
     """Configure transport type based on settings."""
     if command := settings.get("command"):
         parts = command.split()
+        # Hoist env-prefix style commands ("VAR=value cmd args") into env so
+        # the prefix can't be mistaken for the executable; $VARS expanded now
+        raw_env = settings.get("env")
+        env = dict(raw_env) if isinstance(raw_env, dict) else {}
+        while parts and _ENV_PREFIX_RE.match(parts[0]):
+            key, _, value = parts.pop(0).partition("=")
+            env[key] = expandvars(value)
+        if env:
+            settings["env"] = env
         if len(parts) > 1 and not settings.get("args"):
             settings["command"] = parts[0]
             settings["args"] = parts[1:]
@@ -98,6 +149,10 @@ def _configure_transport(settings: ServerConfig) -> None:
     elif url := settings.get("url"):
         settings["url"] = url.rstrip("/")
         settings["transport"] = "sse" if "/sse" in url else "streamable_http"
+    allowed = _TRANSPORT_KEYS.get(settings.get("transport"), set())
+    for key in set(settings) - allowed:
+        _console.print(f"Ignored unsupported server option '{key}'", style="orange3")
+        del settings[key]
 
 
 def _process_server_configs(mcp_servers: ServerConfig) -> ToolConfig:
