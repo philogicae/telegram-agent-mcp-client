@@ -476,6 +476,24 @@
 - Update Opencode Dev persona and routines: `wait_task` routine, session-link
   reporting, `watch_dev_session` in the tools list
 - Add env vars: OPENCODE_WEB_URL, OPENCODE_SERVER_PROGRESS_POLL/LINES, OPENCODE_SERVER_MAX_CACHED_SESSIONS
+- Feat: add Documentalist agent and refresh torrent tracker list
+- Feat: add Opencode Zen free tier support with separate model config
+
+- .env.example: add OPENCODE_FREE_API_MODEL (x-preview-f-free), update default OPENCODE_API_MODEL to deepseek-v4-flash, switch LLM_CHOICE/LLM_UTILS to opencode-free
+- llm: register opencode-free provider pointing to opencode.ai/zen/v1 endpoint with reasoning_effort=low when OPENCODE_FREE_API_MODEL is set
+- Feat: add opencode-alt provider with ox-alpha-free model, switch default LLM from opencode-free
+
+- .env.example: add OPENCODE_API_MODEL_ALT (ox-alpha-free), update LLM_CHOICE/LLM_UTILS from opencode-free to opencode-alt
+- Feat: unify LLM response parsing with reasoning extraction
+
+- add extract_response(): handles <think> tags, Anthropic thinking blocks,
+  DeepSeek reasoning_content kwargs; reuse in agent, tts_adapt,
+  parse_structured_output and media transcription instead of hand-rolled joins
+- show model reasoning as its own console panel, never leak it into replies
+- parse_structured_output: try fenced block then braces fallback
+- agent: guard IndexError on state with fewer than 2 messages in retry loop
+- tools: quote MCP stdio commands via shlex.join, regex-safe config comment update
+- add langchain deepseek extra, drop OPENCODE_FREE_API_MODEL from env example
 
 ### 🐛 Bug Fixes
 
@@ -607,6 +625,11 @@
 - Fix: keep waiting marker in tool logs when panel is absent (model_text or tool_block)
 
 - \_render_logify: replace `if model_text` condition with `has_panel = bool(model_text or tool_block)` to strip waiting marker when either panel component exists, not just model_text
+- Fix: skip swarm creation when no agents match filter, prevent restricted graph crash
+
+- config: return None from get_agent_config when only_agents filter yields zero matches instead of raising ValueError
+- agent: guard restricted swarm creation with `if restricted.config` check to skip when Documentalist is unavailable
+- agent: check config existence before creating user group swarms, continue loop when None
 
 ### 💼 Changes
 
@@ -805,3 +828,7 @@ Telegram API calls across chats.
 - transmission.config.json: refresh default-trackers list (add zer0day.ch, tracker2.dler.org, tracker.0x7c0.com; remove dead/duplicate entries)
 - Chore: update changelog
 - Chore: update changelog
+- Chore: update deps + changelog
+- Chore: update default Gemini model from 3.6-flash to 3.7-flash
+- Chore: update deps
+- Chore: bump version to 2.1.0 and improve MCP transport config handling
