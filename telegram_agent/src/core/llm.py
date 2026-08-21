@@ -128,6 +128,17 @@ class LLM(Singleton):
                     disable_streaming="tool_calling",
                 )
 
+            # Opencode Zen (free models)
+            model_opencode_free = getenv("OPENCODE_FREE_API_MODEL")
+            if api_key_opencode and model_opencode_free:
+                obj.llm["opencode-free"] = ChatOpenAI(
+                    base_url="https://opencode.ai/zen/v1",
+                    api_key=api_key_opencode,
+                    model=model_opencode_free,
+                    reasoning_effort="low",
+                    disable_streaming="tool_calling",
+                )
+
         if not obj.extra:
             # TTS (Text-to-Speech via OpenRouter, OpenAI-compatible audio modality)
             openrouter_api_key: Any = getenv("OPENROUTER_API_KEY")
