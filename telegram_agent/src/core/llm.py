@@ -9,16 +9,16 @@ from dotenv import load_dotenv
 from langchain.chat_models import BaseChatModel
 from langchain.messages import HumanMessage
 from langchain_anthropic import ChatAnthropic
+from langchain_deepseek import ChatDeepSeek
 from langchain_google_genai import (
     ChatGoogleGenerativeAI,
     HarmBlockThreshold,
     HarmCategory,
 )
 from langchain_ollama import ChatOllama
-from langchain_openai import ChatOpenAI
 from openai import AsyncOpenAI
 
-from ..utils import Singleton
+from ..utils import Singleton, extract_response
 
 load_dotenv()
 
@@ -120,7 +120,7 @@ class LLM(Singleton):
             api_key_opencode: Any = getenv("OPENCODE_API_KEY")
             model_opencode = getenv("OPENCODE_API_MODEL")
             if api_key_opencode and model_opencode:
-                obj.llm["opencode"] = ChatOpenAI(
+                obj.llm["opencode"] = ChatDeepSeek(
                     base_url="https://opencode.ai/zen/go/v1",
                     api_key=api_key_opencode,
                     model=model_opencode,
@@ -130,21 +130,10 @@ class LLM(Singleton):
 
             model_opencode_alt = getenv("OPENCODE_API_MODEL_ALT")
             if api_key_opencode and model_opencode_alt:
-                obj.llm["opencode-alt"] = ChatOpenAI(
+                obj.llm["opencode-alt"] = ChatDeepSeek(
                     base_url="https://opencode.ai/zen/go/v1",
                     api_key=api_key_opencode,
                     model=model_opencode_alt,
-                    reasoning_effort="low",
-                    disable_streaming="tool_calling",
-                )
-
-            # Opencode Zen (free models)
-            model_opencode_free = getenv("OPENCODE_FREE_API_MODEL")
-            if api_key_opencode and model_opencode_free:
-                obj.llm["opencode-free"] = ChatOpenAI(
-                    base_url="https://opencode.ai/zen/v1",
-                    api_key=api_key_opencode,
-                    model=model_opencode_free,
                     reasoning_effort="low",
                     disable_streaming="tool_calling",
                 )
@@ -206,15 +195,8 @@ class LLM(Singleton):
         try:
             llm = LLM.get(LLM_UTILS)
             response = await llm.ainvoke([HumanMessage(content=prompt)])
-            content = response.content
-            if isinstance(content, list):
-                content = " ".join(
-                    part["text"]
-                    for part in content
-                    if isinstance(part, dict) and "text" in part
-                )
-            adapted = content.strip()
-            return adapted or text
+            adapted, _ = extract_response(response)
+            return adapted.strip() or text
         except Exception:
             getLogger(__name__).warning("TTS adaptation failed", exc_info=True)
             return text

@@ -16,7 +16,7 @@ dependencies = [
     "langchain-core",
     "langchain-mcp-adapters",
     "mcp>=1.28.0,<2.0.0",
-    "langchain[google-genai,anthropic,ollama,openai]",
+    "langchain[google-genai,anthropic,openai,ollama,deepseek]",
     "langgraph",
     "langgraph-checkpoint-sqlite",
     "langgraph-swarm",

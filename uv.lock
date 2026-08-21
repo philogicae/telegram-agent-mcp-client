@@ -1176,6 +1176,9 @@ wheels = [
 anthropic = [
     { name = "langchain-anthropic" },
 ]
+deepseek = [
+    { name = "langchain-deepseek" },
+]
 google-genai = [
     { name = "langchain-google-genai" },
 ]
@@ -1219,6 +1222,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/97/88/ebc98df187c525d729725ab39759337c56d5d2803423632376aa35bde899/langchain_core-1.6.0.tar.gz", hash = "sha256:dc72e36678ed26683ec0ad8829b44011fba461d10f9b31dbd9110215e5ec2333", size = 992493, upload-time = "2026-08-19T15:55:40.642Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/84/4c/508a90b9d2e3bd7738fd93cb2ac2178ce734662c75e69b3b81c445f1b360/langchain_core-1.6.0-py3-none-any.whl", hash = "sha256:d8bb924cd413955d9d3192ccced140407427c3ff51e50ffb941222648da92cb2", size = 570006, upload-time = "2026-08-19T15:55:38.935Z" },
+]
+
+[[package]]
+name = "langchain-deepseek"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "langchain-core" },
+    { name = "langchain-openai" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/15/f4/200792013d86406aa02aba8d1b536f8877a832372702189aef0c8c7a8329/langchain_deepseek-1.1.0.tar.gz", hash = "sha256:5ec8128cabae3d71366e2f297dea2153649be317a4be7f135cfcad1160523bf6", size = 138078, upload-time = "2026-06-03T19:07:11.887Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8c/1a/d18b7f985c35c635503a6cd426161933ffc7785f228d92447c63b026299a/langchain_deepseek-1.1.0-py3-none-any.whl", hash = "sha256:14813cb413a97a5cce95118da253cfd64dce50537b7381b7c5d0ecf11d2a7032", size = 10061, upload-time = "2026-06-03T19:07:11.04Z" },
 ]
 
 [[package]]
@@ -1810,7 +1826,7 @@ wheels = [
 
 [[package]]
 name = "posthog"
-version = "7.40.0"
+version = "7.42.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "backoff" },
@@ -1818,9 +1834,9 @@ dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ed/9d/03a048bbe8bb354f90fcbc5aad3ac65e0be25f937639aedde478e868850a/posthog-7.40.0.tar.gz", hash = "sha256:5de2b33fdf4410be5d008a7ab451be297ca5d2a660df1e50d765ba914d44de6e", size = 462509, upload-time = "2026-08-21T12:06:11.724Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/79/97/32cc0a72d7896cc2d27d442c75c9d24cc77d0140be9f5e98df7f4ce98f6a/posthog-7.42.0.tar.gz", hash = "sha256:c7e9297446208d413c3071348f101f4c05e32fba4228ac0a85e9d0014c2a274e", size = 469662, upload-time = "2026-08-21T12:57:15.05Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e3/21/74602143d3f9a062afe11a4f2d962fbf2df6ed50d7165989be0eb372360f/posthog-7.40.0-py3-none-any.whl", hash = "sha256:f3465daa4ecad1233d831b9780865270ddac6dac13e1677edd3e7fa8c38e4414", size = 549583, upload-time = "2026-08-21T12:06:09.864Z" },
+    { url = "https://files.pythonhosted.org/packages/31/f0/46e28b947a19c992ad7289931d3197358cfdf4980b33317b5e7cf9c24abe/posthog-7.42.0-py3-none-any.whl", hash = "sha256:6429c9a4145572a8f54ab00330bbfe987340025d3a464212505be814b2b0950d", size = 559119, upload-time = "2026-08-21T12:57:13.299Z" },
 ]
 
 [[package]]
@@ -2472,7 +2488,7 @@ dependencies = [
     { name = "aiohttp" },
     { name = "aiosqlite" },
     { name = "graphiti-core", extra = ["google-genai"] },
-    { name = "langchain", extra = ["anthropic", "google-genai", "ollama", "openai"] },
+    { name = "langchain", extra = ["anthropic", "deepseek", "google-genai", "ollama", "openai"] },
     { name = "langchain-core" },
     { name = "langchain-mcp-adapters" },
     { name = "langgraph" },
@@ -2505,7 +2521,7 @@ requires-dist = [
     { name = "aiosqlite" },
     { name = "graphiti-core", extras = ["google-genai"] },
     { name = "langchain" },
-    { name = "langchain", extras = ["google-genai", "anthropic", "ollama", "openai"] },
+    { name = "langchain", extras = ["google-genai", "anthropic", "openai", "ollama", "deepseek"] },
     { name = "langchain-core" },
     { name = "langchain-mcp-adapters" },
     { name = "langgraph" },

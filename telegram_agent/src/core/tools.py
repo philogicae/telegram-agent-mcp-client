@@ -7,6 +7,7 @@ from os import name as os_name
 from pathlib import Path
 from re import DOTALL, sub
 from re import compile as re_compile
+from shlex import join as shlex_join
 from typing import Any
 
 from dotenv import load_dotenv
@@ -92,7 +93,7 @@ def _configure_transport(settings: ServerConfig) -> None:
             settings["command"] = "sh"
             settings["args"] = [
                 "-c",
-                f"{original_command} {' '.join(original_args)} 2>/dev/null",
+                shlex_join([original_command, *original_args]) + " 2>/dev/null",
             ]
     elif url := settings.get("url"):
         settings["url"] = url.rstrip("/")
@@ -211,7 +212,9 @@ def _update_tools_comment(server: str, tool_names: list[str]) -> None:
         if "all found tools:" in content:
             # Replace existing comment - use a more precise pattern
             pattern = re_compile(tools_comment_pattern, DOTALL)
-            content = pattern.sub(new_comment, content)
+            # Use a callable replacement: tool names may contain '\' which
+            # re.sub would otherwise interpret as escape sequences
+            content = pattern.sub(lambda _: new_comment, content)
         else:
             # Add comment at the end
             content = content.rstrip() + f"\n{new_comment}\n"

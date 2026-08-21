@@ -24,8 +24,9 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.types import StateSnapshot
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
+from ..utils import extract_response
 from .llm import LLM, LLM_UTILS, SUPPORT_STRUCTURED_OUTPUT
 
 
@@ -142,21 +143,26 @@ def append_structured_output(model: type[BaseModel]) -> str:
 
 def parse_structured_output(raw: str | AIMessage, model: type[BaseModel]) -> BaseModel:
     """Parse a JSON string from an LLM output into the given Pydantic model."""
-    text = raw.strip() if isinstance(raw, str) else raw.text.strip()
+    text, _ = extract_response(raw)
+    candidates: list[str] = []
     code_block = text.find("```")
     if code_block != -1:
         end = text.find("```", code_block + 3)
         if end != -1:
-            text = text[code_block + 3 : end].strip()
-            if text.lower().startswith("json"):
-                text = text[4:].strip()
-    else:
-        brace_start = text.find("{")
-        if brace_start != -1:
-            brace_end = text.rfind("}")
-            if brace_end > brace_start:
-                text = text[brace_start : brace_end + 1]
-    return model.model_validate_json(text)
+            fenced = text[code_block + 3 : end].strip()
+            if fenced.lower().startswith("json"):
+                fenced = fenced[4:].strip()
+            candidates.append(fenced)
+    brace_start, brace_end = text.find("{"), text.rfind("}")
+    if brace_start != -1 and brace_end > brace_start:
+        candidates.append(text[brace_start : brace_end + 1])
+    error: ValidationError | None = None
+    for candidate in candidates or [""]:
+        try:
+            return model.model_validate_json(candidate)
+        except ValidationError as e:
+            error = e
+    raise error or ValidationError.from_exception(model.__name__, [])
 
 
 async def summarize_and_rephrase(

@@ -16,6 +16,7 @@ from telebot.types import InputFile, InputMediaPhoto, Message
 
 from ...core.llm import LLM, LLM_CHOICE, LLM_UTILS
 from ...core.progress import reset_progress_sink, set_progress_sink
+from ...utils import extract_response
 from ..abstract import AgenticBot, handler
 from ..utils import str_size, unpack_user
 
@@ -92,14 +93,7 @@ async def _media_to_text(media: list[dict], context: str = "") -> str:
         prompt += f"\n\nUser's message for context: {context}"
     parts = [{"type": "text", "text": prompt}, *media]
     response = await LLM.get("gemini-small").ainvoke([HumanMessage(content=parts)])
-    content = response.content
-    if isinstance(content, list):
-        content = " ".join(
-            part["text"]
-            for part in content
-            if isinstance(part, dict) and "text" in part
-        )
-    return content.strip()
+    return extract_response(response)[0].strip()
 
 
 def _make_progress_sink(instance: AgenticBot, reply: Message) -> Any:

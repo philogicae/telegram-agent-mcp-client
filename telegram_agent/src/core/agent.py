@@ -23,7 +23,7 @@ from rich.markup import escape
 from rich.panel import Panel
 from telebot.types import Message as TelegramMessage
 
-from ..utils import Timer
+from ..utils import Timer, extract_response
 from .config import get_agent_config
 from .graphiti import GraphRAG
 from .tools import get_tools
@@ -337,15 +337,15 @@ class Agent:
                         continue
 
                     # Content
-                    text: Any = None
-                    if isinstance(msg.content, str):
-                        text = msg.content.strip()
-                    elif isinstance(msg.content, list):
-                        for item in msg.content:
-                            if isinstance(item, str):
-                                text = item.strip()
-                            elif isinstance(item, dict) and "text" in item:
-                                text = item["text"].strip()
+                    text, reasoning = extract_response(msg)
+                    if reasoning:
+                        self.console.print(
+                            Panel(
+                                escape(reasoning),
+                                title=f"🧠 {swarm.active[thread_id]} Reasoning",
+                                border_style="grey50",
+                            )
+                        )
 
                     # Tools
                     tool_calls: Any = None
@@ -576,13 +576,16 @@ class Agent:
                     retry += 1
                     forced_messages = []
                     end_date = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
-                    state_values = self.state(swarm, thread_id).values
-                    if not state_values.get("messages"):
-                        state_values["messages"] = []
-                    last_messages = state_values["messages"]
-                    before_last_msg = last_messages[-2]
+                    last_messages = self.state(swarm, thread_id).values.get(
+                        "messages", []
+                    )
+                    # Guard: state may hold <2 messages on early failure
+                    before_last_msg = (
+                        last_messages[-2] if len(last_messages) >= 2 else None
+                    )
                     if (
-                        before_last_msg.type == "tool"
+                        before_last_msg is not None
+                        and before_last_msg.type == "tool"
                         and before_last_msg.name.startswith("transfer_to_")
                         and (not step or len(step) < 50)
                     ):  # Avoid stop after transfer
