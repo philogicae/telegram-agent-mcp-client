@@ -128,6 +128,16 @@ class LLM(Singleton):
                     disable_streaming="tool_calling",
                 )
 
+            model_opencode_alt = getenv("OPENCODE_API_MODEL_ALT")
+            if api_key_opencode and model_opencode_alt:
+                obj.llm["opencode-alt"] = ChatOpenAI(
+                    base_url="https://opencode.ai/zen/go/v1",
+                    api_key=api_key_opencode,
+                    model=model_opencode_alt,
+                    reasoning_effort="low",
+                    disable_streaming="tool_calling",
+                )
+
             # Opencode Zen (free models)
             model_opencode_free = getenv("OPENCODE_FREE_API_MODEL")
             if api_key_opencode and model_opencode_free:
