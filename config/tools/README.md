@@ -65,11 +65,7 @@ Runs a local command (e.g., `npx`, `python`, `docker`) to start the MCP server.
 ```json
 {
   "command": "npx",
-  "args": [
-    "-y",
-    "@modelcontextprotocol/server-filesystem",
-    "/home/user/workspace"
-  ],
+  "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/workspace"],
   "env": {
     "NODE_ENV": "production"
   }

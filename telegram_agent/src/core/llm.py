@@ -3,6 +3,7 @@
 import re
 from logging import getLogger
 from os import getenv
+from time import monotonic
 from typing import Any
 
 from dotenv import load_dotenv
@@ -22,20 +23,136 @@ from ..utils import Singleton, extract_response
 
 load_dotenv()
 
-LLM_CHOICE = getenv("LLM_CHOICE", "opencode")
-LLM_UTILS = getenv("LLM_UTILS") or LLM_CHOICE
-SUPPORT_STRUCTURED_OUTPUT = {
-    "ollama",
-    "gemini",
-    "gemini-small",
-    "fireworks",
+
+def _order(key: str, default: str) -> list[str]:
+    """Parse a comma-separated provider run order from env."""
+    return [p.strip() for p in getenv(key, default).split(",") if p.strip()]
+
+
+LLM_ORDER = _order("LLM_ORDER", "opencode-alt,opencode,gemini,gemini-small")
+LLM_ORDER_FAST = _order("LLM_ORDER_FAST", "opencode-alt,opencode,gemini-small")
+
+
+# ponytail: static capability table parsed from env at import; no runtime probing
+def _split(spec: str | None) -> tuple[str, frozenset[str]]:
+    """Split '<model>|<cap1>+<cap2>' into model name and capability set."""
+    if not spec:
+        return "", frozenset()
+    model, _, caps = spec.partition("|")
+    return model, frozenset(caps.split("+")) - {""}
+
+
+_MODEL_ENVS: dict[str, str] = {
+    "OLLAMA_API_MODEL": "ollama",
+    "GEMINI_API_MODEL": "gemini",
+    "GEMINI_API_MODEL_SMALL": "gemini-small",
+    "FIREWORKS_API_MODEL": "fireworks",
+    "OPENCODE_API_MODEL": "opencode",
+    "OPENCODE_API_MODEL_ALT": "opencode-alt",
+    "OPENROUTER_TTS_MODEL": "openrouter-tts",
 }
+SPECS: dict[str, tuple[str, frozenset[str]]] = {
+    provider: _split(getenv(key)) for key, provider in _MODEL_ENVS.items()
+}
+CAPABILITIES: dict[str, frozenset[str]] = {
+    provider: caps for provider, (_, caps) in SPECS.items()
+}
+
+
+def supports(provider: str | None, *caps: str) -> bool:
+    """Check whether a provider declares all the given capabilities."""
+    return set(caps) <= CAPABILITIES.get(
+        provider or (LLM_ORDER[0] if LLM_ORDER else ""), frozenset()
+    )
+
+
+_jail: dict[str, dict[str, float]] = {}
+
+
+def _env_num(name: str, default: float) -> float:
+    """Read a numeric env var, falling back to `default` on garbage."""
+    raw = getenv(name)
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        getLogger(__name__).warning("Invalid %s=%r — using %s", name, raw, default)
+        return default
+
+
+def mark_alive(provider: str) -> None:
+    """Clear failure history after a successful call."""
+    _jail.pop(provider, None)
+
+
+def mark_dead(provider: str, cooldown: float | None = None) -> None:
+    """Count a failed call against `provider`; jail it after enough strikes.
+
+    Each strike parks the provider out of selection for LLM_DEAD_COOLDOWN
+    seconds (default 300). After LLM_JAIL_STRIKES consecutive strikes
+    (default 3) it is jailed for LLM_JAIL_HOURS hours (default 24) until
+    release. mark_alive() clears the count on any successful call.
+    """
+    rec = _jail.setdefault(provider, {"fails": 0.0, "until": 0.0})
+    rec["fails"] += 1
+    if rec["fails"] >= _env_num("LLM_JAIL_STRIKES", 3):
+        hours = _env_num("LLM_JAIL_HOURS", 24)
+        rec["until"], rec["fails"] = monotonic() + hours * 3600, 0.0
+        getLogger(__name__).warning("LLM %s jailed for %.1fh", provider, hours)
+        return
+    rec["until"] = monotonic() + (
+        cooldown if cooldown is not None else _env_num("LLM_DEAD_COOLDOWN", 300)
+    )
+
+
+def _alive(provider: str) -> bool:
+    return _jail.get(provider, {}).get("until", 0.0) <= monotonic()
+
+
+def can_read(provider: str | None = None) -> bool:
+    """Provider accepts text input/output."""
+    return supports(provider, "text")
+
+
+def can_docs(provider: str | None = None) -> bool:
+    """Provider accepts documents (PDF and similar) as input."""
+    return supports(provider, "pdf")
+
+
+def can_struct(provider: str | None = None) -> bool:
+    """Provider natively outputs structured JSON."""
+    return supports(provider, "structured")
+
+
+def can_see(provider: str | None = None) -> bool:
+    """Provider accepts image input."""
+    return supports(provider, "vision")
+
+
+def can_listen(provider: str | None = None) -> bool:
+    """Provider accepts audio input (speech-to-text)."""
+    return supports(provider, "stt")
+
+
+def can_speak(provider: str | None = None) -> bool:
+    """Provider outputs speech (text-to-speech)."""
+    return supports(provider, "tts")
+
+
+def can_watch(provider: str | None = None) -> bool:
+    """Provider accepts video input."""
+    return supports(provider, "video")
+
+
+def can_draw(provider: str | None = None) -> bool:
+    """Provider generates images."""
+    return supports(provider, "image")
 
 
 class LLM(Singleton):
     """Singleton for managing LLM providers."""
 
-    provider: Any
     llm: dict[str, BaseChatModel]
     extra: dict[str, Any]
 
@@ -43,18 +160,45 @@ class LLM(Singleton):
         if hasattr(self, "_initialized"):
             return
         self._initialized = True
-        self.provider = LLM_CHOICE
         self.llm = {}
         self.extra = {}
 
     @staticmethod
+    def pick(*caps: str, fast: bool = False) -> str | None:
+        """Resolve the run order to a provider name, else None.
+
+        First configured provider wins; with caps, first configured provider
+        declaring them all (fast list falls back to main list, then to any
+        aux endpoint). Providers parked by mark_dead() sort last, so a dead
+        key/model fails over to the next candidate instead of breaking calls.
+        """
+        obj = LLM()
+        if not obj.llm:
+            LLM.get()
+        seen: list[str] = []
+        for order in [LLM_ORDER_FAST, LLM_ORDER] if fast else [LLM_ORDER]:
+            seen += [p for p in order if p in obj.llm and p not in seen]
+        capable = [p for p in seen if not caps or supports(p, *caps)]
+        if caps:
+            configured = obj.llm.keys() | obj.extra.keys()
+            capable += [
+                p
+                for p in CAPABILITIES
+                if p not in capable and p in configured and supports(p, *caps)
+            ]
+        if not capable:
+            return None
+        # Alive providers first; jailed/cooled-down ones only tried if alone.
+        return min(capable, key=lambda p: not _alive(p))
+
+    @staticmethod
     def get(provider: str | None = None) -> BaseChatModel:
-        """Get the LLM for the specified provider."""
+        """Get the LLM for the specified provider (default: head of LLM_ORDER)."""
         obj = LLM()
         if not obj.llm:
             # Ollama
             base_url_ollama = getenv("OLLAMA_API_BASE")
-            model_ollama = getenv("OLLAMA_API_MODEL")
+            model_ollama = SPECS["ollama"][0]
             if base_url_ollama and model_ollama:
                 obj.llm["ollama"] = ChatOllama(  # Local
                     base_url=base_url_ollama,
@@ -71,8 +215,8 @@ class LLM(Singleton):
 
             # Google Gemini
             api_key_gemini: Any = getenv("GEMINI_API_KEY")
-            model_gemini = getenv("GEMINI_API_MODEL")
-            model_gemini_small = getenv("GEMINI_API_MODEL_SMALL")
+            model_gemini = SPECS["gemini"][0]
+            model_gemini_small = SPECS["gemini-small"][0]
             if api_key_gemini and model_gemini:
                 common: dict[str, Any] = {
                     "disable_streaming": "tool_calling",
@@ -106,7 +250,7 @@ class LLM(Singleton):
 
             # Fire Pass
             api_key_fireworks: Any = getenv("FIREWORKS_API_KEY")
-            model_fireworks = getenv("FIREWORKS_API_MODEL")
+            model_fireworks = SPECS["fireworks"][0]
             if api_key_fireworks and model_fireworks:
                 obj.llm["fireworks"] = ChatAnthropic(
                     base_url="https://api.fireworks.ai/inference",
@@ -118,7 +262,7 @@ class LLM(Singleton):
 
             # Opencode
             api_key_opencode: Any = getenv("OPENCODE_API_KEY")
-            model_opencode = getenv("OPENCODE_API_MODEL")
+            model_opencode = SPECS["opencode"][0]
             if api_key_opencode and model_opencode:
                 obj.llm["opencode"] = ChatDeepSeek(
                     base_url="https://opencode.ai/zen/go/v1",
@@ -128,7 +272,7 @@ class LLM(Singleton):
                     disable_streaming="tool_calling",
                 )
 
-            model_opencode_alt = getenv("OPENCODE_API_MODEL_ALT")
+            model_opencode_alt = SPECS["opencode-alt"][0]
             if api_key_opencode and model_opencode_alt:
                 obj.llm["opencode-alt"] = ChatDeepSeek(
                     base_url="https://opencode.ai/zen/go/v1",
@@ -142,13 +286,13 @@ class LLM(Singleton):
             # TTS (Text-to-Speech via OpenRouter, OpenAI-compatible audio modality)
             openrouter_api_key: Any = getenv("OPENROUTER_API_KEY")
             if openrouter_api_key:
-                obj.extra["tts"] = AsyncOpenAI(
+                obj.extra["openrouter-tts"] = AsyncOpenAI(
                     base_url="https://openrouter.ai/api/v1",
                     api_key=openrouter_api_key,
                 ).audio.speech
 
-        chosen_provider: str = provider or obj.provider
-        llm: BaseChatModel | None = obj.llm.get(chosen_provider)
+        chosen_provider: str | None = provider or LLM.pick()
+        llm: BaseChatModel | None = obj.llm.get(chosen_provider or "")
         if llm:
             return llm
         raise ValueError(f"LLM {chosen_provider} not found")
@@ -193,7 +337,7 @@ class LLM(Singleton):
             f"{text}"
         )
         try:
-            llm = LLM.get(LLM_UTILS)
+            llm = LLM.get(LLM.pick(fast=True))
             response = await llm.ainvoke([HumanMessage(content=prompt)])
             adapted, _ = extract_response(response)
             return adapted.strip() or text
@@ -203,15 +347,15 @@ class LLM(Singleton):
 
     @staticmethod
     async def tts(text: str) -> bytes | None:
-        """Generate speech audio bytes from text using the TTS LLM."""
+        """Generate speech audio bytes from text using the TTS endpoint."""
         try:
-            openrouter_tts_model = getenv(
-                "OPENROUTER_TTS_MODEL", "x-ai/grok-voice-tts-1.0"
+            tts_client = LLM().extra.get("openrouter-tts")
+            if not tts_client:
+                return None
+            openrouter_tts_model = (
+                SPECS["openrouter-tts"][0] or "x-ai/grok-voice-tts-1.0"
             )
             openrouter_tts_voice = getenv("OPENROUTER_TTS_VOICE", "eve")
-            tts = LLM().extra.get("tts")
-            if not tts:
-                return None
             # Strip emotion tags (e.g. [excited], [smiles]) from the text
             # so the TTS model never reads them aloud. The detected emotions
             # are passed through the instructions parameter instead.
@@ -242,7 +386,7 @@ class LLM(Singleton):
                     openrouter_tts_speed,
                 )
                 openrouter_tts_speed = max(0.25, min(4.0, openrouter_tts_speed))
-            response = await tts.create(
+            response = await tts_client.create(
                 input=clean_text,
                 model=openrouter_tts_model,
                 voice=openrouter_tts_voice,

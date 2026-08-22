@@ -61,3 +61,12 @@ else
 		exit 1
 	fi
 fi
+
+# ---------------------------------------------------------------------------
+# Markdown / JSON checks (config)
+# ---------------------------------------------------------------------------
+
+MISC_DIRS=("./config")
+
+echo "==> Formatting markdown and JSON files"
+npx --yes prettier --write --print-width 200 --log-level warn "${MISC_DIRS[*]/%//**/*.{md,json}}" ./*.md

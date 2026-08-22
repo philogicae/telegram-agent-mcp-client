@@ -27,7 +27,7 @@ from langgraph.types import StateSnapshot
 from pydantic import BaseModel, Field, ValidationError
 
 from ..utils import extract_response
-from .llm import LLM, LLM_UTILS, SUPPORT_STRUCTURED_OUTPUT
+from .llm import LLM, can_struct, mark_alive, mark_dead
 
 
 class Flag(Enum):
@@ -165,8 +165,55 @@ def parse_structured_output(raw: str | AIMessage, model: type[BaseModel]) -> Bas
     raise errors[0]
 
 
+async def run_schema(
+    messages: list[Any], schema: type[BaseModel], provider: str | None = None
+) -> BaseModel:
+    """Complete messages into `schema`, failing over across providers.
+
+    Native structured output when the picked provider supports it; a JSON
+    schema prompt + robust parse otherwise. Failures immediately fall back
+    to the next candidate: each error counts a strike via mark_dead() and
+    the retry re-picks, skipping cooled-down/jailed providers until every
+    capable candidate was tried.
+    """
+    err: Exception | None = None
+    tried: set[str] = set()
+    while True:
+        picked = provider or LLM.pick("structured", fast=True) or LLM.pick(fast=True)
+        provider = None  # force a fresh pick on retry
+        if not picked or picked in tried:
+            break
+        tried.add(picked)
+        try:
+            llm: Any = LLM.get(picked)
+            if can_struct(picked):
+                result = await llm.with_structured_output(schema=schema).ainvoke(
+                    messages
+                )
+            else:
+                first, rest = messages[0], messages[1:]
+                if isinstance(first.content, str):
+                    first = HumanMessage(
+                        first.content + append_structured_output(schema)
+                    )
+                else:
+                    rest, first = (
+                        [first, *rest],
+                        SystemMessage(append_structured_output(schema).strip()),
+                    )
+                result = parse_structured_output(
+                    await llm.ainvoke([first, *rest]), schema
+                )
+            mark_alive(picked)
+            return result
+        except Exception as e:
+            err = e
+            mark_dead(picked)
+    raise RuntimeError(f"No LLM provider available: {err}") from err
+
+
 async def summarize_and_rephrase(
-    state: StateSnapshot, user_msg: str, provider: str | None = LLM_UTILS
+    state: StateSnapshot, user_msg: str, provider: str | None = None
 ) -> ReContext:
     """Summarize chat history and rephrase the user message."""
     chat_history: list[Any] = []
@@ -189,30 +236,17 @@ async def summarize_and_rephrase(
 History: Bob asked to find Dexter S01E01. Agent only found the complete season.
 Input: 'Bob: Take it'
 Rephrased: 'Bob: Download the complete season 1 of Dexter that you found'"""
-                + (
-                    append_structured_output(ReContext)
-                    if provider not in SUPPORT_STRUCTURED_OUTPUT
-                    else ""
-                )
             ),
             HumanMessage(f"# User Message\n{user_msg}"),
         ]
     )
-    llm: Any = LLM.get(provider)
-    if provider in SUPPORT_STRUCTURED_OUTPUT:
-        raw_result = await llm.with_structured_output(schema=ReContext).ainvoke(
-            chat_history
-        )
-    else:
-        raw_result = parse_structured_output(await llm.ainvoke(chat_history), ReContext)
-    return cast("ReContext", raw_result)
+    return cast("ReContext", await run_schema(chat_history, ReContext, provider))
 
 
 async def filter_relevant_memories(
-    memories: str, context: str, user_msg: str, provider: str | None = LLM_UTILS
+    memories: str, context: str, user_msg: str, provider: str | None = None
 ) -> str:
     """Filter episodic memories for relevance to the current context."""
-    llm: Any = LLM.get(provider)
     chat_history: list[Any] = [
         SystemMessage(
             f"""Analyze the provided episodic memories in relation to the current context and user message.
@@ -228,23 +262,13 @@ Identify and return ONLY the memories that are directly relevant to the user's c
 
 # Context
 {context}"""
-            + (
-                append_structured_output(FilteredMemories)
-                if provider not in SUPPORT_STRUCTURED_OUTPUT
-                else ""
-            )
         ),
         HumanMessage(f"# User Message\n{user_msg}"),
     ]
-    if provider in SUPPORT_STRUCTURED_OUTPUT:
-        raw_result = await llm.with_structured_output(schema=FilteredMemories).ainvoke(
-            chat_history
-        )
-    else:
-        raw_result = parse_structured_output(
-            await llm.ainvoke(chat_history), FilteredMemories
-        )
-    result = cast("FilteredMemories", raw_result)
+    result = cast(
+        "FilteredMemories",
+        await run_schema(chat_history, FilteredMemories, provider),
+    )
     return (
         "\n".join(result.memories)
         if hasattr(result, "memories")

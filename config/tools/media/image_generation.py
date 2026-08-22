@@ -22,7 +22,9 @@ from pydantic import Field
 load_dotenv()
 
 _API_KEY = getenv("GEMINI_API_KEY", "")
-_MODEL = getenv("GEMINI_API_IMAGE_MODEL", "gemini-3.1-flash-image")
+# ponytail: local '<model>|<caps>' split; core.llm.SPECS not importable from config tools
+_model_spec = getenv("GEMINI_API_IMAGE_MODEL", "")
+_MODEL = _model_spec.partition("|")[0] or "gemini-3.1-flash-lite-image"
 
 _DATA_DIR = Path(getenv("DATA_DIR", "./data")) / "image_generation"
 _DATA_DIR.mkdir(parents=True, exist_ok=True)

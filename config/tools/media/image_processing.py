@@ -20,7 +20,9 @@ from pydantic import Field
 load_dotenv()
 
 _API_KEY = getenv("GEMINI_API_KEY", "")
-_MODEL_SMALL = getenv("GEMINI_API_MODEL_SMALL", "gemini-2.5-flash")
+# ponytail: local '<model>|<caps>' split; core.llm.SPECS not importable from config tools
+_model_small_spec = getenv("GEMINI_API_MODEL_SMALL", "")
+_MODEL_SMALL = _model_small_spec.partition("|")[0] or "gemini-3.5-flash-lite"
 
 _DATA_DIR = Path(getenv("DATA_DIR", "./data"))
 _IMAGE_DIRS = {

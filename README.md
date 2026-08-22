@@ -12,7 +12,7 @@ A multi-agent Telegram bot built on [LangGraph Swarm](https://github.com/langcha
 
 - **Multi-agent swarm** — coordinator hands off to specialized agents via LangGraph handoff tools; agents and tools declared in `config/agent_config.json`
 - **MCP + native tools** — discovered recursively from `config/tools/`: MCP servers as `.json` (stdio or HTTP/SSE), native Python tools as `.py` `@tool` functions — see [config/tools/README.md](config/tools/README.md)
-- **Multimodal** — text, voice (transcribed or passed as audio to multimodal models), images (inline for multimodal models, or described on-the-fly with Gemini vision and persisted to disk so context survives across sessions)
+- **Multimodal** — text, voice (transcribed or passed as audio to models with `stt`), images (inline for `vision`-capable models, or described on-the-fly by the first capable fallback provider and persisted to disk so context survives across sessions)
 - **TTS replies** — per-user `/tts` toggle generates voice messages via OpenRouter TTS; an LLM-driven `tts_adapt` step rewrites text to be speakable, not summarized
 - **Rate limiting & cancel** — concurrent runs in the same chat are rejected; `/cancel` aborts the active run; 429 flood-waits are respected and capped at 60s
 - **Streaming edits** — tool logs and model reasoning stream into the message with live edits; final messages render as rich Telegram HTML via `sendRichMessage`, intermediate edits fall back to classic HTML with graceful failure handling
@@ -32,7 +32,7 @@ uv sync
 uv run telegram-agent-mcp-client --telegram
 ```
 
-Edit `.env` to set `TELEGRAM_BOT_ID`, `GEMINI_API_KEY`, `LLM_CHOICE`, and `LLM_UTILS`. Drop `--telegram` for CLI mode, or add `--dev` to use `TELEGRAM_BOT_ID_DEV`.
+Edit `.env` to set `TELEGRAM_BOT_ID`, `GEMINI_API_KEY`, and `LLM_ORDER` / `LLM_ORDER_FAST`. Drop `--telegram` for CLI mode, or add `--dev` to use `TELEGRAM_BOT_ID_DEV`.
 
 ### Docker
 
@@ -61,13 +61,14 @@ telegram-agent-mcp-client [--telegram] [--dev] [--tools] [--agents] [--png]
 
 See [`.env.example`](.env.example) for the full list.
 
-| Variable                                      | Purpose                                                                 |
-| --------------------------------------------- | ----------------------------------------------------------------------- |
-| `TELEGRAM_BOT_ID` / `TELEGRAM_BOT_ID_DEV`     | Bot tokens for prod/dev                                                 |
-| `LLM_CHOICE` / `LLM_UTILS`                    | Main + utils LLM provider (`gemini`, `opencode`, `fireworks`, `ollama`) |
-| `GEMINI_API_KEY`                              | Google Gemini (vision, image generation)                                |
-| `OPENROUTER_API_KEY` / `OPENROUTER_TTS_SPEED` | OpenRouter TTS; speed clamped to `[0.25, 4.0]` (default `1.15`)         |
-| `DATA_DIR` / `CONFIG_DIR`                     | Persisted data and tool config paths                                    |
+| Variable                                      | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TELEGRAM_BOT_ID` / `TELEGRAM_BOT_ID_DEV`     | Bot tokens for prod/dev                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `LLM_ORDER` / `LLM_ORDER_FAST`                | Comma-separated provider run order (main + fast/utility tasks). First **configured** provider wins; when a capability is required, the first capable provider is selected. Runtime failures immediately fall over to the next candidate: each failure cools a provider down (`LLM_DEAD_COOLDOWN`, 300s) and 3 strikes jail it for 24h (`LLM_JAIL_STRIKES`/`LLM_JAIL_HOURS`). Values: `ollama`, `gemini`, `gemini-small`, `fireworks`, `opencode`, `opencode-alt` |
+| Model capability suffixes                     | Append `                                                                                                                                                                                                                                                                                                                                                                                                                                                         | opt1+opt2`to any`*_API_MODEL`: `text`, `vision`(images in),`stt`(audio in),`video`, `pdf`, `image`(image gen),`tts`(speech out),`structured` (native JSON output). Lookup: [models.dev](https://models.dev) |
+| `GEMINI_API_KEY`                              | Google Gemini (vision, image generation)                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `OPENROUTER_API_KEY` / `OPENROUTER_TTS_SPEED` | OpenRouter TTS; speed clamped to `[0.25, 4.0]` (default `1.15`)                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `DATA_DIR` / `CONFIG_DIR`                     | Persisted data and tool config paths                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 ### Agent & user config
 

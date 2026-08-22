@@ -18,7 +18,12 @@ from dotenv import load_dotenv
 from langchain.tools import tool
 from pydantic import Field
 
-from telegram_agent.src.core.progress import ProgressTracker, has_progress_sink
+from telegram_agent.src.core.progress import (
+    ProgressTracker,
+    default_max_lines,
+    get_turn_tracker,
+    has_progress_sink,
+)
 
 load_dotenv()
 
@@ -33,7 +38,7 @@ _PASSWORD = getenv("OPENCODE_SERVER_PASSWORD", "")
 _TIMEOUT = float(getenv("OPENCODE_SERVER_TIMEOUT", "600"))
 _MAX_OUTPUT = int(getenv("OPENCODE_SERVER_MAX_OUTPUT", "20000"))
 _PROGRESS_POLL = float(getenv("OPENCODE_SERVER_PROGRESS_POLL", "3"))
-_PROGRESS_LINES = int(getenv("OPENCODE_SERVER_PROGRESS_LINES", "6"))
+_PROGRESS_LINES = default_max_lines()  # ponytail: single parser lives in progress.py
 _WEB_URL = getenv("OPENCODE_WEB_URL", "").strip().rstrip("/")
 _ERRORS = (ClientError, PermissionError, RuntimeError, TimeoutError)
 
@@ -540,11 +545,16 @@ def _timeout_result(
 
 
 async def _start_tracker(session_id: str) -> ProgressTracker | None:
-    """Create a progress tracker bound to the session, with its live link."""
-    tracker = (
+    """Bind the session to the turn's shared tracker, or a fresh one standalone.
+
+    Reusing one tracker across consecutive tool calls keeps earlier logs
+    visible instead of each run wiping the panel with an empty state.
+    """
+    tracker = get_turn_tracker() or (
         ProgressTracker(max_lines=_PROGRESS_LINES) if has_progress_sink() else None
     )
     if tracker:
+        tracker.set_status("🟢 Status: Working")
         tracker.set_session(session_id, _session_url(session_id))
         await tracker.emit()
     return tracker

@@ -1,12 +1,24 @@
 """Async progress sink shared between tools and the bot handler."""
 
+from __future__ import annotations
+
 from collections import deque
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from contextvars import ContextVar, Token
+from os import getenv
 
 ProgressSink = Callable[[str], Awaitable[None]]
 _sink: ContextVar[ProgressSink | None] = ContextVar("progress_sink", default=None)
+_tracker: ContextVar = ContextVar("progress_tracker", default=None)
+
+
+def default_max_lines() -> int:
+    """Panel size from OPENCODE_SERVER_PROGRESS_LINES, tolerant of bad values."""
+    try:
+        return int(getenv("OPENCODE_SERVER_PROGRESS_LINES", "6"))
+    except ValueError:
+        return 6
 
 
 def set_progress_sink(sink: ProgressSink | None) -> Token[ProgressSink | None]:
@@ -17,6 +29,23 @@ def set_progress_sink(sink: ProgressSink | None) -> Token[ProgressSink | None]:
 def reset_progress_sink(token: Token[ProgressSink | None]) -> None:
     """Unbind the progress sink registered with the given token."""
     _sink.reset(token)
+
+
+def set_turn_tracker(
+    tracker: ProgressTracker | None,
+) -> Token[ProgressTracker | None]:
+    """Bind a turn-scoped tracker so consecutive tool calls share one panel."""
+    return _tracker.set(tracker)
+
+
+def reset_turn_tracker(token: Token[ProgressTracker | None]) -> None:
+    """Unbind the turn tracker registered with the given token."""
+    _tracker.reset(token)
+
+
+def get_turn_tracker() -> ProgressTracker | None:
+    """The tracker shared by all tool calls in the current turn, if any."""
+    return _tracker.get()
 
 
 def has_progress_sink() -> bool:

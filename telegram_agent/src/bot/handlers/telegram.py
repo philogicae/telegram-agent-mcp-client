@@ -14,8 +14,15 @@ from dotenv import load_dotenv
 from langchain.messages import HumanMessage
 from telebot.types import InputFile, InputMediaPhoto, Message
 
-from ...core.llm import LLM, LLM_CHOICE, LLM_UTILS
-from ...core.progress import reset_progress_sink, set_progress_sink
+from ...core.llm import LLM, can_listen, can_see
+from ...core.progress import (
+    ProgressTracker,
+    default_max_lines,
+    reset_progress_sink,
+    reset_turn_tracker,
+    set_progress_sink,
+    set_turn_tracker,
+)
 from ...utils import extract_response
 from ..abstract import AgenticBot, handler
 from ..utils import str_size, unpack_user
@@ -40,22 +47,20 @@ async def _read_image(path: str) -> bytes:
         return await f.read()
 
 
-def _is_multimodal() -> bool:
-    """Check if the main LLM supports multimodal input (audio/vision)."""
-    return "gemini" in LLM_CHOICE and "gemini" in LLM_UTILS
-
-
 async def _media_to_text(media: list[dict], context: str = "") -> str:
     """
-    Use Gemini to transcribe audio or describe images into text.
+    Transcribe audio or describe images into text via a capable fallback LLM.
 
-    Called when the main LLM lacks multimodal capability.
+    Called when the main LLM lacks the matching multimodal capability.
     For images, returns a structured JSON description matching the
     `generate_image` schema so the agent can reuse it for edits or
     regeneration.
     """
-    is_audio = any("audio" in m.get("mime_type", "") for m in media)
-    if is_audio:
+    cap = "stt" if any("audio" in m.get("mime_type", "") for m in media) else "vision"
+    helper = LLM.pick(cap, fast=True)
+    if not helper:
+        return f"[Unsupported media: no {cap}-capable provider configured]"
+    if cap == "stt":
         prompt = (
             "Transcribe this audio message verbatim in the same language the speaker uses. "
             "Preserve natural phrasing, filler words, and emotional tone. "
@@ -92,7 +97,7 @@ async def _media_to_text(media: list[dict], context: str = "") -> str:
     if context:
         prompt += f"\n\nUser's message for context: {context}"
     parts = [{"type": "text", "text": prompt}, *media]
-    response = await LLM.get("gemini-small").ainvoke([HumanMessage(content=parts)])
+    response = await LLM.get(helper).ainvoke([HumanMessage(content=parts)])
     return extract_response(response)[0].strip()
 
 
@@ -179,7 +184,8 @@ async def telegram_chat(
     pending = instance.pending_media.pop(msg.chat.id, [])
     if pending:
         img_paths = [p for _, p in pending]
-        if _is_multimodal():
+        main = LLM.pick()
+        if can_see(main):
             existing = getattr(msg, "media", [])
             msg.media = [  # ty: ignore[unresolved-attribute]
                 *existing,
@@ -220,7 +226,11 @@ async def telegram_chat(
     prev = ""
     # Long-running tools (e.g. opencode sessions) stream a live progress panel
     # that is rendered in the model-text slot below the tool logs.
+    # One shared tracker per turn: consecutive tool calls append to the same
+    # panel instead of each starting a fresh one that wipes the previous logs.
     sink_token = set_progress_sink(_make_progress_sink(instance, reply))
+    turn_tracker = ProgressTracker(max_lines=default_max_lines())
+    tracker_token = set_turn_tracker(turn_tracker)
     try:
         async for agent, step, done, extra in instance.agent.chat(msg):
             if cancel_event.is_set():
@@ -277,7 +287,12 @@ async def telegram_chat(
                             ]
                             await instance.bot.core.send_media_group(msg.chat.id, media)
             # TTS: send audio of the final response if enabled
-            if done and msg.from_user and instance.tts_enabled.get(msg.from_user.id):
+            if (
+                done
+                and msg.from_user
+                and instance.tts_enabled.get(msg.from_user.id)
+                and LLM.pick("tts")
+            ):
                 instance.log.info(f"[{msg.chat.id}] Generating TTS voice message...")
                 await instance.bot.core.send_chat_action(msg.chat.id, "upload_voice")
                 recording = await instance.bot.send(msg, "🎙️ I'm recording...")
@@ -317,6 +332,7 @@ async def telegram_chat(
         await telegram_report_issue(instance, msg, reply, e)
     finally:
         reset_progress_sink(sink_token)
+        reset_turn_tracker(tracker_token)
         instance.cancel_events.pop(chat_id, None)
     instance.log.sent(msg, timer)
 
@@ -372,7 +388,8 @@ async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
         file_info = await instance.bot.core.get_file(voice.file_id)
         audio = await instance.bot.core.download_file(file_info.file_path)
         media = [{"type": "media", "data": audio, "mime_type": "audio/ogg"}]
-        if _is_multimodal():
+        main = LLM.pick()
+        if can_listen(main):
             msg.media = media  # ty: ignore[unresolved-attribute]
             msg.text = "🎤 [voice message]"
         else:

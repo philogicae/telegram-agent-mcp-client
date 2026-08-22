@@ -1,6 +1,7 @@
 """Agent implementation for orchestrating LLM interactions."""
 
 import sys
+from base64 import b64encode
 from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import suppress
 from datetime import UTC, datetime
@@ -40,6 +41,40 @@ from .utils import (
 load_dotenv()
 
 CONFIG_DIR = getenv("CONFIG") or "./config"
+
+
+def _media_blocks(media: list[dict]) -> list[dict]:
+    """Convert internal media dicts into multimodal content blocks.
+
+    Internal format is {'type': 'media', 'data': bytes, 'mime_type': ...};
+    raw bytes are not JSON-serializable and every chat integration expects
+    its own block shape, so encode to base64 here — the single choke point
+    before HumanMessage construction. Images use image_url data URLs
+    (spoken by both langchain-openai and langchain-google-genai).
+    """
+    blocks: list[dict] = []
+    for m in media:
+        data = m.get("data")
+        mime = m.get("mime_type", "")
+        if not isinstance(data, bytes):
+            blocks.append(m)
+            continue
+        b64 = b64encode(data).decode()
+        # ponytail: audio uses OpenAI input_audio (ogg unsupported there);
+        # google wants inline_data — split when an stt main model lands
+        if mime.startswith("audio/"):
+            fmt = mime.split("/", 1)[1].split(";")[0]
+            blocks.append(
+                {"type": "input_audio", "input_audio": {"data": b64, "format": fmt}}
+            )
+        else:
+            blocks.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime};base64,{b64}"},
+                }
+            )
+    return blocks
 
 
 class Agent:
@@ -291,7 +326,7 @@ class Agent:
                     HumanMessage(
                         content=[
                             {"type": "text", "text": f"[{date}] {content}"},
-                            *media,
+                            *_media_blocks(media),
                         ]
                     )
                 )
