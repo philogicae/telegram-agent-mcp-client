@@ -1,6 +1,6 @@
 [project]
 name = "telegram-agent-mcp-client"
-version = "2.1.0"
+version = "2.2.0"
 description = "Telegram Agent MCP Client"
 authors = [{ name = "philogicae" }]
 requires-python = ">=3.14,<4.0"
@@ -11,7 +11,6 @@ dependencies = [
     "aiofiles",
     "aiohttp",
     "aiosqlite",
-    "graphiti-core[google-genai]",
     "langchain",
     "langchain-core",
     "langchain-mcp-adapters",
@@ -21,7 +20,6 @@ dependencies = [
     "langgraph-checkpoint-sqlite",
     "langgraph-swarm",
     "matplotlib",
-    "nest-asyncio",
     "playwright",
     "pydantic",
     "pyjson5",

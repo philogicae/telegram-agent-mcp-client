@@ -26,13 +26,11 @@ from telebot.types import Message as TelegramMessage
 
 from ..utils import Timer, extract_response
 from .config import get_agent_config
-from .graphiti import GraphRAG
 from .tools import get_tools
 from .utils import (
     Flag,
     Usage,
     checkpointer,
-    filter_relevant_memories,
     format_called_tool,
     pre_agent_hook,
     summarize_and_rephrase,
@@ -82,7 +80,6 @@ class Agent:
 
     agents: Dict = Dict()
     tools: Sequence[BaseTool | Callable[..., Any] | dict[str, Any]] | ToolNode | None
-    graph: GraphRAG | Any
     console: Console
     dev: bool
     debug: bool
@@ -94,7 +91,6 @@ class Agent:
         tools: (
             Sequence[BaseTool | Callable[..., Any] | dict[str, Any]] | ToolNode | None
         ) = None,
-        graph: GraphRAG | None = None,
         persist: bool = False,
         dev: bool = False,
         debug: bool = False,
@@ -107,7 +103,6 @@ class Agent:
             else:
                 all_tools.append(tools)
         self.tools = all_tools
-        self.graph = graph
         self.console = Console()
         self.dev = dev
         self.debug = debug
@@ -176,25 +171,19 @@ class Agent:
         pass
 
     @staticmethod
-    async def load_graph() -> GraphRAG:
-        return await GraphRAG().init()
-
-    @staticmethod
     async def load_tools() -> list[BaseTool]:
         return await get_tools()
 
     @staticmethod
     async def init(
         dev: bool = False,
-        enable_graph: bool = True,
         enable_tools: bool = True,
         enable_persist: bool = False,
         debug: bool = False,
         generate_png: bool = False,
     ) -> Agent:
-        graph = (await Agent.load_graph()) if enable_graph else None
         tools = (await Agent.load_tools()) if enable_tools else None
-        return Agent(tools, graph, enable_persist, dev, debug, generate_png)
+        return Agent(tools, enable_persist, dev, debug, generate_png)
 
     def state(self, swarm: Any, thread_id: str) -> StateSnapshot:
         state: StateSnapshot = swarm.agent.get_state(
@@ -257,13 +246,11 @@ class Agent:
             history_msgs = state.values.get("messages", [])
             history_tokens = count_tokens_approximately(history_msgs)
             is_media_only = content.endswith(("[media]", "[voice message]"))
-            recontext_summary = ""
             if is_media_only or history_tokens < 100000:
                 recontext_logs = content
             else:
                 mem_timer = Timer()
                 recontext = await summarize_and_rephrase(state, content)
-                recontext_summary = recontext.summary
                 summary = (
                     f"Chat Summary: {recontext.summary}"
                     if recontext.summary and recontext.summary != "None"
@@ -293,34 +280,6 @@ class Agent:
                         border_style="light_steel_blue1",
                     )
                 )
-
-            # Memories — use base_thread_id for consistent memory association
-            if self.graph:
-                mem_timer = Timer()
-                found_memories = await self.graph.full_search(
-                    content, user, base_thread_id, limit=10
-                )
-                mem_stats = found_memories["stats"]
-                memories = f"{found_memories['nodes']}{found_memories['edges']}".strip()
-                if memories:
-                    filtered_memories = await filter_relevant_memories(
-                        memories, recontext_summary, content
-                    )
-                    if filtered_memories:
-                        messages.append(
-                            HumanMessage("# Episodic Memory:\n" + filtered_memories)
-                        )
-                        # mem_stats["edges"] = filtered_memories.count("EDG<")
-                        # mem_stats["nodes"] = filtered_memories.count("NOD<")
-                        # del mem_stats["episodes"]
-                        self.console.print(
-                            Panel(
-                                escape(f"{mem_stats}\n{filtered_memories}"),
-                                title=f"🧠 Episodic Memory ({mem_timer.done()})",
-                                border_style="light_steel_blue1",
-                            )
-                        )
-
             if media:
                 messages.append(
                     HumanMessage(
@@ -673,38 +632,11 @@ class Agent:
                     extra["images"] = list(pending_images)
                 yield swarm.active[thread_id], step, True, extra
 
-                # Add memories to graph
-                if self.graph and step:
-                    mem_timer = Timer()
-                    results = await self.graph.add(
-                        content=[
-                            (
-                                user,
-                                content[len(user) + 2 :].strip(),  # Remove '<user>: '
-                            ),
-                            (swarm.active[thread_id], step),
-                        ],
-                        chat_id=base_thread_id,
-                    )
-                    self.console.print(
-                        Panel(
-                            escape(
-                                f"{results['stats']}"
-                                + results["nodes"]
-                                + results["edges"]
-                            ),
-                            title=f"💾 Added Memories ({mem_timer.done()})",
-                            border_style="light_steel_blue1",
-                        )
-                    )
-
 
 async def run_agent(dev: bool = False, generate_png: bool = False) -> None:
     """Run the agent in CLI mode."""
     content = ""
-    with await Agent.init(
-        dev=True, enable_graph=False, generate_png=generate_png
-    ) as agent:
+    with await Agent.init(dev=True, generate_png=generate_png) as agent:
         if content:
             print(f"> {content}")
         while True:

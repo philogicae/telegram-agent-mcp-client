@@ -4,10 +4,9 @@ from logging import WARNING, getLogger
 
 from .agent import Agent, run_agent
 from .config import print_agents
-from .graphiti import GraphRAG
 from .tools import print_tools
 
-for lib in ["neo4j.notifications", "google_genai.models", "httpx"]:
+for lib in ["google_genai.models", "httpx"]:
     getLogger(lib).setLevel(WARNING)
 
-__all__ = ["Agent", "GraphRAG", "print_agents", "print_tools", "run_agent"]
+__all__ = ["Agent", "print_agents", "print_tools", "run_agent"]

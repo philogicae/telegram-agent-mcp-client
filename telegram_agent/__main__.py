@@ -14,7 +14,7 @@ from os import environ
 from pathlib import Path
 from traceback import print_exc
 
-from .src import GraphRAG, print_agents, print_tools, run_agent, run_telegram_bot
+from .src import print_agents, print_tools, run_agent, run_telegram_bot
 
 # Colors for output
 RED = "\033[0;31m"
@@ -170,11 +170,6 @@ def cli() -> None:
         action="store_true",
         help="Generate png. Default: False",
     )
-    parser.add_argument(
-        "--clear",
-        action="store_true",
-        help="Clear graph. Default: False",
-    )
     args = parser.parse_args()
 
     install_playwright()
@@ -185,8 +180,6 @@ def cli() -> None:
         run(print_agents())
     elif args.png:
         run(run_agent(generate_png=True))
-    elif args.clear:
-        run(GraphRAG.init(clear=True))
     elif args.telegram:
         run(run_telegram_bot(dev=args.dev))
     else:

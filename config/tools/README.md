@@ -139,7 +139,7 @@ You can disable specific tools from a server, or disable the entire server.
 
 ### Option A: Python Tool
 
-Use this for logic that requires direct access to the agent's memory or Python environment, or for lightweight utilities.
+Use this for logic that requires direct access to the Python environment, or for lightweight utilities.
 
 1. Copy `config/tools/_template.py` (if available) or create a new `.py` file.
 2. Implement your function with `@tool`.

@@ -325,7 +325,7 @@ class AgenticBot(ABC):
 
     async def run(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
         try:
-            self.agent = await Agent.init(self.dev, enable_graph=False)
+            self.agent = await Agent.init(self.dev)
             await self.bot.initialize(**self.prepare_handlers(**kwargs))
             self.log.info(f"{self.bot.__class__.__name__} is ready!")
             await gather(

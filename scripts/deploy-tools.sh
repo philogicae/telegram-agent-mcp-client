@@ -5,13 +5,9 @@ set -eo pipefail
 
 # Run in subshell to contain environment variables
 (
-	# Load .env file if it exists
-	if [ -f ".env" ]; then
-		set -a
-		# shellcheck disable=SC1091
-		source .env
-		set +a
-	fi
+	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+	source "$SCRIPT_DIR/load-env.sh"
+	load_env ".env"
 
 	DOCKER_ENVS_DIR="docker-envs"
 	echo "🚀 Deploying containers..."

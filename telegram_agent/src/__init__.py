@@ -13,14 +13,13 @@ from .bot import (
     telegram_chat,
     telegram_report_issue,
 )
-from .core import Agent, GraphRAG, print_agents, print_tools, run_agent
+from .core import Agent, print_agents, print_tools, run_agent
 
 __all__ = [
     "Agent",
     "AgenticBot",
     "AgenticTelegramBot",
     "Bot",
-    "GraphRAG",
     "Logger",
     "Manager",
     "TelegramBot",

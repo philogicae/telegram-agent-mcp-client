@@ -3,13 +3,9 @@ set -e
 
 # Run in subshell to contain environment variables
 (
-	# Load .env file if it exists
-	if [ -f ".env" ]; then
-		# shellcheck disable=SC1091
-		set -a
-		source .env
-		set +a
-	fi
+	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+	source "$SCRIPT_DIR/load-env.sh"
+	load_env ".env"
 
 	echo "🚀 Starting docker compose deployment..."
 	if [ -n "$DOCKER_HOST" ]; then

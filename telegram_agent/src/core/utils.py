@@ -1,6 +1,5 @@
-"""Core utilities for agent and memory management."""
+"""Core utilities for agent management."""
 
-from datetime import UTC, datetime
 from enum import Enum
 from json import dumps
 from os import getenv
@@ -9,7 +8,6 @@ from re import sub
 from typing import Any, cast
 
 from aiosqlite import connect
-from graphiti_core.edges import EntityEdge
 from langchain_core.messages import (
     AIMessage,
     BaseMessage,
@@ -99,40 +97,11 @@ def pre_agent_hook(
     return {"messages": trimmed_messages}
 
 
-dt_min_aware = datetime.min.replace(tzinfo=UTC)
-dt_max_aware = datetime.max.replace(tzinfo=UTC)
-
-
-def sort_edges(edge: EntityEdge) -> tuple[datetime, datetime]:
-    """Sort edges by start and end time."""
-    start_time = edge.valid_at or edge.created_at
-    end_time = edge.expired_at or edge.invalid_at
-    return (
-        start_time or dt_min_aware,
-        end_time or dt_max_aware,
-    )
-
-
-def format_date(date: datetime) -> str:
-    """Format a datetime for display, removing time and date when appropriate."""
-    return (
-        date.strftime("%Y-%m-%d %H:%M:%S")
-        .replace(" 00:00:00", "")
-        .replace("-01-01", "")
-    )
-
-
 class ReContext(BaseModel):
     """Model for recontextualized user messages."""
 
     summary: str = Field(description="Summary of the chat history")
     user_message: str = Field(description="Rephrased user message")
-
-
-class FilteredMemories(BaseModel):
-    """Model for filtered episodic memories."""
-
-    memories: list[str] = Field(description="Filtered memories")
 
 
 def append_structured_output(model: type[BaseModel]) -> str:
@@ -241,38 +210,3 @@ Rephrased: 'Bob: Download the complete season 1 of Dexter that you found'"""
         ]
     )
     return cast("ReContext", await run_schema(chat_history, ReContext, provider))
-
-
-async def filter_relevant_memories(
-    memories: str, context: str, user_msg: str, provider: str | None = None
-) -> str:
-    """Filter episodic memories for relevance to the current context."""
-    chat_history: list[Any] = [
-        SystemMessage(
-            f"""Analyze the provided episodic memories in relation to the current context and user message.
-Identify and return ONLY the memories that are directly relevant to the user's current intent.
-
-# Instructions
-- Filter out irrelevant or out-of-context information.
-- Return the relevant memory lines intact but compact.
-- If no memories are relevant, return an empty list.
-
-# Episodic Memories
-{memories}
-
-# Context
-{context}"""
-        ),
-        HumanMessage(f"# User Message\n{user_msg}"),
-    ]
-    result = cast(
-        "FilteredMemories",
-        await run_schema(chat_history, FilteredMemories, provider),
-    )
-    return (
-        "\n".join(result.memories)
-        if hasattr(result, "memories")
-        and result.memories
-        and len(result.memories[0]) > 8
-        else ""
-    )
