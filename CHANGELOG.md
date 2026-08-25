@@ -494,6 +494,61 @@
 - agent: guard IndexError on state with fewer than 2 messages in retry loop
 - tools: quote MCP stdio commands via shlex.join, regex-safe config comment update
 - add langchain deepseek extra, drop OPENCODE_FREE_API_MODEL from env example
+- Feat: env-driven model capability system and persistent progress panel
+
+- declare per-model capabilities via '<model>|<opt1>+<opt2>' suffixes in
+  \*\_API_MODEL env vars (text, vision, stt, video, pdf, image, tts,
+  structured); parsed once into SPECS/CAPABILITIES, exposed through
+  supports() and semantic helpers can_read/can_see/can_listen/can_watch/
+  can_docs/can_speak/can_draw/can_struct
+- replace LLM_CHOICE/LLM_UTILS with comma-separated LLM_ORDER/LLM_ORDER_FAST:
+  first configured provider wins, first capable provider selected when a
+  capability is required (fast list falls back to main order, then any aux
+  endpoint) via new LLM.pick(); delete \_is_multimodal() — call sites check
+  can_see/can_listen on the resolved main model; media fallback transcribes
+  via first capable provider instead of hardcoded gemini-small;
+  OPENROUTER_TTS_MODEL unified as the 'openrouter-tts' aux endpoint,
+  selectable via pick('tts') and gated in the /tts flow; image tools split
+  suffixes locally with current models as defaults
+- add runtime failover across providers: failures immediately fall back to
+  the next candidate in utils.run_schema() (shared runner for schema calls,
+  dedupes resolve+branch code); each failure counts a strike with a 300s
+  cooldown (LLM_DEAD_COOLDOWN) and 3 consecutive strikes jail a provider
+  for 24h (LLM_JAIL_STRIKES/LLM_JAIL_HOURS) until auto-release;
+  mark_alive() clears history on success
+- fix inline media crashing OpenAI-compatible APIs with raw bytes dicts:
+  convert internal media at the single HumanMessage choke point into proper
+  multimodal blocks — images as image_url data URLs (spoken by openai and
+  google integrations), audio as input_audio base64; unmasked by vision-
+  capable non-Gemini models now going inline instead of transcription
+- replace hardcoded SUPPORT_STRUCTURED_OUTPUT set with capability lookups;
+  restore native structured output branch gated on 'structured' (JSON-prompt
+  fallback otherwise); strip suffixes before API calls in all model reads
+- fix progress logs disappearing on consecutive tool runs: share one
+  ProgressTracker per turn via ContextVar instead of a fresh tracker per call;
+  move OPENCODE_SERVER_PROGRESS_LINES parsing to tolerant default_max_lines()
+- document capability suffixes, provider run orders and failover knobs in
+  README.md and .env.example
+- Feat: drop GraphRAG/neo4j memory stack, parse .env safely in deploy scripts
+
+- remove graphiti-core integration entirely: GraphRAG singleton, episodic
+  memory recall/write blocks in agent loop, --clear CLI flag, memory
+  helpers (filter_relevant_memories, sort_edges, format_date) and exports
+- drop deps: graphiti-core[google-genai], nest-asyncio; evicts now-orphaned
+  transitives (neo4j, backoff, posthog, pytz)
+- remove NEO4J\_\* vars from env files and commented neo4j service from compose
+- scripts/load-env.sh: docker-style dotenv parser; deploy-agent.sh and
+  deploy-tools.sh no longer `source .env` (values may contain shell
+  metacharacters like `|` in model capability strings)
+- keep ReContext summarization (run_schema/summarize_and_rephrase) untouched
+- parenthesize except tuple in **main**.py for explicitness (py3.14 accepts
+  both forms with identical semantics)
+- chore: bump version to 2.2.0, add init:true to torrent-search-mcp
+- Feat: remove opencode-alt provider, add torrent-search-api service, enforce user allowlist
+
+- .env.example: drop opencode-alt from LLM_ORDER/LLM_ORDER_FAST (opencode now first)
+- README.md: fix table formatting, clarify user_config rejects unlisted users
+- agent_config.example.json: add scrapling request session tools (make_request, open_request_session, session_fetch, session_make_request), remove deprecated 'get', update Torrent Agent routine to use popular_torrents instead of Search Agent transfer
 
 ### 🐛 Bug Fixes
 
@@ -832,3 +887,4 @@ Telegram API calls across chats.
 - Chore: update default Gemini model from 3.6-flash to 3.7-flash
 - Chore: update deps
 - Chore: bump version to 2.1.0 and improve MCP transport config handling
+- Chore: update changelog
