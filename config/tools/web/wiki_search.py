@@ -1,13 +1,14 @@
 """Tool template."""
 
 from json import dumps
+from os import getenv
 
 from httpx import AsyncClient
 from langchain.tools import tool
 
 DESCRIPTION = "Wiki search and article retrieval, enabling discovery and fetching of encyclopedic information from Wiki articles."
 
-OWNED_API = "https://grokipedia-api.rphi.xyz"
+OWNED_API = getenv("GROKIPEDIA_API_URL", "https://grokipedia-api.rphi.xyz").rstrip("/")
 
 
 @tool

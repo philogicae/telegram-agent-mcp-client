@@ -2,6 +2,7 @@ name: telegram-agent-mcp-client
 
 x-dns: &default-dns
   dns:
+    - 127.0.0.11 # Docker embedded DNS
     - 9.9.9.9
     - 149.112.112.112
     - 2620:fe::fe
@@ -62,12 +63,24 @@ services:
     pull_policy: always
     command: transmission-mcp --mode sse
     restart: unless-stopped
+    init: true
     ports:
       - 8006:8000
     env_file:
       - docker-envs/transmission.env
-    volumes:
-      - torrents:/torrents
+    <<: [*default-dns, *default-logging, *default-networks]
+
+  torrent-search-api:
+    container_name: torrent-search-api
+    image: philogicae/torrent-search-mcp:latest
+    restart: unless-stopped
+    init: true
+    ports:
+      - 8004:8000
+    command: ["torrent-search-mcp", "--mode", "fastapi"]
+    env_file:
+      - path: docker-envs/torrent_search.env
+        required: false
     <<: [*default-dns, *default-logging, *default-networks]
 
   torrent-search-mcp:
@@ -77,16 +90,18 @@ services:
     command: torrent-search-mcp --mode http
     restart: unless-stopped
     init: true
+    depends_on:
+      torrent-search-api:
+        condition: service_started
     ports:
       - 8005:8000
     env_file:
       - path: docker-envs/torrent_search.env
         required: false
-    volumes:
-      - torrents:/torrents
+    environment:
+      TORRENT_SEARCH_API_URL: http://torrent-search-api:8000
     <<: [*default-dns, *default-logging, *default-networks]
 
 volumes:
-  torrents:
   transmission_config:
   transmission_watch:

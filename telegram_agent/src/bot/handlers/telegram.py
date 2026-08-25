@@ -148,6 +148,9 @@ async def telegram_chat(
 ) -> None:
     """Handle chat messages and orchestrate agent responses."""
     timer = instance.log.received(msg)
+    # Reject anonymous users and users not in admin or allowed — no reply at all
+    if not msg.from_user or not instance.agent.is_allowed(msg.from_user.first_name):
+        return
     if msg.text in ["/start", "/help"]:
         await instance.bot.send(msg, "🌟 Welcome! How can I help you?")
         return
@@ -340,6 +343,8 @@ async def telegram_chat(
 @handler
 async def telegram_file(instance: AgenticBot, msg: Message) -> None:
     """Handle file/document uploads from users."""
+    if not msg.from_user or not instance.agent.is_allowed(msg.from_user.first_name):
+        return
     try:
         if msg.document:
             file_name = msg.document.file_name
@@ -367,6 +372,8 @@ async def telegram_file(instance: AgenticBot, msg: Message) -> None:
 @handler
 async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
     """Handle voice messages: attach audio as media and process through agent."""
+    if not msg.from_user or not instance.agent.is_allowed(msg.from_user.first_name):
+        return
     reply = None
     try:
         voice = msg.voice
@@ -419,6 +426,8 @@ _media_groups: dict[str, dict] = {}
 @handler
 async def telegram_image(instance: AgenticBot, msg: Message) -> None:
     """Handle image/photo messages: attach images as media and process through agent."""
+    if not msg.from_user or not instance.agent.is_allowed(msg.from_user.first_name):
+        return
     reply = None
     try:
         if not msg.photo:

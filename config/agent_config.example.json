@@ -83,7 +83,6 @@
         "fetch_url",
         "fetch_urls",
         "fetch",
-        "get",
         "bulk_fetch",
         "bulk_get",
         "stealthy_fetch",
@@ -91,7 +90,11 @@
         "screenshot",
         "open_session",
         "close_session",
-        "list_sessions"
+        "list_sessions",
+        "make_request",
+        "open_request_session",
+        "session_fetch",
+        "session_make_request"
       ],
       "transfer": "for any request requiring searching the web, news, fetching a URL, looking up information, or finding media information (such as new/last movie/series/release/media)"
     },
@@ -117,7 +120,7 @@
           "trigger": "for requests looking like 'Any new <movie/series/release/media>?'",
           "steps": [
             //"`think` to log a thought about this routine",
-            "Just switch to `Search Agent`"
+            "`popular_torrents` to get the list of new available releases"
           ]
         },
         "new_episodes": {
@@ -130,8 +133,10 @@
         }
       },
       "tools": [
-        "search_torrents",
+        "available_sources",
         "get_torrent",
+        "popular_torrents",
+        "search_torrents",
         "download_torrent",
         "list_torrents",
         "cancel_torrent",

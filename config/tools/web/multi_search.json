@@ -1,12 +1,17 @@
 {
-  "description": "Multi-engine web search with parallel query support, enabling searches across multiple search engines simultaneously and returning detailed results including titles, URLs, and summaries.",
-  "command": "SEARXNG_URL={ENV:SEARXNG_BASE_URL}:{ENV:SEARXNG_PORT:-8080} npx -y searxng-mul-mcp",
+  "description": "Default web search tool. SearXNG metasearch across engines with time_range, categories, engine selection and result scoring. Not for news-only lookups (news_search) or full-page content retrieval (web_fetch/scrapling).",
+  "command": "SEARXNG_URL={ENV:SEARXNG_BASE_URL}:{ENV:SEARXNG_PORT:-8080} npx -y mcp-searxng",
   "edit": {
-    "search": {
+    "searxng_web_search": {
       "name": "web_search",
-      "description": "Perform web search(es) across multiple search engines, support searching multiple queries in parallel, and return detailed results including titles, URLs, and summaries."
+      "description": "Perform a web search across multiple engines; returns titles, URLs and summaries. Supports time_range (day/week/month/year), language, safesearch, num_results, categories and engines filters. Default starting point for general research."
     }
-  }
+  },
+  "enable": ["searxng_web_search"]
 }
-/* all found tools: 1
-search */
+
+/* all found tools: 4
+searxng_instance_info
+searxng_search_suggestions
+searxng_web_search
+web_url_read */

@@ -114,24 +114,6 @@ class Agent:
             with user_config_path.open() as f:
                 self.user_config = loads(f.read())
 
-        # Pre-create restricted as the universal fallback
-        restricted = self.agents.restricted = Dict()
-        restricted.config = get_agent_config(
-            all_tools, only_agents=["Documentalist"], config_name="Restricted"
-        )
-        restricted.active = {}
-        if restricted.config:
-            restricted.agent = create_swarm(
-                agents=restricted.config.agents,
-                default_active_agent=restricted.config.active,
-            ).compile(checkpointer=checkpointer(dev, persist), debug=debug)
-            if generate_png:
-                graph_file = CONFIG_DIR + "/restricted_graph.png"
-                restricted.agent.get_graph().draw_mermaid_png(
-                    output_file_path=graph_file
-                )
-                print(f"Restricted Graph saved to {graph_file}")
-
         # Create swarm per group from user config
         for group_name, group_config in self.user_config.items():
             if group_name in self.agents:
@@ -191,6 +173,15 @@ class Agent:
         )
         return state
 
+    def is_allowed(self, user: str) -> bool:
+        """Check if a user is listed in any group (admin or allowed)."""
+        user_lower = user.lower()
+        for group_cfg in self.user_config.values():
+            for u in group_cfg.get("users", []):
+                if u.lower() == user_lower:
+                    return True
+        return False
+
     async def chat(
         self, content: str | TelegramMessage | Any
     ) -> AsyncGenerator[tuple[str, str, bool, dict[str, Any]]]:
@@ -213,18 +204,22 @@ class Agent:
         base_thread_id = thread_id
         thread_id = self.thread_mappings.get(base_thread_id, base_thread_id)
 
-        # Determine user group from config (default: restricted)
+        # Determine user group from config; reject unknown users silently
         user_lower = user.lower()
-        group = "restricted"
+        group: str | None = None
         for name, group_cfg in self.user_config.items():
             for u in group_cfg.get("users", []):
                 if u.lower() == user_lower:
                     group = name
                     break
-            if group != "restricted":
+            if group:
                 break
+        if group is None:
+            return  # Unknown user: no reply
 
-        swarm = getattr(self.agents, group, self.agents.restricted)
+        swarm = getattr(self.agents, group, None)
+        if swarm is None or not getattr(swarm, "agent", None):
+            return  # Group has no valid config: no reply
         if thread_id not in swarm.active:
             swarm.active[thread_id] = swarm.config.active
 
