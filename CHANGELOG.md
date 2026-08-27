@@ -549,6 +549,35 @@
 - .env.example: drop opencode-alt from LLM_ORDER/LLM_ORDER_FAST (opencode now first)
 - README.md: fix table formatting, clarify user_config rejects unlisted users
 - agent_config.example.json: add scrapling request session tools (make_request, open_request_session, session_fetch, session_make_request), remove deprecated 'get', update Torrent Agent routine to use popular_torrents instead of Search Agent transfer
+- Feat: rework torrent manager, add tracker maintenance scripts
+
+- rework DownloadManager: Torrent/Message models with lifecycle states
+  (done/gone/nearly-done), poll failure cutoff (\_MAX_FAILURES=3), vanished
+  torrent at >=95% counts as completed; single-flight Emby refresh spawns
+  (files-created / 50% / completion milestones) guarded by \_refresh_task.done();
+  per-chat pinned status panel rebuilt via create_message() — top-3 torrents
+  by active download, others collapsed into '+N more in queue'
+- fix message.prev never stored after send/edit: every monitoring cycle
+  re-edited identical text, hitting "message is not modified" and falling
+  into the resend+repin path forever
+- docker-envs: add ping_trackers.py (UDP connect-ping + DNS check, prunes
+  dead trackers from transmission.trackers.txt) and update_trackers.py;
+  refresh tracker list
+- transmission.config.json: fixed peer port 52317, enable DHT/PEX/LPD/uTP,
+  64MB cache, explicit bind addresses, replace dead default trackers
+- Feat: add HTTP relay, user stats, and torrent-search webapp pairing
+
+- Add token-authed /relay HTTP endpoint (AGENT_RELAY_TOKEN/PORT) so services
+  can inject prompts into the agent pipeline; runs alongside the bot
+- Add persistent per-bot/per-chat interaction stats (users.json) with
+  debounced atomic writes; register every incoming message
+- Prefix agent memory with [chat_id:...] for multi-chat context isolation
+- Rename TELEGRAM_BOT_ID(\_DEV) to TELEGRAM_BOT_TOKEN(\_DEV) everywhere
+- Add torrent_webapp + authorize_webapp tools, webapp pairing and relay
+  forwarding env vars, PRUNE_MAGNET_LINKS; persist torrent-search data via
+  docker volumes; switch to --mode api
+- Bump to 2.3.0, update deps (anthropic, langchain, uv.lock), refresh
+  transmission default trackers, tidy tool loading in agent config
 
 ### 🐛 Bug Fixes
 
@@ -887,4 +916,5 @@ Telegram API calls across chats.
 - Chore: update default Gemini model from 3.6-flash to 3.7-flash
 - Chore: update deps
 - Chore: bump version to 2.1.0 and improve MCP transport config handling
+- Chore: update changelog
 - Chore: update changelog
