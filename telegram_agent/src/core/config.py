@@ -139,13 +139,12 @@ def get_agent_config(
             )
         # Add common tools first, then agent-specific tools
         agent_tool_names: list[str] = common_tools_list + config.get("tools", [])
-        if tools and agent_tool_names:
-            agent_tools.extend(
-                filter(
-                    None,
-                    [available_tools.get(tool) for tool in agent_tool_names],
-                )
+        agent_tools.extend(
+            filter(
+                None,
+                [available_tools.get(tool) for tool in agent_tool_names],
             )
+        )
         prompt = config.get("prompt", "")
         if prompt:
             prompt = f"{prompt}\n{guidelines}"

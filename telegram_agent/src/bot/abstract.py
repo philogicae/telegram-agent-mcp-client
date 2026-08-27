@@ -12,6 +12,7 @@ from typing import Any, Self
 from rich.logging import RichHandler
 
 from ..core import Agent
+from ..core.stats import register_interaction
 from ..utils import Timer
 
 # Cap for Telegram 429 flood-wait retries (seconds). Telegram can request very
@@ -339,10 +340,15 @@ class AgenticBot(ABC):
 
 
 def handler(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
-    """Decorator for handler functions."""
+    """Decorator for handler functions; registers every incoming Message."""
 
     @wraps(func)
     async def wrapper(instance: AgenticBot, *args: Any, **kwargs: Any) -> Any:
+        if args and hasattr(args[0], "chat"):
+            register_interaction(
+                args[0],
+                bot=str(getattr(getattr(instance, "bot", None), "id", "") or ""),
+            )
         return await func(instance, *args, **kwargs)
 
     return wrapper

@@ -77,10 +77,12 @@ services:
     init: true
     ports:
       - 8004:8000
-    command: ["torrent-search-mcp", "--mode", "fastapi"]
+    command: torrent-search-mcp --mode api
     env_file:
       - path: docker-envs/torrent_search.env
         required: false
+    volumes:
+      - /mnt/user/shared/workspace/telegram-agent-mcp-client/data/torrent_search:/app/data
     <<: [*default-dns, *default-logging, *default-networks]
 
   torrent-search-mcp:
@@ -100,6 +102,8 @@ services:
         required: false
     environment:
       TORRENT_SEARCH_API_URL: http://torrent-search-api:8000
+    volumes:
+      - /mnt/user/shared/workspace/telegram-agent-mcp-client/data/torrent_search:/app/data
     <<: [*default-dns, *default-logging, *default-networks]
 
 volumes:

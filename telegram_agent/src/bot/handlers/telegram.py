@@ -148,8 +148,12 @@ async def telegram_chat(
 ) -> None:
     """Handle chat messages and orchestrate agent responses."""
     timer = instance.log.received(msg)
-    # Reject anonymous users and users not in admin or allowed — no reply at all
-    if not msg.from_user or not instance.agent.is_allowed(msg.from_user.first_name):
+    # Reject anonymous users and users not in admin or allowed — no reply at all.
+    # Relay-injected messages carry message_id 0 (Telegram never sends it) and
+    # already passed token auth, so they skip the allowlist.
+    if not msg.from_user or (
+        msg.message_id != 0 and not instance.agent.is_allowed(msg.from_user.first_name)
+    ):
         return
     if msg.text in ["/start", "/help"]:
         await instance.bot.send(msg, "🌟 Welcome! How can I help you?")

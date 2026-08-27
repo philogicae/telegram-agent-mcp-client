@@ -186,12 +186,14 @@ class Agent:
         self, content: str | TelegramMessage | Any
     ) -> AsyncGenerator[tuple[str, str, bool, dict[str, Any]]]:
         thread_id, user = "test", "Developer"
+        chat_prefix = ""
         date = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
         media: list[dict] = []
         if isinstance(content, str):
             content = content.strip()
         elif isinstance(content, TelegramMessage):
             thread_id = str(content.chat.id)
+            chat_prefix = f"[chat_id:{thread_id}]"
             if content.from_user:
                 user = content.from_user.first_name
             media = getattr(content, "media", [])
@@ -215,7 +217,20 @@ class Agent:
             if group:
                 break
         if group is None:
-            return  # Unknown user: no reply
+            # Relay-injected messages (message_id 0, token-authed) don't carry a
+            # configured sender: route to the group already handling this chat's
+            # thread, falling back to the first configured group.
+            if isinstance(content, TelegramMessage) and content.message_id == 0:
+                group = next(
+                    (
+                        g
+                        for g, s in self.agents.items()
+                        if thread_id in getattr(s, "active", {})
+                    ),
+                    next(iter(self.user_config), None),
+                )
+            if group is None:
+                return  # Unknown user: no reply
 
         swarm = getattr(self.agents, group, None)
         if swarm is None or not getattr(swarm, "agent", None):
@@ -279,13 +294,16 @@ class Agent:
                 messages.append(
                     HumanMessage(
                         content=[
-                            {"type": "text", "text": f"[{date}] {content}"},
+                            {
+                                "type": "text",
+                                "text": f"{chat_prefix}[{date}] {content}",
+                            },
                             *_media_blocks(media),
                         ]
                     )
                 )
             else:
-                messages.append(HumanMessage(f"[{date}] {content}"))
+                messages.append(HumanMessage(f"{chat_prefix}[{date}] {content}"))
             config: Any = {
                 "configurable": {"thread_id": thread_id},
                 "max_concurrency": 4,

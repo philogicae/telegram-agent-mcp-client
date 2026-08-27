@@ -1,8 +1,10 @@
 {
   "url": "{ENV:TORRENT_SEARCH_URL}/mcp"
 }
-/* all found tools: 4
+/* all found tools: 6
+authorize_webapp
 available_sources
 get_torrent
 popular_torrents
-search_torrents */
+search_torrents
+torrent_webapp */

@@ -61,7 +61,7 @@ class Message(BaseModel):
     """Chat message tracking model for downloads."""
 
     obj: Any
-    prev: str
+    prev: str | None
     torrent_ids: set[str]
 
 
@@ -214,6 +214,7 @@ class DownloadManager(Manager):
             active: list[Torrent] = []
             completed: list[str] = []
             lost: list[tuple[str, Torrent]] = []
+            text: str | None = None
             for torrent_id in list(message.torrent_ids):
                 torrent = self.torrents.get(torrent_id)
                 if not torrent:

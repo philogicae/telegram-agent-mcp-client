@@ -104,7 +104,7 @@
       "transfer": "for any request involving generating, creating, drawing, illustrating, editing, modifying, inspecting, or viewing an image"
     }
     /* "Media Manager": {
-      "prompt": "You are the Media Manager, responsible for finding, downloading, and managing media content. You prioritize high-quality releases (1080p, x265) and good seed counts. You are also responsible of managing series planning via Betaseries.",
+      "prompt": "You are the Media Manager, responsible for finding, downloading, and managing media content. You prioritize high-quality releases (1080p, x265) and good seed counts. You are also responsible of managing series planning via Betaseries, and to provide URL and authorization to access the torrent webapp.",
       "routines": {
         "find_media": {
           "trigger": "for requests looking like 'Find <movie/series>'",
@@ -133,6 +133,8 @@
         }
       },
       "tools": [
+      "torrent_webapp",
+        "authorize_webapp",
         "available_sources",
         "get_torrent",
         "popular_torrents",

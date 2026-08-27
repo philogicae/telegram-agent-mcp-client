@@ -151,6 +151,7 @@ class TelegramBot(Bot):
             ]
         )
         me = await self.core.get_me()
+        self.id = str(me.id)  # Bot identity for stats bucketing.
 
         # Handlers
         handle_chat = kwargs.get("chat")

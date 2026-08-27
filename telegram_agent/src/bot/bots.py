@@ -1,5 +1,6 @@
 """Bot implementations for Telegram Agent MCP Client."""
 
+from asyncio import gather
 from os import getenv
 from typing import Any
 
@@ -10,6 +11,7 @@ from .handlers import telegram_chat, telegram_file, telegram_image, telegram_voi
 from .instances import TelegramBot
 from .logging import TelegramLogger
 from .managers import DocumentManager, DownloadManager
+from .relay import serve, start_relay
 
 load_dotenv()
 
@@ -31,18 +33,20 @@ class AgenticTelegramBot(AgenticBot):
 
 async def run_telegram_bot(dev: bool = False) -> None:
     """Run the Telegram bot with the configured managers and handlers."""
-    telegram_id: str | None = getenv("TELEGRAM_BOT_ID")
-    telegram_id_dev: str | None = getenv("TELEGRAM_BOT_ID_DEV")
+    telegram_id: str | None = getenv("TELEGRAM_BOT_TOKEN")
+    telegram_id_dev: str | None = getenv("TELEGRAM_BOT_TOKEN_DEV")
     if dev:
         if telegram_id_dev:
             telegram_id = telegram_id_dev
         else:
-            raise ValueError("TELEGRAM_BOT_ID_DEV is not set")
+            raise ValueError("TELEGRAM_BOT_TOKEN_DEV is not set")
     elif not telegram_id:
-        raise ValueError("TELEGRAM_BOT_ID is not set")
+        raise ValueError("TELEGRAM_BOT_TOKEN is not set")
 
     managers: dict[str, type] = {}
-    handlers: dict[str, Any] = {"chat": telegram_chat}
+    handlers: dict[str, Any] = {
+        "chat": telegram_chat,
+    }
     if getenv("TRANSMISSION_URL"):
         managers["download_torrent"] = DownloadManager
     if getenv("RAG_URL"):
@@ -53,4 +57,5 @@ async def run_telegram_bot(dev: bool = False) -> None:
         handlers["image"] = telegram_image
 
     with AgenticTelegramBot(telegram_id, dev, managers) as bot:
-        await bot.run(**handlers)
+        relay = start_relay(bot)
+        await gather(bot.run(**handlers), *([serve(relay)] if relay else []))
