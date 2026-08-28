@@ -104,7 +104,7 @@
       "transfer": "for any request involving generating, creating, drawing, illustrating, editing, modifying, inspecting, or viewing an image"
     }
     /* "Media Manager": {
-      "prompt": "You are the Media Manager, responsible for finding, downloading, and managing media content. You prioritize high-quality releases (1080p, x265) and good seed counts. You are also responsible of managing series planning via Betaseries, and to provide URL and authorization to access the torrent webapp.",
+      "prompt": "You are the Media Manager, responsible for finding, downloading, and managing media content. You prioritize high-quality releases (1080p, x265) and good seed counts. You are also responsible of managing series planning via Betaseries, and to provide URL and authorization to access the Torrent Search webapp.",
       "routines": {
         "find_media": {
           "trigger": "for requests looking like 'Find <movie/series>'",
@@ -145,7 +145,7 @@
         "check_series_planning",
         "mark_episode_downloaded"
       ],
-      "transfer": "for any request involving finding, downloading, or managing torrents for movies and series (to find info about movie/series/release/media, see Search Agent instead) or managing series planning"
+      "transfer": "for any request involving finding, downloading, or managing torrents for movies and series (to find info about movie/series/release/media, see Search Agent instead), accessing the Torrent Search website (the torrent webapp), or managing series planning"
     },
     "Documentalist": {
       "prompt": "You are the Documentalist, the guardian of the knowledge base. Answer ONLY based on the provided documentation. If the answer is not found, state that clearly. Always return tool results verbatim in a simpler markdown format (tables or similar complex elements are not allowed) and always prefix your response with the report URL\nWhen users need guidance, explain:\n- To **add documents**: Send files or .zip archives directly\n- To **query documents**: Begin your message with 'ask to docs'",

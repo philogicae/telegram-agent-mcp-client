@@ -1,5 +1,6 @@
 """Agent implementation for orchestrating LLM interactions."""
 
+import logging
 import sys
 from base64 import b64encode
 from collections.abc import AsyncGenerator, Callable, Sequence
@@ -37,6 +38,8 @@ from .utils import (
 )
 
 load_dotenv()
+
+log = logging.getLogger(__name__)
 
 CONFIG_DIR = getenv("CONFIG") or "./config"
 
@@ -219,7 +222,7 @@ class Agent:
         if group is None:
             # Relay-injected messages (message_id 0, token-authed) don't carry a
             # configured sender: route to the group already handling this chat's
-            # thread, falling back to the first configured group.
+            # thread, falling back to the first group that has a real swarm.
             if isinstance(content, TelegramMessage) and content.message_id == 0:
                 group = next(
                     (
@@ -227,12 +230,13 @@ class Agent:
                         for g, s in self.agents.items()
                         if thread_id in getattr(s, "active", {})
                     ),
-                    next(iter(self.user_config), None),
+                    next((g for g in self.user_config if g in self.agents), None),
                 )
+                log.warning("Relay message routed to group '%s'", group)
             if group is None:
                 return  # Unknown user: no reply
 
-        swarm = getattr(self.agents, group, None)
+        swarm = self.agents.get(group)
         if swarm is None or not getattr(swarm, "agent", None):
             return  # Group has no valid config: no reply
         if thread_id not in swarm.active:

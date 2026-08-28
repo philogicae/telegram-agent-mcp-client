@@ -81,6 +81,8 @@ services:
     env_file:
       - path: docker-envs/torrent_search.env
         required: false
+    environment:
+      TELEGRAM_AUTH_FILE: /app/data/authorized_tokens.json
     volumes:
       - /mnt/user/shared/workspace/telegram-agent-mcp-client/data/torrent_search:/app/data
     <<: [*default-dns, *default-logging, *default-networks]
