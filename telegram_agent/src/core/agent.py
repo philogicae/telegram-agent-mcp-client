@@ -190,6 +190,7 @@ class Agent:
     ) -> AsyncGenerator[tuple[str, str, bool, dict[str, Any]]]:
         thread_id, user = "test", "Developer"
         chat_prefix = ""
+        is_relay = False
         date = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
         media: list[dict] = []
         if isinstance(content, str):
@@ -197,6 +198,7 @@ class Agent:
         elif isinstance(content, TelegramMessage):
             thread_id = str(content.chat.id)
             chat_prefix = f"[chat_id:{thread_id}]"
+            is_relay = content.message_id == 0
             if content.from_user:
                 user = content.from_user.first_name
             media = getattr(content, "media", [])
@@ -223,7 +225,7 @@ class Agent:
             # Relay-injected messages (message_id 0, token-authed) don't carry a
             # configured sender: route to the group already handling this chat's
             # thread, falling back to the first group that has a real swarm.
-            if isinstance(content, TelegramMessage) and content.message_id == 0:
+            if is_relay:
                 group = next(
                     (
                         g
