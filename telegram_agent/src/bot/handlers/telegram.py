@@ -143,8 +143,12 @@ async def telegram_report_issue(
 
 
 def _user_admin(instance: AgenticBot, cmd: str) -> str:
-    """Handle admin user-management commands: /allow-user, /list-user, /ban-user."""
+    """Handle admin user-management commands: /allow-user, /list-user (alias
+    /list-users), /ban-user."""
     name, _, arg = cmd.partition(" ")
+    name = name.partition("@")[
+        0
+    ]  # /cmd@botname — Telegram appends the bot mention in groups
     arg = arg.strip()
     if name == "/allow-user":
         uid, sep, user = arg.partition("=")
@@ -161,6 +165,8 @@ def _user_admin(instance: AgenticBot, cmd: str) -> str:
         if not instance.agent.remove_allowed_user(arg):
             return f"⚠️ {arg} is not in the allowed list."
         return f"🚫 {arg} can no longer talk to me."
+    if name not in ("/list-user", "/list-users"):
+        return "⚠️ Unknown user command. Try /allow-user, /list-user or /ban-user."
 
     # /list-user
     def fmt(title: str, users: dict[str, str]) -> str:
@@ -202,7 +208,12 @@ async def telegram_chat(
         await instance.bot.send(msg, f"TTS is now {state}")
         return
     cmd = msg.text or ""
-    if any(cmd.startswith(p) for p in ("/allow-user", "/list-user", "/ban-user")):
+    if cmd.split(" ")[0].partition("@")[0] in (
+        "/allow-user",
+        "/list-user",
+        "/list-users",  # plural alias
+        "/ban-user",
+    ):
         if not instance.agent.is_admin(msg.from_user.id):
             return  # Admin-only: silently ignored for everyone else
         await instance.bot.send(msg, _user_admin(instance, cmd))
