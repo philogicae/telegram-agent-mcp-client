@@ -6,7 +6,7 @@ from base64 import b64encode
 from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import suppress
 from datetime import UTC, datetime
-from json import JSONDecodeError, loads
+from json import JSONDecodeError, dump, loads
 from os import getenv
 from pathlib import Path
 from typing import Any, ClassVar, Self
@@ -41,7 +41,7 @@ load_dotenv()
 
 log = logging.getLogger(__name__)
 
-CONFIG_DIR = getenv("CONFIG") or "./config"
+CONFIG_DIR = getenv("CONFIG_DIR") or "./config"
 
 
 def _media_blocks(media: list[dict]) -> list[dict]:
@@ -176,19 +176,74 @@ class Agent:
         )
         return state
 
-    def is_allowed(self, user: str) -> bool:
-        """Check if a user is listed in any group (admin or allowed)."""
-        user_lower = user.lower()
-        for group_cfg in self.user_config.values():
-            for u in group_cfg.get("users", []):
-                if u.lower() == user_lower:
-                    return True
-        return False
+    def _group_users(self, group: str) -> dict[str, str]:
+        """Return the user_id -> name mapping of a config group."""
+        cfg = self.user_config.get(group)
+        users = cfg.get("users") if isinstance(cfg, dict) else None
+        return users if isinstance(users, dict) else {}
+
+    def is_allowed(self, user_id: int | str) -> bool:
+        """Check if a Telegram user ID is listed in any group (admin or allowed)."""
+        uid = str(user_id)
+        return any(uid in self._group_users(g) for g in self.user_config)
+
+    def is_admin(self, user_id: int | str) -> bool:
+        """Check if a Telegram user ID is listed in the admin group."""
+        return str(user_id) in self._group_users("admin")
+
+    def _save_user_config(self) -> None:
+        with (Path(CONFIG_DIR) / "user_config.json").open("w", encoding="utf-8") as f:
+            dump(self.user_config, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+
+    def add_allowed_user(self, user_id: int | str, name: str) -> None:
+        """Add a user to the allowed mapping and persist user_config.json."""
+        allowed = self.user_config.setdefault("allowed", {})
+        users = allowed.setdefault("users", {})
+        if not isinstance(users, dict):
+            users = allowed["users"] = {}
+        users[str(user_id)] = name
+        self._save_user_config()
+
+    def remove_allowed_user(self, user_id: int | str) -> bool:
+        """Remove a user from the allowed mapping and persist; False if absent."""
+        users = self._group_users("allowed")
+        uid = str(user_id)
+        if uid not in users:
+            return False
+        del users[uid]
+        self._save_user_config()
+        return True
+
+    def _match_group(self, user_id: str, name: str) -> str | None:
+        """Resolve the config group handling a user.
+
+        Real Telegram users match by ID. Name is the fallback for
+        pseudo-users that have no real ID (relay self-prompt, CLI), which
+        carry a configured display name. "-1" is the Developer sentinel
+        entry for that pseudo-user.
+        """
+        if user_id:
+            group = next(
+                (g for g in self.user_config if user_id in self._group_users(g)),
+                None,
+            )
+            if group:
+                return group
+        name_lower = name.lower()
+        return next(
+            (
+                g
+                for g in self.user_config
+                if any(n.lower() == name_lower for n in self._group_users(g).values())
+            ),
+            None,
+        )
 
     async def chat(
         self, content: str | TelegramMessage | Any
     ) -> AsyncGenerator[tuple[str, str, bool, dict[str, Any]]]:
-        thread_id, user = "test", "Developer"
+        thread_id, user, uid = "test", "Developer", ""
         chat_prefix = ""
         is_relay = False
         date = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
@@ -199,6 +254,7 @@ class Agent:
             thread_id = str(content.chat.id)
             chat_prefix = f"[chat_id:{thread_id}]"
             is_relay = content.message_id == 0
+            uid = str(content.from_user.id) if content.from_user else ""
             if content.from_user:
                 user = content.from_user.first_name
             media = getattr(content, "media", [])
@@ -212,15 +268,7 @@ class Agent:
         thread_id = self.thread_mappings.get(base_thread_id, base_thread_id)
 
         # Determine user group from config; reject unknown users silently
-        user_lower = user.lower()
-        group: str | None = None
-        for name, group_cfg in self.user_config.items():
-            for u in group_cfg.get("users", []):
-                if u.lower() == user_lower:
-                    group = name
-                    break
-            if group:
-                break
+        group = self._match_group(uid, user)
         if group is None:
             # Relay-injected messages (message_id 0, token-authed) don't carry a
             # configured sender: route to the group already handling this chat's

@@ -142,6 +142,42 @@ async def telegram_report_issue(
         )
 
 
+def _user_admin(instance: AgenticBot, cmd: str) -> str:
+    """Handle admin user-management commands: /allow-user, /list-user, /ban-user."""
+    name, _, arg = cmd.partition(" ")
+    arg = arg.strip()
+    if name == "/allow-user":
+        uid, sep, user = arg.partition("=")
+        uid, user = uid.strip(), user.strip()
+        if not sep or not uid.isdigit() or not user:
+            return "⚠️ Usage: /allow-user user_id=name"
+        instance.agent.add_allowed_user(uid, user)
+        return f"✅ {user} ({uid}) can now talk to me."
+    if name == "/ban-user":
+        if not arg.isdigit():
+            return "⚠️ Usage: /ban-user user_id"
+        if instance.agent.is_admin(arg):
+            return "⚠️ Can't ban an admin."
+        if not instance.agent.remove_allowed_user(arg):
+            return f"⚠️ {arg} is not in the allowed list."
+        return f"🚫 {arg} can no longer talk to me."
+
+    # /list-user
+    def fmt(title: str, users: dict[str, str]) -> str:
+        return title + (
+            "\n" + "\n".join(f"  {i}: {n}" for i, n in users.items())
+            if users
+            else "\n  (none)"
+        )
+
+    return "\n".join(
+        [
+            fmt("👑 Admin:", instance.agent._group_users("admin")),
+            fmt("👥 Allowed:", instance.agent._group_users("allowed")),
+        ]
+    )
+
+
 @handler
 async def telegram_chat(
     instance: AgenticBot, msg: Message, overwrite: Message | None = None
@@ -152,7 +188,7 @@ async def telegram_chat(
     # Relay-injected messages carry message_id 0 (Telegram never sends it) and
     # already passed token auth, so they skip the allowlist.
     if not msg.from_user or (
-        msg.message_id != 0 and not instance.agent.is_allowed(msg.from_user.first_name)
+        msg.message_id != 0 and not instance.agent.is_allowed(msg.from_user.id)
     ):
         return
     if msg.text in ["/start", "/help"]:
@@ -164,6 +200,12 @@ async def telegram_chat(
         instance.tts_enabled[user_id] = not current
         state = "on 🔊" if not current else "off 🔇"
         await instance.bot.send(msg, f"TTS is now {state}")
+        return
+    cmd = msg.text or ""
+    if any(cmd.startswith(p) for p in ("/allow-user", "/list-user", "/ban-user")):
+        if not instance.agent.is_admin(msg.from_user.id):
+            return  # Admin-only: silently ignored for everyone else
+        await instance.bot.send(msg, _user_admin(instance, cmd))
         return
 
     chat_id = msg.chat.id
@@ -347,7 +389,7 @@ async def telegram_chat(
 @handler
 async def telegram_file(instance: AgenticBot, msg: Message) -> None:
     """Handle file/document uploads from users."""
-    if not msg.from_user or not instance.agent.is_allowed(msg.from_user.first_name):
+    if not msg.from_user or not instance.agent.is_allowed(msg.from_user.id):
         return
     try:
         if msg.document:
@@ -376,7 +418,7 @@ async def telegram_file(instance: AgenticBot, msg: Message) -> None:
 @handler
 async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
     """Handle voice messages: attach audio as media and process through agent."""
-    if not msg.from_user or not instance.agent.is_allowed(msg.from_user.first_name):
+    if not msg.from_user or not instance.agent.is_allowed(msg.from_user.id):
         return
     reply = None
     try:
@@ -430,7 +472,7 @@ _media_groups: dict[str, dict] = {}
 @handler
 async def telegram_image(instance: AgenticBot, msg: Message) -> None:
     """Handle image/photo messages: attach images as media and process through agent."""
-    if not msg.from_user or not instance.agent.is_allowed(msg.from_user.first_name):
+    if not msg.from_user or not instance.agent.is_allowed(msg.from_user.id):
         return
     reply = None
     try:

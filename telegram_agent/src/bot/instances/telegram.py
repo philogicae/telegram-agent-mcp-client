@@ -6,7 +6,8 @@ from logging import getLogger
 from typing import Any, ClassVar
 
 import aiohttp
-from telebot.async_telebot import AsyncTeleBot
+from telebot.async_telebot import AsyncTeleBot, ExceptionHandler
+from telebot.asyncio_helper import ApiException
 from telebot.types import BotCommand, CallbackQuery, LinkPreviewOptions, Message
 from telebot.util import smart_split
 
@@ -62,6 +63,27 @@ def _render_logify(
     return rendered
 
 
+class _PollingExceptionHandler(ExceptionHandler):
+    """Handle Telegram-side transient errors instead of logging them as
+    'Unhandled exception' ERROR spam.
+
+    Telegram's edge intermittently answers 502/5xx to a long-poll
+    getUpdates (server-side, unavoidable). Without a registered handler
+    telebot marks every occurrence "Unhandled exception"; the immediate
+    retry often hits the same blip, producing bursts of scary errors.
+    This handler logs one compact line and keeps polling (handled=True,
+    telebot's own backoff still applies). Non-API exceptions keep their
+    traceback for debuggability.
+    """
+
+    async def handle(self, exception: Exception) -> bool:
+        if isinstance(exception, ApiException):
+            logger.warning("Telegram API hiccup (polling continues): %s", exception)
+        else:
+            logger.error("Polling error: %s", exception, exc_info=exception)
+        return True
+
+
 class TelegramBot(Bot):
     """Telegram bot implementation using AsyncTeleBot."""
 
@@ -93,7 +115,11 @@ class TelegramBot(Bot):
         super().__init__(delay, group_msg_trigger, waiting, retries)
         if max_msg_length:
             self.max_msg_length = max_msg_length
-        self.core = AsyncTeleBot(token=telegram_id, parse_mode="HTML")
+        self.core = AsyncTeleBot(
+            token=telegram_id,
+            parse_mode="HTML",
+            exception_handler=_PollingExceptionHandler(),
+        )
         self.edit_cache: dict[int, Any] = {}
 
     async def _rich_request(self, method: str, params: dict) -> dict[str, Any]:
@@ -218,7 +244,10 @@ class TelegramBot(Bot):
 
     async def start(self) -> None:
         """Start the bot's polling loop."""
-        await self.core.infinity_polling(skip_pending=True, timeout=300)
+        # Long-poll 30s: short cycles recycle connections before they go stale
+        # (transient 502s heal on the next poll); latency is unaffected since
+        # polls return immediately when updates arrive.
+        await self.core.infinity_polling(skip_pending=True, timeout=30)
 
     async def send(
         self,

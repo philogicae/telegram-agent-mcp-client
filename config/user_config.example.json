@@ -1,9 +1,11 @@
 {
   "admin": {
-    "users": ["Developer"]
+    "users": {
+      "-1": "Developer"
+    }
   },
   "allowed": {
-    "users": [],
+    "users": {},
     "agents": ["Friendly Agent", "Search Agent", "Image Manager"]
   }
 }
