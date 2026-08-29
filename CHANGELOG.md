@@ -578,6 +578,29 @@
   docker volumes; switch to --mode api
 - Bump to 2.3.0, update deps (anthropic, langchain, uv.lock), refresh
   transmission default trackers, tidy tool loading in agent config
+- Feat: fix relay routing, torrent webapp references, and auth file path
+
+- Route relay messages to first group with active swarm instead of first
+  configured group; warn when relay picks a fallback group
+- Fix getattr(dict, ...) typo → dict.get() when resolving swarm
+- Clarify "torrent webapp" → "Torrent Search webapp" in agent config
+- Set TELEGRAM_AUTH_FILE=/app/data/authorized_tokens.json in compose
+  environment instead of commented env file example
+- Feat: extract relay check into is_relay variable for cleaner conditional logic
+
+- Set is_relay flag when TelegramMessage has message_id == 0 during content
+  parsing instead of repeating isinstance+attribute check later
+- Replace inline relay detection conditional with is_relay variable
+- Feat: id-based allowlist, admin user commands, telegram 502 polling fix
+
+- auth: user_config users are now user_id -> name maps; gates check from_user.id
+  (first_name was spoofable); self-prompt/CLI preserved via "-1" Developer
+  sentinel + name fallback; groups: any group allowed, only allowlisted users handled
+- commands: admin-only /allow-user id=name, /list-user, /ban-user id, persisting
+  to the config volume (Agent.add_allowed_user / remove_allowed_user)
+- polling: custom ExceptionHandler turns telebot "Unhandled exception" 502 bursts
+  into one compact warning; long-poll timeout 300 -> 30
+- fix CONFIG -> CONFIG_DIR env mismatch (compose sets CONFIG_DIR); bump to 2.4.0
 
 ### 🐛 Bug Fixes
 
@@ -916,5 +939,6 @@ Telegram API calls across chats.
 - Chore: update default Gemini model from 3.6-flash to 3.7-flash
 - Chore: update deps
 - Chore: bump version to 2.1.0 and improve MCP transport config handling
+- Chore: update changelog
 - Chore: update changelog
 - Chore: update changelog
