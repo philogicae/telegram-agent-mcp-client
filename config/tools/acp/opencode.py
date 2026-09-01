@@ -576,24 +576,29 @@ async def _wait_for_idle(
     raise TimeoutError
 
 
+def _completed_message(
+    messages: list[dict[str, Any]], role: str = "assistant"
+) -> dict[str, Any] | None:
+    matching = [m for m in messages if (m.get("info") or {}).get("role") == role]
+    if not matching:
+        return None
+    latest = matching[-1]
+    info = latest.get("info") or {}
+    if (info.get("time") or {}).get("completed") or info.get("error"):
+        return latest
+    return None
+
+
 async def _wait_for_message(
     session_id: str, deadline: float, role: str = "assistant"
 ) -> dict[str, Any] | None:
-    """Poll /session/{id}/message for the latest message matching `role`.
-
-    If the deadline passes before a matching message appears, the most
-    recent message of any role (if any) is returned as a fallback.
-    """
-    last: dict[str, Any] | None = None
+    """Poll /session/{id}/message for the latest completed message matching `role`."""
     while monotonic() < deadline:
         messages = await _client.messages(session_id, limit=10)
-        if messages:
-            last = messages[-1]
-        for m in reversed(messages):
-            if (m.get("info") or {}).get("role") == role:
-                return m
+        if message := _completed_message(messages, role):
+            return message
         await asyncio.sleep(_PROGRESS_POLL)
-    return last
+    return None
 
 
 async def _run_with_watcher(
@@ -835,7 +840,7 @@ async def watch_dev_session(
         await _wait_for_idle(sid, deadline, tracker)
         newest = await _wait_for_message(sid, deadline)
         if not newest:
-            return {"error": "No messages found for this session"}
+            return _timeout_result(sid, _session_url(sid))
         if tracker:
             tracker.set_status("✅ Status: Done")
             await tracker.emit()

@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/philogicae/telegram-agent-mcp-client)
 
-A multi-agent Telegram bot built on [LangGraph Swarm](https://github.com/langchain-ai/langgraph-swarm). A Friendly coordinator routes user requests to specialized agents — Search, Image Manager, Media, Home Assistant, Dev Agent — each backed by tools loaded from **MCP servers** and **native Python tools**. Handles multimodal input (text, voice, images), TTS voice replies, and ships with a Next.js docs UI.
+A multi-agent Telegram bot built on [LangGraph Swarm](https://github.com/langchain-ai/langgraph-swarm). A friendly coordinator routes user requests to specialized agents — Search, Image Manager, Media, Home Assistant, and OpenCode Dev — each backed by tools loaded from **MCP servers** and **native Python tools**. Handles multimodal input (text, voice, images), TTS voice replies, and ships with a Next.js docs UI.
 
 ## Features
 
@@ -16,7 +16,9 @@ A multi-agent Telegram bot built on [LangGraph Swarm](https://github.com/langcha
 - **TTS replies** — per-user `/tts` toggle generates voice messages via OpenRouter TTS; an LLM-driven `tts_adapt` step rewrites text to be speakable, not summarized
 - **Rate limiting & cancel** — concurrent runs in the same chat are rejected; `/cancel` aborts the active run; 429 flood-waits are respected and capped at 60s
 - **Streaming edits** — tool logs and model reasoning stream into the message with live edits; final messages render as rich Telegram HTML via `sendRichMessage`, intermediate edits fall back to classic HTML with graceful failure handling
-- **Docker-first** — `compose.yaml` runs the bot + docs UI; `extended.yaml` adds optional services (Transmission, torrent search, n8n)
+- **Remote coding sessions** — OpenCode Dev starts, resumes, watches, and aborts sessions through the OpenCode HTTP server API; long runs return resumable timeout markers and expose live progress/session links
+- **Authenticated HTTP relay** — external services can securely enqueue a notice and self-prompt through `POST /relay`
+- **Docker-first** — `compose.yaml` runs the bot + docs UI; `extended.yaml` adds optional Transmission and torrent-search services
 
 ## Requirements
 
@@ -38,7 +40,7 @@ Edit `.env` to set `TELEGRAM_BOT_TOKEN`, `GEMINI_API_KEY`, and `LLM_ORDER` / `LL
 
 ```bash
 ./scripts/deploy-agent.sh    # bot + docs-ui
-./scripts/deploy-tools.sh    # extended services (Transmission, search, n8n)
+./scripts/deploy-tools.sh    # extended services (Transmission and torrent search)
 ```
 
 ## CLI
@@ -68,6 +70,8 @@ See [`.env.example`](.env.example) for the full list.
 | Model capability suffixes                       | Append `<model_code>\|<option1>[+<option2>]` to any `*_API_MODEL`: `text`, `vision` (images in), `stt` (audio in), `video`, `pdf`, `image` (image gen), `tts` (speech out), `structured` (native JSON output). Lookup: [models.dev](https://models.dev)                                                                                                                                                                                                          |
 | `GEMINI_API_KEY`                                | Google Gemini (vision, image generation)                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `OPENROUTER_API_KEY` / `OPENROUTER_TTS_SPEED`   | OpenRouter TTS; speed clamped to `[0.25, 4.0]` (default `1.15`)                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `OPENCODE_ACP_URL` / `OPENCODE_SERVER_*`        | OpenCode HTTP server URL, Basic Auth credentials, timeout/progress polling, output limit, and local session-cache settings. Despite the historical variable name, this integration uses the server HTTP API rather than ACP JSON-RPC. `OPENCODE_WEB_URL` enables clickable session links.                                                                                                                                                                        |
+| `AGENT_RELAY_TOKEN` / `AGENT_RELAY_PORT`        | Enables the authenticated `POST /relay` endpoint for external self-prompts; the port defaults to `4041`. Callers such as torrent-search-mcp use `AGENT_RELAY_URL` plus the same token.                                                                                                                                                                                                                                                                           |
 | `DATA_DIR` / `CONFIG_DIR`                       | Persisted data and tool config paths                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 ### Agent & user config
@@ -101,10 +105,10 @@ compose.yaml · extended.yaml
 ## Development
 
 ```bash
-./scripts/dev.sh    # uv lock · ruff format · ruff check --fix · ty check · shellcheck
+./scripts/dev.sh    # uv lock/sync · Ruff format/lint · ty · shfmt/shellcheck · Prettier
 ```
 
-CI runs the same checks on every push — see [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml).
+CI runs Ruff format/lint and `ty` on every push; tagged builds also publish distributions. See [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml).
 
 ## License
 
