@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from langchain.messages import HumanMessage
 from telebot.types import InputFile, InputMediaPhoto, Message
 
-from ...core.llm import LLM, can_listen, can_see
+from ...core.llm import _OPENCODE_SESSION, LLM, can_listen, can_see
 from ...core.progress import (
     ProgressTracker,
     default_max_lines,
@@ -262,22 +262,26 @@ async def telegram_chat(
             # Describe each image individually and persist descriptions to disk
             # so the agent can reference them later even after context loss.
             desc_parts = []
-            for img_bytes, img_path in pending:
-                media_dicts = [
-                    {"type": "media", "data": img_bytes, "mime_type": "image/jpeg"}
-                ]
-                desc = await _media_to_text(media_dicts, msg.text or "")
-                desc_path = str(
-                    Path(img_path).parent / f"{Path(img_path).stem}_desc.json"
-                )
-                async with aiofiles.open(desc_path, "w", encoding="utf-8") as f:
-                    await f.write(desc)
-                desc_parts.append(
-                    f"  - {img_path}\n    Description: {desc_path}\n    Context: {desc}"
-                )
-            msg.text = (
-                f"{msg.text or ''}\n\n[Received images:]\n" + "\n".join(desc_parts)
-            ).strip()
+            media_token = _OPENCODE_SESSION.set(str(chat_id))
+            try:
+                for img_bytes, img_path in pending:
+                    media_dicts = [
+                        {"type": "media", "data": img_bytes, "mime_type": "image/jpeg"}
+                    ]
+                    desc = await _media_to_text(media_dicts, msg.text or "")
+                    desc_path = str(
+                        Path(img_path).parent / f"{Path(img_path).stem}_desc.json"
+                    )
+                    async with aiofiles.open(desc_path, "w", encoding="utf-8") as f:
+                        await f.write(desc)
+                    desc_parts.append(
+                        f"  - {img_path}\n    Description: {desc_path}\n    Context: {desc}"
+                    )
+                msg.text = (
+                    f"{msg.text or ''}\n\n[Received images:]\n" + "\n".join(desc_parts)
+                ).strip()
+            finally:
+                _OPENCODE_SESSION.reset(media_token)
 
     if overwrite is None:
         init = instance.bot.reply if msg.chat.type != "private" else instance.bot.send
@@ -291,6 +295,7 @@ async def telegram_chat(
     sink_token = set_progress_sink(_make_progress_sink(instance, reply))
     turn_tracker = ProgressTracker(max_lines=default_max_lines())
     tracker_token = set_turn_tracker(turn_tracker)
+    session_token = _OPENCODE_SESSION.set(str(chat_id))
     try:
         async for agent, step, done, extra in instance.agent.chat(msg):
             if cancel_event.is_set():
@@ -394,6 +399,7 @@ async def telegram_chat(
         reset_progress_sink(sink_token)
         reset_turn_tracker(tracker_token)
         instance.cancel_events.pop(chat_id, None)
+        _OPENCODE_SESSION.reset(session_token)
     instance.log.sent(msg, timer)
 
 
@@ -432,6 +438,7 @@ async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
     if not msg.from_user or not instance.agent.is_allowed(msg.from_user.id):
         return
     reply = None
+    session_token = None
     try:
         voice = msg.voice
         if not voice:
@@ -446,6 +453,7 @@ async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
         # Claim the slot immediately to prevent concurrent runs.
         cancel_event = Event()
         instance.cancel_events[msg.chat.id] = cancel_event
+        session_token = _OPENCODE_SESSION.set(str(msg.chat.id))
         # Send "I'm listening..." immediately, before download/transcription
         init = instance.bot.reply if msg.chat.type != "private" else instance.bot.send
         reply = await init(msg, "🔊 I'm listening...")
@@ -474,6 +482,8 @@ async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
         await telegram_report_issue(instance, msg, reply or msg, e)
     finally:
         instance.cancel_events.pop(msg.chat.id, None)
+        if session_token is not None:
+            _OPENCODE_SESSION.reset(session_token)
 
 
 # Media group accumulation: {media_group_id: {"images": [], "msg": Message}}

@@ -1,11 +1,13 @@
 """LLM provider configuration and management."""
 
+import contextvars
 import re
 from logging import getLogger
 from os import getenv
 from time import monotonic
 from typing import Any
 
+import httpx
 from dotenv import load_dotenv
 from langchain.chat_models import BaseChatModel
 from langchain.messages import HumanMessage
@@ -22,6 +24,31 @@ from openai import AsyncOpenAI
 from ..utils import Singleton, extract_response
 
 load_dotenv()
+
+# OpenCode wants a stable session id per conversation in the x-opencode-session
+# header. We inject it dynamically via an httpx client hook so the same cached
+# model instance can be reused across chats.
+_OPENCODE_SESSION: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "opencode_session", default=None
+)
+
+
+def _set_opencode_session_header(request: httpx.Request) -> None:
+    session_id = _OPENCODE_SESSION.get()
+    if session_id:
+        request.headers["x-opencode-session"] = session_id
+
+
+async def _aset_opencode_session_header(request: httpx.Request) -> None:
+    _set_opencode_session_header(request)
+
+
+_OPENCODE_HTTP_CLIENT = httpx.Client(
+    event_hooks={"request": [_set_opencode_session_header]}
+)
+_OPENCODE_HTTP_ASYNC_CLIENT = httpx.AsyncClient(
+    event_hooks={"request": [_aset_opencode_session_header]}
+)
 
 
 def _order(key: str, default: str) -> list[str]:
@@ -270,6 +297,8 @@ class LLM(Singleton):
                     model=model_opencode,
                     reasoning_effort="low",
                     disable_streaming="tool_calling",
+                    http_client=_OPENCODE_HTTP_CLIENT,
+                    http_async_client=_OPENCODE_HTTP_ASYNC_CLIENT,
                 )
 
             model_opencode_alt = SPECS["opencode-alt"][0]
@@ -280,6 +309,8 @@ class LLM(Singleton):
                     model=model_opencode_alt,
                     reasoning_effort="low",
                     disable_streaming="tool_calling",
+                    http_client=_OPENCODE_HTTP_CLIENT,
+                    http_async_client=_OPENCODE_HTTP_ASYNC_CLIENT,
                 )
 
         if not obj.extra:
