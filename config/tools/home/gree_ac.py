@@ -1871,10 +1871,9 @@ def _generate_graph(
         lc = LineCollection(segs, colors=cols, linewidth=2, alpha=0.9)
         ax.add_collection(lc)
 
+    ev_x, ev_y = [], []  # user actions
+    sched_x, sched_y = [], []  # auto-fired schedule events
     if events and ts:
-        ev_x, ev_y = [], []  # user actions
-        sched_x, sched_y = [], []  # auto-fired schedule events
-        ev_x, ev_y = [], []  # user actions
         _valid_ts = [t for t, v in zip(ts, at, strict=False) if v is not None]
         _valid_at = [v for v in at if v is not None]
         for ev in events:
