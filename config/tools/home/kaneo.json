@@ -1,0 +1,44 @@
+{
+  "command": "npx -y @kaneo/mcp serve",
+  "env": {
+    "KANEO_API_URL": "{ENV:KANEO_URL}",
+    "KANEO_API_KEY": "{ENV:KANEO_API_KEY}"
+  }
+}
+/* all found tools: 36
+attach_label_to_task
+create_label
+create_project
+create_task
+create_task_comment
+create_task_relation
+create_time_entry
+delete_label
+delete_task
+delete_task_comment
+delete_task_relation
+detach_label_from_task
+get_project
+get_task
+get_task_relations
+get_time_entry
+list_notifications
+list_project_columns
+list_projects
+list_task_activity
+list_task_comments
+list_task_time_entries
+list_tasks
+list_workspace_labels
+list_workspace_members
+list_workspaces
+move_task
+search
+update_project
+update_task
+update_task_assignee
+update_task_comment
+update_task_due_date
+update_task_status
+update_time_entry
+whoami */
