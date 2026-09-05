@@ -2,7 +2,6 @@
 
 > **Audience.** AI agents working inside the telegram-agent-mcp-client repository.
 >
-> **Architectural backlog.** This file preserves the full architectural backlog (previously in a separate `ARCHI_TODO.md`, now merged in). Operational runbook / pending verifications live in [TRACKING.md](TRACKING.md).
 > Use `- [ ]` checkboxes; cite `file:line`. Remove items once verified and shipped.
 
 ## Project overview
