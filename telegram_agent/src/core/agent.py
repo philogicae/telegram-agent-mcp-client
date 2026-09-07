@@ -44,6 +44,30 @@ log = logging.getLogger(__name__)
 CONFIG_DIR = getenv("CONFIG_DIR") or "./config"
 
 
+def _raw_model_summary(msg: Any) -> str:
+    """Compact one-line dump of a raw model message for empty-reply diagnosis.
+
+    The swarm swallows provider-side quirks (filtered refusals, cut streams)
+    as content-less messages without raising, so log the raw shape when the
+    retry loop detects an empty reply — otherwise the failure is invisible.
+    """
+    if msg is None:
+        return "no message"
+    kwargs: dict[str, Any] = getattr(msg, "additional_kwargs", None) or {}
+    meta: dict[str, Any] = getattr(msg, "response_metadata", None) or {}
+    content = getattr(msg, "content", "")
+    preview = content if isinstance(content, str) else str(content)
+    tool_names = [tool.get("name") for tool in getattr(msg, "tool_calls", None) or []]
+    return (
+        f"content={preview[:200]!r} tool_calls={tool_names} "
+        f"refusal={kwargs.get('refusal')!r} "
+        f"reasoning={str(kwargs.get('reasoning_content'))[:80]!r} "
+        f"finish={meta.get('finish_reason')!r} "
+        f"model={meta.get('model_name')!r} "
+        f"usage={getattr(msg, 'usage_metadata', None)}"
+    )
+
+
 def _media_blocks(media: list[dict]) -> list[dict]:
     """Convert internal media dicts into multimodal content blocks.
 
@@ -665,6 +689,14 @@ class Agent:
                         )
                         continue
                     if not step or not done:  # Avoid empty reply
+                        log.warning(
+                            "Empty reply from agent '%s' (thread %s): %s",
+                            swarm.active[thread_id],
+                            thread_id,
+                            _raw_model_summary(
+                                last_messages[-1] if last_messages else None
+                            ),
+                        )
                         last_messages.pop()
                         forced_messages.append(
                             HumanMessage(
@@ -680,7 +712,19 @@ class Agent:
                         )
                         continue
                 if not step or not done:  # Avoid empty reply when retry >= 3
-                    step = "The same internal error occurred 3 times in a row... Please try again."
+                    state_msgs = self.state(swarm, thread_id).values.get("messages", [])
+                    log.error(
+                        "Empty reply persisted after %d retries from agent "
+                        "'%s' (thread %s): %s",
+                        retry,
+                        swarm.active[thread_id],
+                        thread_id,
+                        _raw_model_summary(state_msgs[-1] if state_msgs else None),
+                    )
+                    step = (
+                        "The same internal error occurred 3 times in a row... "
+                        "Please try again."
+                    )
 
                 # Final step
                 if self.dev:
