@@ -25,7 +25,7 @@ uv run telegram-agent-mcp-client --agents   # verify agent config
 
 ## Testing instructions
 
-- No automated test suite (lint/typecheck only) — manual QA via dev bot per TRACKING.md standing regression checks.
+- No automated test suite (lint/typecheck only) — manual QA via dev bot.
 
 ## Security considerations
 
@@ -49,11 +49,11 @@ uv run telegram-agent-mcp-client --agents   # verify agent config
 
 ### Infra / Config & tooling
 
-- [ ] Agent relay (`bot/relay.py`) — production rollout pending (see TRACKING.md).
+- [ ] Agent relay (`bot/relay.py`) — production rollout pending.
 - [ ] torrent-search-api service: confirm env drift `extended.yaml` vs `compose.yaml` (`torrent-search-api` is only in `extended.yaml`, not `compose.yaml`).
 - [ ] Docs UI (`docs_ui/`) has no CI checks — add lint/build parity if it keeps evolving.
 
 ## Accepted trade-offs
 
-- No automated test suite (lint/typecheck only) — manual QA via dev bot per TRACKING.md standing regression checks.
+- No automated test suite (lint/typecheck only) — manual QA via dev bot.
 - GraphRAG/neo4j memory stack removed deliberately (commit `59acc66`); context persistence relies on SQLite checkpointer + persisted image descriptions.
