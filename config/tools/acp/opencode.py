@@ -20,6 +20,7 @@ from pydantic import Field
 
 from telegram_agent.src.core.progress import (
     ProgressTracker,
+    TurnTrackerPanel,
     default_max_lines,
     get_turn_tracker,
     has_progress_sink,
@@ -545,14 +546,22 @@ def _timeout_result(
 
 
 async def _start_tracker(session_id: str) -> ProgressTracker | None:
-    """Bind the session to the turn's shared tracker, or a fresh one standalone.
+    """Bind the session to its per-session tracker on the turn's panel.
 
-    Reusing one tracker across consecutive tool calls keeps earlier logs
-    visible instead of each run wiping the panel with an empty state.
+    Reusing one panel across consecutive tool calls keeps earlier logs
+    visible instead of each run wiping it with an empty state; each session
+    gets its own section (status, link, logs) so concurrent sessions no
+    longer overwrite each other.
     """
-    tracker = get_turn_tracker() or (
-        ProgressTracker(max_lines=_PROGRESS_LINES) if has_progress_sink() else None
-    )
+    turn = get_turn_tracker()
+    if isinstance(turn, TurnTrackerPanel):
+        tracker: ProgressTracker | None = turn.tracker(session_id)
+    elif turn is not None:  # Legacy shared tracker
+        tracker = turn
+    else:
+        tracker = (
+            ProgressTracker(max_lines=_PROGRESS_LINES) if has_progress_sink() else None
+        )
     if tracker:
         tracker.set_status("🟢 Status: Working")
         tracker.set_session(session_id, _session_url(session_id))

@@ -389,11 +389,11 @@ class Agent:
             }
             total_agent_calls, total_tool_calls = 0, 0
             calls_by_tool: dict[str, int] = {}
-            timers_by_tool: dict[str, Timer] = {}
+            timers_by_call: dict[str, Timer] = {}  # call id -> per-call timer
             called_tool: str | None = None
-            called_tool_timer: Timer | None = None
             ignore_tool_result: bool = False
-            tool_block: dict[str, str] = {}  # tool name -> live status line
+            tool_block: dict[str, str] = {}  # tool call id -> live status line
+            tool_names: dict[str, str] = {}  # tool call id -> tool name
             start_time = end_time = datetime.now(UTC).timestamp()
             usage: Usage = Usage()
             forced_messages: list[AnyMessage] = []
@@ -411,13 +411,11 @@ class Agent:
                         msg = chunk[msg_type]["messages"][-1]
                         if not msg.tool_calls:
                             total_agent_calls += 1
-                        called_tool, called_tool_timer = None, None
+                        called_tool = None
                     elif "tools" in chunk:
                         msg_type = "tools"
-                        msg = chunk[msg_type]["messages"][-1]
-                        if hasattr(msg, "name") and msg.name:
-                            called_tool = msg.name
-                            called_tool_timer = timers_by_tool.get(called_tool)
+                        tool_results: list[Any] = list(chunk[msg_type]["messages"])
+                        msg = tool_results[-1]
                     else:
                         continue
 
@@ -439,7 +437,8 @@ class Agent:
                         for tool in msg.tool_calls:
                             total_tool_calls += 1
                             called_tool = tool.get("name")
-                            called_tool_timer = timers_by_tool[called_tool] = Timer()
+                            call_id = str(tool.get("id") or called_tool)
+                            timers_by_call[call_id] = Timer()
                             calls_by_tool[called_tool] = (
                                 calls_by_tool.get(called_tool, 0) + 1
                             )
@@ -477,39 +476,39 @@ class Agent:
                     done: bool = False
                     extra: dict[str, Any] = {}
 
-                    if text:
-                        if not text.startswith(
-                            "Thread purpose:"
-                        ):  # Ignore think tool result
-                            self.console.print(
-                                Panel(
-                                    escape(text),
-                                    title=(
-                                        "🛠️ Result"
-                                        + (
-                                            f" ({called_tool_timer.done()})"
-                                            if called_tool_timer
-                                            else ""
-                                        )
-                                        if msg_type == "tools"
-                                        else f"🤖 {swarm.active[thread_id]}"
-                                    ),
-                                    border_style=(
-                                        "green3"
-                                        if msg_type == "tools"
-                                        else "bright_cyan"
-                                    ),
-                                )
+                    if msg_type == "tools":  # Process ALL parallel tool results
+                        for tmsg in tool_results:
+                            tname = str(getattr(tmsg, "name", "") or "")
+                            tcall = (
+                                str(getattr(tmsg, "tool_call_id", "") or "") or tname
                             )
-                        if msg_type == "tools":  # Yield tool result
+                            ttext, _ = extract_response(tmsg)
+                            if not ttext:
+                                continue
+                            ttimer = timers_by_call.get(tcall)
+                            if not ttext.startswith(
+                                "Thread purpose:"
+                            ):  # Ignore think tool result
+                                self.console.print(
+                                    Panel(
+                                        escape(ttext),
+                                        title=(
+                                            "🛠️ Result"
+                                            + (f" ({ttimer.done()})" if ttimer else "")
+                                        ),
+                                        border_style="green3",
+                                    )
+                                )
+                            if tname:
+                                called_tool = tname
                             if (
-                                called_tool
-                                and called_tool != "think"
-                                and not str(called_tool).startswith("transfer_to_")
+                                tname
+                                and tname != "think"
+                                and not str(tname).startswith("transfer_to_")
                             ):
                                 result: Any = None
                                 with suppress(JSONDecodeError, TypeError):
-                                    result = loads(text)
+                                    result = loads(ttext)
                                 if isinstance(result, dict):
                                     pending_images.extend(
                                         result[key]
@@ -518,34 +517,43 @@ class Agent:
                                     )
                                 if isinstance(result, dict) and result.get("timeout"):
                                     elapsed = (
-                                        called_tool_timer.done()
-                                        if called_tool_timer
+                                        ttimer.done()
+                                        if ttimer
                                         else result.get("timeout_at", "?")
                                     )
-                                    step = f"🔸 {format_called_tool(called_tool)}: Timeout after {elapsed}"
+                                    step = f"🔸 {format_called_tool(tname)}: Timeout after {elapsed}"
                                     extra["tool_ok"] = None  # Timeout: not an error
                                 else:
                                     step = "✅"
-                                    sample = text.lower()[:50]
+                                    sample = ttext.lower()[:50]
                                     for flag in Flag:
                                         if flag.value in sample:
                                             step = "❌"
                                             break
-                                    step += f" {format_called_tool(called_tool)}"
-                                    if called_tool_timer:
-                                        step += f": {called_tool_timer.done()}"
+                                    step += f" {format_called_tool(tname)}"
+                                    if ttimer:
+                                        step += f": {ttimer.done()}"
                                     extra["tool_ok"] = step.startswith("✅")
-                                if called_tool in tool_block:
-                                    tool_block[called_tool] = step
+                                if tcall in tool_block:
+                                    tool_block[tcall] = step
                                     step = "\n".join(tool_block.values())
                                     extra["tool_block"] = True
-                                extra["tool"] = called_tool
-                                extra["output"] = text
-                        elif not tool_calls:  # Final result
+                                extra["tool"] = tname
+                                extra["output"] = ttext
+                    elif text:
+                        if not text.startswith(
+                            "Thread purpose:"
+                        ):  # Ignore think tool result
+                            self.console.print(
+                                Panel(
+                                    escape(text),
+                                    title=f"🤖 {swarm.active[thread_id]}",
+                                    border_style="bright_cyan",
+                                )
+                            )
+                        if not tool_calls:  # Final result
                             step, done = text, True
-                        elif (
-                            msg_type == "model"
-                        ):  # Explanatory text alongside tool calls
+                        else:  # Explanatory text alongside tool calls
                             yield (
                                 swarm.active[thread_id],
                                 text,
@@ -590,11 +598,24 @@ class Agent:
                             for t in msg.tool_calls:
                                 name = t.get("name")
                                 if name and not str(name).startswith("transfer_to_"):
-                                    prev = tool_block.get(name, "")
-                                    if not prev or prev[0] in "✅❌🔸":
-                                        tool_block[name] = (
-                                            f"🛠️ {format_called_tool(name)}..."
-                                        )
+                                    call_id = str(t.get("id") or name)
+                                    # Collapse completed same-name entries so a
+                                    # sequential re-call replaces its previous
+                                    # line, while parallel same-name calls keep
+                                    # distinct per-call entries.
+                                    for stale in [
+                                        key
+                                        for key, tool_name in tool_names.items()
+                                        if tool_name == name
+                                        and tool_block.get(key, "")[:1]
+                                        in ("✅", "❌", "🔸")
+                                    ]:
+                                        tool_block.pop(stale, None)
+                                        tool_names.pop(stale, None)
+                                    tool_names[call_id] = str(name)
+                                    tool_block[call_id] = (
+                                        f"🛠️ {format_called_tool(name)}..."
+                                    )
                             fallback = next(
                                 (
                                     format_called_tool(t.get("name"))

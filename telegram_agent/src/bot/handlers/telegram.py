@@ -16,7 +16,7 @@ from telebot.types import InputFile, InputMediaPhoto, Message
 
 from ...core.llm import _OPENCODE_SESSION, LLM, can_listen, can_see
 from ...core.progress import (
-    ProgressTracker,
+    TurnTrackerPanel,
     default_max_lines,
     reset_progress_sink,
     reset_turn_tracker,
@@ -290,10 +290,12 @@ async def telegram_chat(
     prev = ""
     # Long-running tools (e.g. opencode sessions) stream a live progress panel
     # that is rendered in the model-text slot below the tool logs.
-    # One shared tracker per turn: consecutive tool calls append to the same
-    # panel instead of each starting a fresh one that wipes the previous logs.
+    # One turn-scoped panel hosting a per-session sub-tracker: consecutive
+    # calls on the same session append to the same section instead of each
+    # starting a fresh panel that wipes the previous logs, and concurrent
+    # sessions keep separate status/link/log sections.
     sink_token = set_progress_sink(_make_progress_sink(instance, reply))
-    turn_tracker = ProgressTracker(max_lines=default_max_lines())
+    turn_tracker = TurnTrackerPanel(max_lines=default_max_lines())
     tracker_token = set_turn_tracker(turn_tracker)
     session_token = _OPENCODE_SESSION.set(str(chat_id))
     try:

@@ -32,18 +32,20 @@ def reset_progress_sink(token: Token[ProgressSink | None]) -> None:
 
 
 def set_turn_tracker(
-    tracker: ProgressTracker | None,
-) -> Token[ProgressTracker | None]:
+    tracker: ProgressTracker | TurnTrackerPanel | None,
+) -> Token[ProgressTracker | TurnTrackerPanel | None]:
     """Bind a turn-scoped tracker so consecutive tool calls share one panel."""
     return _tracker.set(tracker)
 
 
-def reset_turn_tracker(token: Token[ProgressTracker | None]) -> None:
+def reset_turn_tracker(
+    token: Token[ProgressTracker | TurnTrackerPanel | None],
+) -> None:
     """Unbind the turn tracker registered with the given token."""
     _tracker.reset(token)
 
 
-def get_turn_tracker() -> ProgressTracker | None:
+def get_turn_tracker() -> ProgressTracker | TurnTrackerPanel | None:
     """The tracker shared by all tool calls in the current turn, if any."""
     return _tracker.get()
 
@@ -76,12 +78,18 @@ class ProgressTracker:
     so unchanged progress never causes a second update.
     """
 
-    def __init__(self, max_lines: int = 6, status: str = "🟢 Status: Working") -> None:
+    def __init__(
+        self,
+        max_lines: int = 6,
+        status: str = "🟢 Status: Working",
+        parent: TurnTrackerPanel | None = None,
+    ) -> None:
         self._lines: deque[tuple[str, str]] = deque(maxlen=max_lines)
         self._status = status
         self._session: tuple[str, str] | None = None
         self._last: str = ""
         self._seq: int = 0
+        self._parent = parent
 
     def set_status(self, status: str) -> None:
         """Override the status line (e.g. '✅ Status: Done')."""
@@ -138,7 +146,49 @@ class ProgressTracker:
         return "\n".join(lines)
 
     async def emit(self) -> None:
-        """Send the panel to the sink, skipping it if unchanged since last emit."""
+        """Send the panel to the sink, skipping it if unchanged since last emit.
+
+        Sub-trackers (parented to a turn panel) forward to the panel instead,
+        so any section change re-renders the combined panel.
+        """
+        if self._parent is not None:
+            await self._parent.emit()
+            return
+        rendered = self.render()
+        if rendered == self._last:
+            return
+        self._last = rendered
+        await emit_progress(rendered)
+
+
+class TurnTrackerPanel:
+    """Turn-scoped panel hosting one sub-tracker per session id.
+
+    Consecutive tool calls on the same session reuse that session's section
+    (one status line, one link, one log block — as before); concurrent
+    sessions each get their own section instead of overwriting a single
+    shared status/link/log set.
+    """
+
+    def __init__(self, max_lines: int = 6) -> None:
+        self._max_lines = max_lines
+        self._sections: dict[str, ProgressTracker] = {}
+        self._last: str = ""
+
+    def tracker(self, session_id: str) -> ProgressTracker:
+        """The per-session sub-tracker, created on first use."""
+        tracker = self._sections.get(session_id)
+        if tracker is None:
+            tracker = ProgressTracker(max_lines=self._max_lines, parent=self)
+            self._sections[session_id] = tracker
+        return tracker
+
+    def render(self) -> str:
+        """Render every session section, in first-appearance order."""
+        return "\n\n".join(section.render() for section in self._sections.values())
+
+    async def emit(self) -> None:
+        """Send the combined panel to the sink, skipping unchanged renders."""
         rendered = self.render()
         if rendered == self._last:
             return
