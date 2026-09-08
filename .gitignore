@@ -19,6 +19,7 @@ wheels/
 .env.*
 **/*.env
 .venv
+.local
 user_config.json
 *_config.json
 !user_config.example.json
