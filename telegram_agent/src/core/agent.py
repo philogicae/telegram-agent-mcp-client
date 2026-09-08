@@ -767,18 +767,14 @@ class Agent:
 
 async def run_agent(dev: bool = False, generate_png: bool = False) -> None:
     """Run the agent in CLI mode."""
-    content = ""
     with await Agent.init(dev=True, generate_png=generate_png) as agent:
-        if content:
-            print(f"> {content}")
         while True:
             try:
-                content = (content or input("> ")).strip()
+                content = input("> ").strip()
                 if not content:
                     break
                 async for _, step, done, _ in agent.chat(content):
                     if dev and step and not done:
                         input("Press enter to continue...")
-                content = ""
             except KeyboardInterrupt:
                 break
