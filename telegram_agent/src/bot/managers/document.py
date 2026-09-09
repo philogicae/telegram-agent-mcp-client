@@ -14,7 +14,6 @@ from ..utils import progress_bar, sanitize_filename
 
 load_dotenv()
 RAG_URL = getenv("RAG_URL")
-DOCS_UI_URL = getenv("DOCS_UI_URL", "").strip("/")
 SEPARATOR = "___________________________________"
 
 
@@ -111,7 +110,7 @@ class DocumentManager(Manager):
                 self.name,
                 f"❌ File too large (>20MB): {filename}",
             )
-            + f"\nTelegram API only allows files up to 20MB.\nTo upload multiple or larger files: [{DOCS_UI_URL.split('/')[-1]}/upload/dev]({DOCS_UI_URL}/upload/dev)",
+            + "\nTelegram API only allows files up to 20MB.",
         )
 
     async def upload_document(self, file_name: str, file_path: str) -> Any:

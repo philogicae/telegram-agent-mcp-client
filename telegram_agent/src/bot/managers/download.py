@@ -182,7 +182,7 @@ class DownloadManager(Manager):
 
         A cycle performs three whole-library scans over ~2 minutes, so a
         milestone landing inside a running cycle is already covered by its
-        remaining scans — spawning another would stack duplicate scans.
+        remaining scans - spawning another would stack duplicate scans.
         """
         if self._refresh_task is not None and not self._refresh_task.done():
             self.instance.log.info(f"Emby refresh skipped ({reason}); cycle in flight")
@@ -272,7 +272,7 @@ class DownloadManager(Manager):
                 await self.instance.bot.send(
                     chat_id,
                     self.instance.bot.logify(
-                        self.name, f"⏹ {torrent.name} — canceled or removed"
+                        self.name, f"⏹ {torrent.name} - canceled or removed"
                     ),
                 )
                 self._drop(message, torrent_id)

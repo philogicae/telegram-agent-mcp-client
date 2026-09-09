@@ -49,18 +49,3 @@ services:
       - ${DATA_DIR:-./data}:/app/data
       - ${CONFIG_DIR:-./config}:/app/config
     <<: [*default-dns, *default-logging, *default-networks]
-
-  docs-ui:
-    container_name: docs-ui
-    build:
-      context: ./docs_ui
-      dockerfile: Dockerfile
-    image: docs-ui
-    restart: unless-stopped
-    ports:
-      - "4040:4040"
-    env_file:
-      - .env
-    <<: [*default-dns, *default-logging, *default-networks]
-    deploy:
-      replicas: ${DOCS_UI_URL:+1}

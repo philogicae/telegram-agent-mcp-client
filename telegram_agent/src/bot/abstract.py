@@ -21,7 +21,7 @@ from ..utils import Timer
 _FLOOD_WAIT_CAP = 60.0
 
 # Network errors (DNS failures, connection resets, etc.) need longer backoff
-# than the default 0.2s delay — retrying too fast just burns through the retry
+# than the default 0.2s delay - retrying too fast just burns through the retry
 # budget before DNS has a chance to recover. Use exponential backoff starting
 # at 1s, capped at 10s.
 _NETWORK_BACKOFF_BASE = 1.0
@@ -134,7 +134,7 @@ class Bot(ABC):
 
         Uses an async lock so only one task checks/updates the timestamp at a
         time, but the wait is done with ``await sleep`` which yields to the
-        event loop — other handlers keep running during the gap.
+        event loop - other handlers keep running during the gap.
         """
         async with self._api_lock:
             now = monotonic()
@@ -182,7 +182,7 @@ class Bot(ABC):
                     await sleep(wait)
                     continue
                 # Network errors (DNS failures, connection resets, etc.)
-                # need exponential backoff — retrying at the default 0.2s
+                # need exponential backoff - retrying at the default 0.2s
                 # delay burns through the budget before DNS recovers.
                 is_network = self._is_network_error(exc)
                 retry += 1
@@ -210,7 +210,7 @@ class Bot(ABC):
         """Check if an exception is a network-level error needing backoff.
 
         Only connection-level errors (DNS failures, connection resets, etc.)
-        qualify — HTTP error responses (400, 500) are NOT network errors and
+        qualify - HTTP error responses (400, 500) are NOT network errors and
         won't resolve with retries.
         """
         # telebot wraps aiohttp connection errors into RequestTimeout.

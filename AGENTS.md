@@ -25,35 +25,34 @@ uv run telegram-agent-mcp-client --agents   # verify agent config
 
 ## Testing instructions
 
-- No automated test suite (lint/typecheck only) — manual QA via dev bot.
+- No automated test suite (lint/typecheck only) - manual QA via dev bot.
 
 ## Security considerations
 
 - Allowlist audited 2026-08-28: keyed by Telegram user ID, all handler paths gated, groups handled (any group allowed, only allowlisted users handled), self-prompt/CLI preserved via the `"-1": "Developer"` sentinel. Closed.
-- [ ] Relay `sender` is caller-controlled — the relay token is the only gate on spoofing (`bot/relay.py`).
-- [ ] `{ENV:VAR}` substitution in MCP tool configs — confirm no secrets leak into logs or `--tools` output.
+- [ ] Relay `sender` is caller-controlled - the relay token is the only gate on spoofing (`bot/relay.py`).
+- [ ] `{ENV:VAR}` substitution in MCP tool configs - confirm no secrets leak into logs or `--tools` output.
 - [ ] Config writes (`/allow-user`, `/ban-user`) are last-write-wins vs manual edits of the bind-mounted `config/` volume; add a file lock if it ever matters.
 
 ## Architecture backlog
 
 ### Core (`telegram_agent/src/core/`)
 
-- [ ] Review `core/stats.py` — ensure it doesn't block the agent loop or leak file handles.
-- [ ] `core/llm.py` — provider fallback policy (cooldown + jail via `LLM_DEAD_COOLDOWN`/`LLM_JAIL_STRIKES`) keeps growing; extract to its own module if it continues.
-- [ ] `core/llm.py` — add tests for model capability suffix parsing (missing `|`, unknown options, duplicates).
+- [ ] Review `core/stats.py` - ensure it doesn't block the agent loop or leak file handles.
+- [ ] `core/llm.py` - provider fallback policy (cooldown + jail via `LLM_DEAD_COOLDOWN`/`LLM_JAIL_STRIKES`) keeps growing; extract to its own module if it continues.
+- [ ] `core/llm.py` - add tests for model capability suffix parsing (missing `|`, unknown options, duplicates).
 
 ### Bot (`telegram_agent/src/bot/`)
 
-- [ ] `instances/telegram.py` — evaluate Bot API rich drafts (private chats) as an opt-in; raw `_rich_request` wrapper may be removable on pytelegrambotapi ≥ 4.36.
-- [ ] `handlers/telegram.py` — verify rate-limit/`/cancel` interplay still holds for concurrent runs (voice/image → chat handoff).
+- [ ] `instances/telegram.py` - evaluate Bot API rich drafts (private chats) as an opt-in; raw `_rich_request` wrapper may be removable on pytelegrambotapi ≥ 4.36.
+- [ ] `handlers/telegram.py` - verify rate-limit/`/cancel` interplay still holds for concurrent runs (voice/image → chat handoff).
 
 ### Infra / Config & tooling
 
-- [ ] Agent relay (`bot/relay.py`) — production rollout pending.
+- [ ] Agent relay (`bot/relay.py`) - production rollout pending.
 - [ ] torrent-search-api service: confirm env drift `extended.yaml` vs `compose.yaml` (`torrent-search-api` is only in `extended.yaml`, not `compose.yaml`).
-- [ ] Docs UI (`docs_ui/`) has no CI checks — add lint/build parity if it keeps evolving.
 
 ## Accepted trade-offs
 
-- No automated test suite (lint/typecheck only) — manual QA via dev bot.
+- No automated test suite (lint/typecheck only) - manual QA via dev bot.
 - GraphRAG/neo4j memory stack removed deliberately (commit `59acc66`); context persistence relies on SQLite checkpointer + persisted image descriptions.

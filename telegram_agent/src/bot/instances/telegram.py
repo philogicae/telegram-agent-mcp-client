@@ -49,7 +49,7 @@ def _render_logify(
     The tool block (live multi-call status) is folded into the code block.
     The progress panel (model_text: status line, session link, logs) is
     appended after the block as plain text and replaced on each update, so
-    it reads as temporary progress info — never confused with the final
+    it reads as temporary progress info - never confused with the final
     response. The waiting marker is only kept inside the block when there
     is no panel to show.
     """
@@ -147,7 +147,7 @@ class TelegramBot(Bot):
 
         Network errors (DNS failures, connection resets) are retried with
         exponential backoff by _exec before falling through to the next
-        content variant — a transient network blip should not discard the
+        content variant - a transient network blip should not discard the
         rich message.
         """
         stripped = strip_rich_images(content_html)

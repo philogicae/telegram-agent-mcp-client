@@ -1350,7 +1350,7 @@ class GREEACClient:
             status_result = self._cmd_verify(device, cache, cmd)
             result.update(status_result)
         else:
-            # Only schedule ops — return current status too
+            # Only schedule ops - return current status too
             with self._lock:
                 mn = self._norm(device["mac"])
                 st = self._status(mn, cache)
@@ -1416,7 +1416,7 @@ class GREEACClient:
         Sync AC clock to local time if off by >60s.
 
         If *status* is provided it must be a RAW status dict (as returned by
-        ``_status``, keyed by ``FIELDS["time"]``), not a ``decode``d one — pass it
+        ``_status``, keyed by ``FIELDS["time"]``), not a ``decode``d one - pass it
         to reuse an already-fetched status instead of a separate UDP round-trip.
         """
         if status is None:
@@ -1554,7 +1554,7 @@ def _query_readings(
 ) -> list[dict]:
     """Query telemetry readings by date range. Returns sorted list oldest-first (chronological).
 
-    With ``limit=None`` (the default) all matching readings are returned — the
+    With ``limit=None`` (the default) all matching readings are returned - the
     caller is expected to prune via ``_dedup_unchanged`` / ``_downsample``.
     """
     results = []
@@ -1599,7 +1599,7 @@ def _dedup_unchanged(readings: list[dict]) -> list[dict]:
     Collapse runs of consecutive readings identical except for the timestamp.
 
     Keeps the FIRST and LAST reading of each run (a single point only once) so
-    flat segments stay anchored at both ends — the smoothing curve then draws a
+    flat segments stay anchored at both ends - the smoothing curve then draws a
     true horizontal line instead of bowing through a lone midpoint. Transition
     timestamps remain accurate.
 
@@ -2041,7 +2041,7 @@ with suppress(ValueError, OSError):  # ponytail: only works in main thread
 register(_client._stop_scheduler)
 
 # ============================================================
-# MCP TOOLS — only convenience tools are exposed to the agent.
+# MCP TOOLS - only convenience tools are exposed to the agent.
 # All individual setters are subsumed by set_home_ac.
 # ============================================================
 
@@ -2131,7 +2131,7 @@ def _generate_temp_graph(
         return {"error": f"No telemetry readings found for period: {period}"}
     # Prune: collapse consecutive identical readings so long flat runs don't
     # bloat memory or the returned series. Stats are computed on the pruned
-    # set — averages/percentages stay accurate because flat runs are
+    # set - averages/percentages stay accurate because flat runs are
     # represented by their first & last sample (correct time weighting is
     # preserved by the endpoints).
     readings = _dedup_unchanged(readings)

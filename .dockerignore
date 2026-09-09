@@ -25,9 +25,6 @@ data
 config
 tmp.json
 
-# Docs UI (separate build)
-docs_ui/
-
 # Misc
 .git
 *_graph.png

@@ -104,7 +104,7 @@ def _env_num(name: str, default: float) -> float:
     try:
         return float(raw)
     except ValueError:
-        getLogger(__name__).warning("Invalid %s=%r — using %s", name, raw, default)
+        getLogger(__name__).warning("Invalid %s=%r - using %s", name, raw, default)
         return default
 
 
@@ -334,19 +334,19 @@ class LLM(Singleton):
 
         Uses the utils LLM to strip markdown, remove code blocks and links,
         and rephrase the content so it sounds natural when spoken aloud.
-        Preserves the full message content — only reformats for speech,
+        Preserves the full message content - only reformats for speech,
         does not summarize. Falls back to the original text if the LLM
         call fails.
         """
         prompt = (
             "You are reading a message aloud to a friend over voice chat. "
             "Convert the following chat message into spoken language that "
-            "sounds natural when read aloud — faithful to the original "
+            "sounds natural when read aloud - faithful to the original "
             "content, not a summary.\n\n"
             "Rules:\n"
             "- Keep all important information from the original message. "
             "If the message is long, you may lightly condense verbose or "
-            "repetitive parts — but never drop key facts, results, names, "
+            "repetitive parts - but never drop key facts, results, names, "
             "dates, or actionable details. The goal is to make it "
             "speakable, not shorter.\n"
             "- Talk like you're reading a message to someone: conversational, "
@@ -356,11 +356,11 @@ class LLM(Singleton):
             "- Replace URLs with a short verbal description (e.g. 'a link "
             "to the docs' instead of the full URL).\n"
             "- Convert emojis into emotion tags like [laughs], [smiles], "
-            "[sadly], [excited] — never read emoji names literally.\n"
+            "[sadly], [excited] - never read emoji names literally.\n"
             "- If the message contains code or technical commands, read "
             "them out naturally (e.g. 'the command pip install' not "
             "'pip space install').\n"
-            "- Keep the original language, tone, and intention — if the "
+            "- Keep the original language, tone, and intention - if the "
             "message is excited, sarcastic, apologetic, or playful, the "
             "spoken version should feel the same way.\n"
             "- Return ONLY the spoken text, no preamble, no quotes.\n\n"
@@ -397,14 +397,14 @@ class LLM(Singleton):
                 unique = list(dict.fromkeys(emotions))
                 emotion_hint = (
                     f" The speaker is feeling {', '.join(unique)} at various "
-                    "points — reflect this in your delivery."
+                    "points - reflect this in your delivery."
                 )
             speed_str = getenv("OPENROUTER_TTS_SPEED", "1.15")
             try:
                 openrouter_tts_speed = float(speed_str)
             except ValueError:
                 getLogger(__name__).error(
-                    "Invalid OPENROUTER_TTS_SPEED=%r — expected a number, "
+                    "Invalid OPENROUTER_TTS_SPEED=%r - expected a number, "
                     "falling back to 1.15",
                     speed_str,
                 )
@@ -413,7 +413,7 @@ class LLM(Singleton):
             # values instead of failing at call time.
             if not 0.25 <= openrouter_tts_speed <= 4.0:
                 getLogger(__name__).warning(
-                    "OPENROUTER_TTS_SPEED=%s out of range [0.25, 4.0] — clamping.",
+                    "OPENROUTER_TTS_SPEED=%s out of range [0.25, 4.0] - clamping.",
                     openrouter_tts_speed,
                 )
                 openrouter_tts_speed = max(0.25, min(4.0, openrouter_tts_speed))
@@ -426,7 +426,7 @@ class LLM(Singleton):
                 instructions=(
                     "You are a warm, expressive voice assistant. Speak clearly "
                     "and naturally with a friendly, engaging tone. Vary your "
-                    "pace — slower for important information, faster for casual "
+                    "pace - slower for important information, faster for casual "
                     "parts. Always match the emotion of the text: upset, sad, "
                     "excited, amused, etc. Avoid monotone delivery."
                     f"{emotion_hint}"

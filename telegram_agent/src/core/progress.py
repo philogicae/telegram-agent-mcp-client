@@ -127,7 +127,7 @@ class ProgressTracker:
         """Render the panel as plain-text lines (status, session link, logs).
 
         It is appended AFTER the single tool-logs code block and replaced on
-        each update, so it reads as temporary progress info — never confused
+        each update, so it reads as temporary progress info - never confused
         with the final response. The logs live in a code block showing only
         the latest lines.
         """
@@ -165,7 +165,7 @@ class TurnTrackerPanel:
     """Turn-scoped panel hosting one sub-tracker per session id.
 
     Consecutive tool calls on the same session reuse that session's section
-    (one status line, one link, one log block — as before); concurrent
+    (one status line, one link, one log block - as before); concurrent
     sessions each get their own section instead of overwriting a single
     shared status/link/log set.
     """

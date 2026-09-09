@@ -616,7 +616,7 @@ async def _run_with_watcher(
     """Run a prompt with live progress streaming; returns (message, tracker).
 
     Raises TimeoutError when the server does not finish within the configured
-    timeout — the caller decides whether to keep or drop the session.
+    timeout - the caller decides whether to keep or drop the session.
     """
     start = monotonic()
     deadline = start + _TIMEOUT

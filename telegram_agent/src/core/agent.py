@@ -49,7 +49,7 @@ def _raw_model_summary(msg: Any) -> str:
 
     The swarm swallows provider-side quirks (filtered refusals, cut streams)
     as content-less messages without raising, so log the raw shape when the
-    retry loop detects an empty reply — otherwise the failure is invisible.
+    retry loop detects an empty reply - otherwise the failure is invisible.
     """
     if msg is None:
         return "no message"
@@ -73,7 +73,7 @@ def _media_blocks(media: list[dict]) -> list[dict]:
 
     Internal format is {'type': 'media', 'data': bytes, 'mime_type': ...};
     raw bytes are not JSON-serializable and every chat integration expects
-    its own block shape, so encode to base64 here — the single choke point
+    its own block shape, so encode to base64 here - the single choke point
     before HumanMessage construction. Images use image_url data URLs
     (spoken by both langchain-openai and langchain-google-genai).
     """
@@ -86,7 +86,7 @@ def _media_blocks(media: list[dict]) -> list[dict]:
             continue
         b64 = b64encode(data).decode()
         # ponytail: audio uses OpenAI input_audio (ogg unsupported there);
-        # google wants inline_data — split when an stt main model lands
+        # google wants inline_data - split when an stt main model lands
         if mime.startswith("audio/"):
             fmt = mime.split("/", 1)[1].split(";")[0]
             blocks.append(
@@ -327,7 +327,7 @@ class Agent:
             content = f"{user}: {content}" if content else f"{user}: [media]"
             messages: list[AnyMessage] = []
 
-            # ReContext — skip for media-only messages or short conversations
+            # ReContext - skip for media-only messages or short conversations
             # Threshold 200k: Gemini 3.x has 1M context, implicit caching makes
             # old tokens 75-90% cheaper, so keep history intact as long as possible
             state = self.state(swarm, thread_id)

@@ -56,7 +56,7 @@ Analyze this image and return a SINGLE structured JSON object describing it \
 in full detail, using the same schema as for image generation. The JSON must \
 be valid and self-contained.
 
-Describe ALL content factually and completely — including nudity, sexual \
+Describe ALL content factually and completely - including nudity, sexual \
 elements, violence, or any other sensitive content, exactly as it appears. \
 Never censor, omit, euphemize, or soften your description of any visible \
 element.
@@ -159,7 +159,7 @@ def list_images(
         int,
         Field(
             description="Page number (1-indexed). Default 1. "
-            "Used with limit for pagination — e.g. limit=10&page=2 returns "
+            "Used with limit for pagination - e.g. limit=10&page=2 returns "
             "images 11-20.",
         ),
     ] = 1,
@@ -235,7 +235,7 @@ def read_images(
     Read one or more image files: returns their file paths and detailed JSON descriptions.
 
     The returned `image_path` fields can be passed directly to `edit_image`
-    to modify the images — the tool loads the image from disk, so you do
+    to modify the images - the tool loads the image from disk, so you do
     not need multimodal vision to edit an image after reading it.
     Descriptions are structured JSON objects (same schema as `generate_image`)
     containing all visual attributes: subject, composition, environment,

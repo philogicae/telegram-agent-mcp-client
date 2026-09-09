@@ -33,17 +33,17 @@ exclude = [
 ]
 ignore = [
     # Formatter conflicts
-    "E501",   # line-too-long — ruff fmt handles this
-    "COM812", # missing trailing comma — ruff fmt handles this
-    "ISC001", # single-line-implicit-concatenation — ruff fmt handles this
-    "E402",   # module-level import not at top — intentional _PYDANTIC_V1_ANCHOR pattern
+    "E501",   # line-too-long - ruff fmt handles this
+    "COM812", # missing trailing comma - ruff fmt handles this
+    "ISC001", # single-line-implicit-concatenation - ruff fmt handles this
+    "E402",   # module-level import not at top - intentional _PYDANTIC_V1_ANCHOR pattern
     # Already accepted technical debt / style
-    "BLE001",   # blind except — fix gradually
+    "BLE001",   # blind except - fix gradually
     "G201",     # .exception vs .error(exc_info=True)
     # High-noise, low-value
-    "G004",     # f-string in logging — modern & readable
-    "T201",     # print — intentional CLI scripts
-    "S104",     # 0.0.0.0 binding — intentional for server
+    "G004",     # f-string in logging - modern & readable
+    "T201",     # print - intentional CLI scripts
+    "S104",     # 0.0.0.0 binding - intentional for server
     "LOG004",   # .exception() outside handlers
     "TRY300",   # move to else block
     "TRY003",   # long messages outside exception class
@@ -54,7 +54,7 @@ ignore = [
     "S105",     # "bearer" is not a password
     "S107",     # same
     "S311",     # random for non-crypto jitter / test data
-    "S608",     # f-string SQL — project uses safe column params/constants
+    "S608",     # f-string SQL - project uses safe column params/constants
     "S324",     # md5 for non-cryptographic hashing is fine
     "RUF002",   # intentional Greek letters (σ)
     "RUF003",   # intentional × / other unicode in comments

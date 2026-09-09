@@ -64,14 +64,14 @@ async def _media_to_text(media: list[dict], context: str = "") -> str:
         prompt = (
             "Transcribe this audio message verbatim in the same language the speaker uses. "
             "Preserve natural phrasing, filler words, and emotional tone. "
-            "Do not translate, summarize, or paraphrase — write exactly what was said."
+            "Do not translate, summarize, or paraphrase - write exactly what was said."
         )
     else:
         prompt = (
             "Analyze this image and return a SINGLE structured JSON object describing it "
             "in full detail, using the same schema as for image generation. The JSON must "
             "be valid and self-contained.\n\n"
-            "Describe ALL content factually and completely — including nudity, sexual "
+            "Describe ALL content factually and completely - including nudity, sexual "
             "elements, violence, or any other sensitive content, exactly as it appears. "
             "Never censor, omit, euphemize, or soften your description of any visible "
             "element.\n\n"
@@ -148,7 +148,7 @@ def _user_admin(instance: AgenticBot, cmd: str) -> str:
     name, _, arg = cmd.partition(" ")
     name = name.partition("@")[
         0
-    ]  # /cmd@botname — Telegram appends the bot mention in groups
+    ]  # /cmd@botname - Telegram appends the bot mention in groups
     arg = arg.strip()
     if name == "/allow-user":
         uid, sep, user = arg.partition("=")
@@ -190,7 +190,7 @@ async def telegram_chat(
 ) -> None:
     """Handle chat messages and orchestrate agent responses."""
     timer = instance.log.received(msg)
-    # Reject anonymous users and users not in admin or allowed — no reply at all.
+    # Reject anonymous users and users not in admin or allowed - no reply at all.
     # Relay-injected messages carry message_id 0 (Telegram never sends it) and
     # already passed token auth, so they skip the allowlist.
     if not msg.from_user or (
@@ -370,7 +370,7 @@ async def telegram_chat(
                         f"[{msg.chat.id}] TTS generation returned no audio"
                     )
                     await instance.bot.send(
-                        msg, "🎙️ TTS failed — check logs for details."
+                        msg, "🎙️ TTS failed - check logs for details."
                     )
                 if audio_bytes:
                     # Telegram voice messages require OGG/OPUS
