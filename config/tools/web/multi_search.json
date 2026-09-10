@@ -1,6 +1,9 @@
 {
   "description": "Default web search tool. SearXNG metasearch across engines with time_range, categories, engine selection and result scoring. Not for news-only lookups (news_search) or full-page content retrieval (web_fetch/scrapling).",
-  "command": "SEARXNG_URL={ENV:SEARXNG_BASE_URL}:{ENV:SEARXNG_PORT:-8080} npx -y mcp-searxng",
+  "command": "npx -y mcp-searxng",
+  "env": {
+    "SEARXNG_URL": "{ENV:SEARXNG_BASE_URL}:{ENV:SEARXNG_PORT:-8080}"
+  },
   "edit": {
     "searxng_web_search": {
       "name": "web_search",
@@ -9,7 +12,6 @@
   },
   "enable": ["searxng_web_search"]
 }
-
 /* all found tools: 4
 searxng_instance_info
 searxng_search_suggestions
