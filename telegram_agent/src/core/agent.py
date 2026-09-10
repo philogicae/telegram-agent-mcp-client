@@ -194,8 +194,11 @@ class Agent:
         tools = (await Agent.load_tools()) if enable_tools else None
         return Agent(tools, enable_persist, dev, debug, generate_png)
 
-    def state(self, swarm: Any, thread_id: str) -> StateSnapshot:
-        state: StateSnapshot = swarm.agent.get_state(
+    async def state(self, swarm: Any, thread_id: str) -> StateSnapshot:
+        # Sync get_state would run checkpointer calls on the event-loop
+        # thread, which AsyncSqliteSaver rejects - aget_state works for
+        # both the SQLite and in-memory savers.
+        state: StateSnapshot = await swarm.agent.aget_state(
             {"configurable": {"thread_id": thread_id}}
         )
         return state
@@ -330,7 +333,7 @@ class Agent:
             # ReContext - skip for media-only messages or short conversations
             # Threshold 200k: Gemini 3.x has 1M context, implicit caching makes
             # old tokens 75-90% cheaper, so keep history intact as long as possible
-            state = self.state(swarm, thread_id)
+            state = await self.state(swarm, thread_id)
             history_msgs = state.values.get("messages", [])
             history_tokens = token_counter(history_msgs)
             is_media_only = content.endswith(("[media]", "[voice message]"))
@@ -682,7 +685,7 @@ class Agent:
                     retry += 1
                     forced_messages = []
                     end_date = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
-                    last_messages = self.state(swarm, thread_id).values.get(
+                    last_messages = (await self.state(swarm, thread_id)).values.get(
                         "messages", []
                     )
                     # Guard: state may hold <2 messages on early failure
@@ -733,7 +736,9 @@ class Agent:
                         )
                         continue
                 if not step or not done:  # Avoid empty reply when retry >= 3
-                    state_msgs = self.state(swarm, thread_id).values.get("messages", [])
+                    state_msgs = (await self.state(swarm, thread_id)).values.get(
+                        "messages", []
+                    )
                     log.error(
                         "Empty reply persisted after %d retries from agent "
                         "'%s' (thread %s): %s",
