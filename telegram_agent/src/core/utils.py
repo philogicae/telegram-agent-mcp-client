@@ -75,6 +75,30 @@ def checkpointer(dev: bool = False, persist: bool = False) -> BaseCheckpointSave
     return AsyncSqliteSaver(connect(str(data_folder / "checkpointer.sqlite")))
 
 
+def token_counter(messages: list[BaseMessage] | Any) -> int:
+    """Approximate token count including base64 media payload sizes.
+
+    `count_tokens_approximately` ignores multimodal content blocks, so a
+    message holding ~80 MB of base64 would count as a few tokens and never
+    trigger pruning or ReContext (see TAM-18 diagnostic). RemoveMessage
+    stubs are tokenless markers; skipping them keeps the counter usable on
+    state slices that still contain one.
+    """
+    media_chars = 0
+    for msg in messages:
+        if isinstance(msg, RemoveMessage):
+            continue
+        content = getattr(msg, "content", None)
+        if isinstance(content, list):
+            media_chars += sum(
+                len(str(block)) for block in content if isinstance(block, dict)
+            )
+    if not messages:
+        return 0
+    kept = [msg for msg in messages if not isinstance(msg, RemoveMessage)]
+    return count_tokens_approximately(kept) + media_chars // 4
+
+
 def pre_agent_hook(
     state: dict[str, Any] | Any, remove_all: bool = False, max_tokens: int = 50000
 ) -> dict[str, Any]:
@@ -86,7 +110,7 @@ def pre_agent_hook(
     trimmed_messages = trim_messages(
         messages=messages,
         strategy="last",
-        token_counter=count_tokens_approximately,
+        token_counter=token_counter,
         max_tokens=max_tokens,
         start_on="human",
         allow_partial=True,

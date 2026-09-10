@@ -16,7 +16,6 @@ from addict import Dict
 from dotenv import load_dotenv
 from langchain.messages import AnyMessage, HumanMessage
 from langchain.tools import BaseTool
-from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.prebuilt.tool_node import ToolNode
 from langgraph.types import StateSnapshot
 from langgraph_swarm import create_swarm
@@ -35,6 +34,7 @@ from .utils import (
     format_called_tool,
     pre_agent_hook,
     summarize_and_rephrase,
+    token_counter,
 )
 
 load_dotenv()
@@ -332,7 +332,7 @@ class Agent:
             # old tokens 75-90% cheaper, so keep history intact as long as possible
             state = self.state(swarm, thread_id)
             history_msgs = state.values.get("messages", [])
-            history_tokens = count_tokens_approximately(history_msgs)
+            history_tokens = token_counter(history_msgs)
             is_media_only = content.endswith(("[media]", "[voice message]"))
             if is_media_only or history_tokens < 100000:
                 recontext_logs = content

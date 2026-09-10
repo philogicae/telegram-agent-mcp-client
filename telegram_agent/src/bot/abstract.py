@@ -299,9 +299,13 @@ class AgenticBot(ABC):
     managers: dict[str, Manager]
 
     def __init__(
-        self, dev: bool = False, managers: dict[str, type] | None = None
+        self,
+        dev: bool = False,
+        managers: dict[str, type] | None = None,
+        persist: bool = False,
     ) -> None:
         self.dev = dev
+        self.persist = persist
         self.managers = {k: v(self) for k, v in managers.items()} if managers else {}
         self.pending_media: dict[int, list[tuple[bytes, str]]] = {}
         self.tts_enabled: dict[int, bool] = {}
@@ -326,7 +330,7 @@ class AgenticBot(ABC):
 
     async def run(self, **kwargs: Callable[..., Awaitable[Any]]) -> None:
         try:
-            self.agent = await Agent.init(self.dev)
+            self.agent = await Agent.init(self.dev, enable_persist=self.persist)
             await self.bot.initialize(**self.prepare_handlers(**kwargs))
             self.log.info(f"{self.bot.__class__.__name__} is ready!")
             await gather(

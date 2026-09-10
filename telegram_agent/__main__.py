@@ -166,6 +166,11 @@ def cli() -> None:
         help="Display agents. Default: False",
     )
     parser.add_argument(
+        "--persist",
+        action="store_true",
+        help="Persist checkpoints to SQLite instead of memory. Default: False",
+    )
+    parser.add_argument(
         "--png",
         action="store_true",
         help="Generate png. Default: False",
@@ -181,7 +186,7 @@ def cli() -> None:
     elif args.png:
         run(run_agent(generate_png=True))
     elif args.telegram:
-        run(run_telegram_bot(dev=args.dev))
+        run(run_telegram_bot(dev=args.dev, persist=args.persist))
     else:
         run(run_agent(dev=args.dev))
 

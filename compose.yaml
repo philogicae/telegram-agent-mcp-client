@@ -37,7 +37,7 @@ services:
     build: .
     image: telegram-agent
     restart: unless-stopped
-    command: telegram-agent-mcp-client --telegram
+    command: telegram-agent-mcp-client --telegram --persist
     init: true
     env_file:
       - .env
