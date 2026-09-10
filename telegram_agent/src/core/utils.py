@@ -75,27 +75,65 @@ def checkpointer(dev: bool = False, persist: bool = False) -> BaseCheckpointSave
     return AsyncSqliteSaver(connect(str(data_folder / "checkpointer.sqlite")))
 
 
+_MEDIA_PAYLOAD_MIN_CHARS = 4096
+
+
+def _media_payload_chars(block: Any) -> tuple[Any, int]:
+    """Return (block copy with long string payloads blanked, payload chars).
+
+    Long strings inside content blocks are base64 media payloads (audio
+    ``base64``, image data URLs, file data). They are counted once at
+    chars/4 by token_counter; blanking them first keeps
+    `count_tokens_approximately` from counting them a second time through
+    its repr() fallback for unknown dict blocks (langchain-core >= 1.6).
+    Short strings are text and stay untouched.
+    """
+    if isinstance(block, dict):
+        chars = 0
+        slim: dict[str, Any] = {}
+        for key, value in block.items():
+            value, size = _media_payload_chars(value)
+            slim[key] = value
+            chars += size
+        return slim, chars
+    if isinstance(block, list):
+        chars = 0
+        slim_list: list[Any] = []
+        for item in block:
+            item, size = _media_payload_chars(item)
+            slim_list.append(item)
+            chars += size
+        return slim_list, chars
+    if isinstance(block, str) and len(block) >= _MEDIA_PAYLOAD_MIN_CHARS:
+        return "", len(block)
+    return block, 0
+
+
 def token_counter(messages: list[BaseMessage] | Any) -> int:
     """Approximate token count including base64 media payload sizes.
 
-    `count_tokens_approximately` ignores multimodal content blocks, so a
-    message holding ~80 MB of base64 would count as a few tokens and never
-    trigger pruning or ReContext (see TAM-18 diagnostic). RemoveMessage
-    stubs are tokenless markers; skipping them keeps the counter usable on
-    state slices that still contain one.
+    Media payloads count once at chars/4: without it a message holding
+    ~80 MB of base64 would count as a few tokens and never trigger pruning
+    or ReContext (see TAM-18 diagnostic). RemoveMessage stubs are tokenless
+    markers; skipping them keeps the counter usable on state slices that
+    still contain one.
     """
+    if not messages:
+        return 0
+    kept: list[BaseMessage] = []
     media_chars = 0
     for msg in messages:
         if isinstance(msg, RemoveMessage):
             continue
         content = getattr(msg, "content", None)
         if isinstance(content, list):
-            media_chars += sum(
-                len(str(block)) for block in content if isinstance(block, dict)
-            )
-    if not messages:
-        return 0
-    kept = [msg for msg in messages if not isinstance(msg, RemoveMessage)]
+            slim: list[Any] = []
+            for block in content:
+                block, size = _media_payload_chars(block)
+                slim.append(block)
+                media_chars += size
+            msg = msg.model_copy(update={"content": slim})
+        kept.append(msg)
     return count_tokens_approximately(kept) + media_chars // 4
 
 
@@ -107,8 +145,17 @@ def pre_agent_hook(
         "list[BaseMessage]",
         state.get("messages", []) if isinstance(state, dict) else [],
     )
+    # With remove_all, only the prior history is trimmed: the incoming (last)
+    # message is exempt from the cap. A voice message alone counts at
+    # ~chars/4 of its base64 payload (way over any cap), and trim_messages'
+    # partial-block logic would otherwise strip that payload - the model
+    # would answer to a "[dropped...]" stub instead of the audio. Keeping the
+    # current turn intact also guarantees the model never receives zero
+    # messages, while RemoveMessage + trimmed suffix still re-anchors the
+    # checkpointer to a bounded size (TAM-18).
+    exempt = remove_all and bool(messages)
     trimmed_messages = trim_messages(
-        messages=messages,
+        messages=messages[:-1] if exempt else messages,
         strategy="last",
         token_counter=token_counter,
         max_tokens=max_tokens,
@@ -116,42 +163,14 @@ def pre_agent_hook(
         allow_partial=True,
         # end_on=("human", "tool"),
     )
-    if remove_all:
-        if not trimmed_messages and messages:
-            # trim_messages can evict everything (e.g. a single oversized
-            # media/tool payload at the tail) - a bare RemoveMessage would
-            # hand the model zero messages ("contents are required").
-            # Fall back to the latest human turn reduced to its text
-            # blocks, then re-trim so the fallback itself stays under cap.
-            last_human = next(
-                (m for m in reversed(messages) if isinstance(m, HumanMessage)),
-                None,
-            )
-            fallback = (
-                last_human.model_copy(deep=True)
-                if last_human is not None
-                else HumanMessage("[continuing]")
-            )
-            if isinstance(fallback.content, list):
-                fallback.content = [
-                    block
-                    for block in fallback.content
-                    if isinstance(block, str)
-                    or (isinstance(block, dict) and block.get("type") == "text")
-                ] + [
-                    {
-                        "type": "text",
-                        "text": "[dropped oversized media payload]",
-                    }
-                ]
-            trimmed_messages = trim_messages(
-                messages=[fallback],
-                strategy="last",
-                token_counter=token_counter,
-                max_tokens=max_tokens,
-                allow_partial=True,
-            ) or [HumanMessage("[continuing]")]
-        return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES), *trimmed_messages]}
+    if exempt:
+        return {
+            "messages": [
+                RemoveMessage(REMOVE_ALL_MESSAGES),
+                *trimmed_messages,
+                messages[-1],
+            ]
+        }
     return {"messages": trimmed_messages}
 
 
