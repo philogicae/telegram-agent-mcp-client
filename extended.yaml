@@ -46,7 +46,7 @@ services:
     environment:
       - USER=${TRANSMISSION_USER:-}
       - PASS=${TRANSMISSION_PASS:-}
-      - DOCKER_MODS="linuxserver/mods:transmission-floodui|linuxserver/mods:transmission-transmissionic"
+      - DOCKER_MODS=linuxserver/mods:transmission-floodui|linuxserver/mods:transmission-transmissionic
     volumes:
       - transmission_config:/config
       - transmission_watch:/watch # change to your watch directory (Optional)

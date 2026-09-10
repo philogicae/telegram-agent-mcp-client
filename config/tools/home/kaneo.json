@@ -4,9 +4,10 @@
     "Authorization": "Bearer {ENV:KANEO_API_KEY}"
   }
 }
-/* all found tools: 41
+/* all found tools: 42
 attach_label_to_task
 bulk_update_tasks
+configure_telegram_notifications
 create_column
 create_label
 create_project

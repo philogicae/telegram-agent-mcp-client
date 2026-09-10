@@ -16,7 +16,6 @@ from addict import Dict
 from dotenv import load_dotenv
 from langchain.messages import AnyMessage, HumanMessage
 from langchain.tools import BaseTool
-from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.prebuilt.tool_node import ToolNode
 from langgraph.types import StateSnapshot
 from langgraph_swarm import create_swarm
@@ -35,6 +34,7 @@ from .utils import (
     format_called_tool,
     pre_agent_hook,
     summarize_and_rephrase,
+    token_counter,
 )
 
 load_dotenv()
@@ -85,13 +85,12 @@ def _media_blocks(media: list[dict]) -> list[dict]:
             blocks.append(m)
             continue
         b64 = b64encode(data).decode()
-        # ponytail: audio uses OpenAI input_audio (ogg unsupported there);
-        # google wants inline_data - split when an stt main model lands
+        # Standard "audio" block: OpenAI's translator turns it into
+        # input_audio, google-genai maps it to inline_data - the raw
+        # input_audio block raised "Unrecognized message part type" on
+        # Gemini main models.
         if mime.startswith("audio/"):
-            fmt = mime.split("/", 1)[1].split(";")[0]
-            blocks.append(
-                {"type": "input_audio", "input_audio": {"data": b64, "format": fmt}}
-            )
+            blocks.append({"type": "audio", "mime_type": mime, "base64": b64})
         else:
             blocks.append(
                 {
@@ -194,8 +193,11 @@ class Agent:
         tools = (await Agent.load_tools()) if enable_tools else None
         return Agent(tools, enable_persist, dev, debug, generate_png)
 
-    def state(self, swarm: Any, thread_id: str) -> StateSnapshot:
-        state: StateSnapshot = swarm.agent.get_state(
+    async def state(self, swarm: Any, thread_id: str) -> StateSnapshot:
+        # Sync get_state would run checkpointer calls on the event-loop
+        # thread, which AsyncSqliteSaver rejects - aget_state works for
+        # both the SQLite and in-memory savers.
+        state: StateSnapshot = await swarm.agent.aget_state(
             {"configurable": {"thread_id": thread_id}}
         )
         return state
@@ -330,9 +332,9 @@ class Agent:
             # ReContext - skip for media-only messages or short conversations
             # Threshold 200k: Gemini 3.x has 1M context, implicit caching makes
             # old tokens 75-90% cheaper, so keep history intact as long as possible
-            state = self.state(swarm, thread_id)
+            state = await self.state(swarm, thread_id)
             history_msgs = state.values.get("messages", [])
-            history_tokens = count_tokens_approximately(history_msgs)
+            history_tokens = token_counter(history_msgs)
             is_media_only = content.endswith(("[media]", "[voice message]"))
             if is_media_only or history_tokens < 100000:
                 recontext_logs = content
@@ -682,7 +684,7 @@ class Agent:
                     retry += 1
                     forced_messages = []
                     end_date = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
-                    last_messages = self.state(swarm, thread_id).values.get(
+                    last_messages = (await self.state(swarm, thread_id)).values.get(
                         "messages", []
                     )
                     # Guard: state may hold <2 messages on early failure
@@ -733,7 +735,9 @@ class Agent:
                         )
                         continue
                 if not step or not done:  # Avoid empty reply when retry >= 3
-                    state_msgs = self.state(swarm, thread_id).values.get("messages", [])
+                    state_msgs = (await self.state(swarm, thread_id)).values.get(
+                        "messages", []
+                    )
                     log.error(
                         "Empty reply persisted after %d retries from agent "
                         "'%s' (thread %s): %s",

@@ -24,14 +24,15 @@ class AgenticTelegramBot(AgenticBot):
         telegram_id: str,
         dev: bool = False,
         managers: dict[str, type] | None = None,
+        persist: bool = False,
         **kwargs: Any,
     ) -> None:
-        super().__init__(dev, managers)
+        super().__init__(dev, managers, persist)
         self.log = TelegramLogger()
         self.bot = TelegramBot(telegram_id, **kwargs)
 
 
-async def run_telegram_bot(dev: bool = False) -> None:
+async def run_telegram_bot(dev: bool = False, persist: bool = False) -> None:
     """Run the Telegram bot with the configured managers and handlers."""
     telegram_id: str | None = getenv("TELEGRAM_BOT_TOKEN")
     telegram_id_dev: str | None = getenv("TELEGRAM_BOT_TOKEN_DEV")
@@ -56,6 +57,6 @@ async def run_telegram_bot(dev: bool = False) -> None:
         handlers["voice"] = telegram_voice
         handlers["image"] = telegram_image
 
-    with AgenticTelegramBot(telegram_id, dev, managers) as bot:
+    with AgenticTelegramBot(telegram_id, dev, managers, persist) as bot:
         relay = start_relay(bot)
         await gather(bot.run(**handlers), *([serve(relay)] if relay else []))

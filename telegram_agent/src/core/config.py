@@ -27,11 +27,17 @@ CONFIG_DIR = getenv("CONFIG") or "./config"
 class PruneHistory(AgentMiddleware):
     """Middleware to prune conversation history before agent execution."""
 
+    # Ceiling just above the ReContext trigger threshold (100k in agent.py):
+    # below it, ReContext could never fire; without remove_all the reducer
+    # would never delete anything and the checkpointer grows unboundedly
+    # (TAM-18 memory leak).
+    max_tokens: int = 120_000
+
     def before_agent(self, state: Any, runtime: Any) -> dict[str, Any] | None:
-        return pre_agent_hook(state)
+        return pre_agent_hook(state, remove_all=True, max_tokens=self.max_tokens)
 
     async def abefore_agent(self, state: Any, runtime: Any) -> dict[str, Any] | None:
-        return pre_agent_hook(state)
+        return pre_agent_hook(state, remove_all=True, max_tokens=self.max_tokens)
 
 
 class AgentConfig(BaseModel):
