@@ -85,13 +85,12 @@ def _media_blocks(media: list[dict]) -> list[dict]:
             blocks.append(m)
             continue
         b64 = b64encode(data).decode()
-        # ponytail: audio uses OpenAI input_audio (ogg unsupported there);
-        # google wants inline_data - split when an stt main model lands
+        # Standard "audio" block: OpenAI's translator turns it into
+        # input_audio, google-genai maps it to inline_data - the raw
+        # input_audio block raised "Unrecognized message part type" on
+        # Gemini main models.
         if mime.startswith("audio/"):
-            fmt = mime.split("/", 1)[1].split(";")[0]
-            blocks.append(
-                {"type": "input_audio", "input_audio": {"data": b64, "format": fmt}}
-            )
+            blocks.append({"type": "audio", "mime_type": mime, "base64": b64})
         else:
             blocks.append(
                 {

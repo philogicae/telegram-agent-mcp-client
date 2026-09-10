@@ -49,6 +49,35 @@ def main() -> None:
     pruned = cast("dict[str, Any]", pruned_out)["messages"]
     check(pruned[0].id == REMOVE_ALL_MESSAGES, "PruneHistory must remove_all")
 
+    # A single oversized media turn must never yield a bare RemoveMessage:
+    # the model call would receive zero messages ("contents are required").
+    big_media = HumanMessage(
+        content=[
+            {"type": "text", "text": "voice"},
+            {
+                "type": "input_audio",
+                "input_audio": {"data": "A" * 600000, "format": "ogg"},
+            },
+        ]
+    )
+    rescued = pre_agent_hook(
+        {"messages": [big_media]}, remove_all=True, max_tokens=1000
+    )["messages"]
+    check(rescued[0].id == REMOVE_ALL_MESSAGES, "oversized media must still remove_all")
+    check(len(rescued) > 1, "oversized media must not empty the message list")
+    check(
+        "AAAA" not in str(getattr(rescued[-1], "content", "")),
+        "oversized media payload must be dropped",
+    )
+
+    # No human message at all: still must not empty the list.
+    rescued = pre_agent_hook(
+        {"messages": [AIMessage("A" * 600000)]},
+        remove_all=True,
+        max_tokens=1000,
+    )["messages"]
+    check(len(rescued) > 1, "no-human fallback must not empty the message list")
+
     print("OK: media-aware counting, remove_all prune, bounded cap")
 
 

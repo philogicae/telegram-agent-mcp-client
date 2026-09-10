@@ -117,6 +117,34 @@ def pre_agent_hook(
         # end_on=("human", "tool"),
     )
     if remove_all:
+        if not trimmed_messages and messages:
+            # trim_messages can evict everything (e.g. a single oversized
+            # media/tool payload at the tail) - a bare RemoveMessage would
+            # hand the model zero messages ("contents are required").
+            # Fall back to the latest human turn reduced to its text
+            # blocks, so the model call stays valid.
+            last_human = next(
+                (m for m in reversed(messages) if isinstance(m, HumanMessage)),
+                None,
+            )
+            fallback = (
+                last_human.model_copy(deep=True)
+                if last_human is not None
+                else HumanMessage("[continuing]")
+            )
+            if isinstance(fallback.content, list):
+                fallback.content = [
+                    block
+                    for block in fallback.content
+                    if isinstance(block, str)
+                    or (isinstance(block, dict) and block.get("type") == "text")
+                ] + [
+                    {
+                        "type": "text",
+                        "text": "[dropped oversized media payload]",
+                    }
+                ]
+            trimmed_messages = [fallback]
         return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES), *trimmed_messages]}
     return {"messages": trimmed_messages}
 
