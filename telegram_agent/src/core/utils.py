@@ -122,7 +122,7 @@ def pre_agent_hook(
             # media/tool payload at the tail) - a bare RemoveMessage would
             # hand the model zero messages ("contents are required").
             # Fall back to the latest human turn reduced to its text
-            # blocks, so the model call stays valid.
+            # blocks, then re-trim so the fallback itself stays under cap.
             last_human = next(
                 (m for m in reversed(messages) if isinstance(m, HumanMessage)),
                 None,
@@ -144,7 +144,13 @@ def pre_agent_hook(
                         "text": "[dropped oversized media payload]",
                     }
                 ]
-            trimmed_messages = [fallback]
+            trimmed_messages = trim_messages(
+                messages=[fallback],
+                strategy="last",
+                token_counter=token_counter,
+                max_tokens=max_tokens,
+                allow_partial=True,
+            ) or [HumanMessage("[continuing]")]
         return {"messages": [RemoveMessage(REMOVE_ALL_MESSAGES), *trimmed_messages]}
     return {"messages": trimmed_messages}
 

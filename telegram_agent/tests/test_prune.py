@@ -78,6 +78,18 @@ def main() -> None:
     )["messages"]
     check(len(rescued) > 1, "no-human fallback must not empty the message list")
 
+    # Oversized text-only human turn: fallback must stay bounded.
+    rescued = pre_agent_hook(
+        {"messages": [HumanMessage("x " * 300000)]},
+        remove_all=True,
+        max_tokens=1000,
+    )["messages"]
+    check(len(rescued) > 1, "oversized text must not empty the message list")
+    check(
+        token_counter(rescued[1:]) <= 1000,
+        "oversized text fallback must stay under cap",
+    )
+
     print("OK: media-aware counting, remove_all prune, bounded cap")
 
 
