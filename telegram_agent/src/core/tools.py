@@ -252,6 +252,26 @@ def _apply_tool_edits(tool: BaseTool, edits: dict[str, str]) -> BaseTool:
     return tool
 
 
+# JSON-Schema meta keys carry no validation semantics, but MCP inputSchemas
+# are forwarded verbatim to providers and Gemini rejects them one warning per
+# key ("Key '$schema' is not supported in schema, ignoring"). Strip them at
+# load time. $defs/$ref are kept: providers dereference those themselves.
+_SCHEMA_META_KEYS = frozenset({"$schema", "$id", "$comment"})
+
+
+def _strip_schema_meta_keys(node: Any) -> Any:
+    """Recursively drop JSON-Schema meta keys from a raw schema dict."""
+    if isinstance(node, dict):
+        return {
+            key: _strip_schema_meta_keys(value)
+            for key, value in node.items()
+            if key not in _SCHEMA_META_KEYS
+        }
+    if isinstance(node, list):
+        return [_strip_schema_meta_keys(item) for item in node]
+    return node
+
+
 def _update_tools_comment(server: str, tool_names: list[str]) -> None:
     """Update <server>.json file with a comment listing all available tools."""
     try:
@@ -333,9 +353,10 @@ async def get_tools(
                     if enabled_tools and tool.name not in enabled_tools:
                         continue
                     filtered_tools.append(tool)
-                tools.extend(
-                    _apply_tool_edits(tool, edit_config) for tool in filtered_tools
-                )
+                for tool in filtered_tools:
+                    if isinstance(tool.args_schema, dict):
+                        tool.args_schema = _strip_schema_meta_keys(tool.args_schema)
+                    tools.append(_apply_tool_edits(tool, edit_config))
             except Exception as e:
                 # Unwrap ExceptionGroup (TaskGroup) to show the real error
                 while isinstance(e, BaseExceptionGroup) and e.exceptions:
