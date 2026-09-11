@@ -18,9 +18,15 @@ def unpack_user(msg: Message) -> tuple[str, str]:
     return "?", "Unknown"
 
 
+def _escape_text(text: str) -> str:
+    # < and > handled per-tag at the end of fixed_telegram; inside code they
+    # must be escaped now or a literal </pre> closes the enclosing block.
+    return text.replace("<", "&lt;").replace(">", "&gt;")
+
+
 def _code_block(m: re.Match) -> str:
-    lang = m.group(1) or ""
-    code = m.group(2).strip()
+    lang = _escape_text(m.group(1) or "")
+    code = _escape_text(m.group(2).strip())
     if lang:
         return f'<pre><code class="language-{lang}">\n{code}\n</code></pre>'
     return f"<pre>\n{code}\n</pre>"
@@ -117,7 +123,9 @@ def fixed_telegram(_: Any, text: str, classic: bool = True) -> str:
     """
     text = re.sub(r"&(?!amp;|lt;|gt;|quot;|apos;|#\d+;)", "&amp;", text)
     text = re.sub(r"```(\w+)?\n?(.*?)```", _code_block, text, flags=re.DOTALL)
-    text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+    text = re.sub(
+        r"`([^`]+)`", lambda m: f"<code>{_escape_text(m.group(1))}</code>", text
+    )
     text = re.sub(r'!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)', _image, text)
     text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', text)
     text = re.sub(r"\|\|(.+?)\|\|", r"<tg-spoiler>\1</tg-spoiler>", text)

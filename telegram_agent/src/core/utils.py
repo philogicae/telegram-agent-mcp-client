@@ -145,17 +145,28 @@ def pre_agent_hook(
         "list[BaseMessage]",
         state.get("messages", []) if isinstance(state, dict) else [],
     )
-    # With remove_all, only the prior history is trimmed: the incoming (last)
-    # message is exempt from the cap. A voice message alone counts at
-    # ~chars/4 of its base64 payload (way over any cap), and trim_messages'
-    # partial-block logic would otherwise strip that payload - the model
-    # would answer to a "[dropped...]" stub instead of the audio. Keeping the
+    # With remove_all, only the prior history is trimmed: the current turn
+    # (from the last human message onward) is exempt from the cap. A voice
+    # message alone counts at ~chars/4 of its base64 payload (way over any
+    # cap), and trim_messages' partial-block logic would otherwise strip that
+    # payload - the model would answer to a "[dropped...]" stub instead of
+    # the audio. Exempting the whole turn (not just the last message) also
+    # covers the subagent turn after a handoff, where messages[-1] is the
+    # handoff ToolMessage: the user's media sits inside the trimmed history
+    # there, and dropping it can leave a dangling tool result (tool-only
+    # state -> empty Gemini contents -> "contents are required"). Keeping the
     # current turn intact also guarantees the model never receives zero
-    # messages, while RemoveMessage + trimmed suffix still re-anchors the
-    # checkpointer to a bounded size (TAM-18).
+    # non-tool messages, while RemoveMessage + trimmed suffix still
+    # re-anchors the checkpointer to a bounded size (TAM-18).
     exempt = remove_all and bool(messages)
+    turn_start = len(messages) - 1
+    if exempt:
+        for i in range(len(messages) - 1, -1, -1):
+            if isinstance(messages[i], HumanMessage):
+                turn_start = i
+                break
     trimmed_messages = trim_messages(
-        messages=messages[:-1] if exempt else messages,
+        messages=messages[:turn_start] if exempt else messages,
         strategy="last",
         token_counter=token_counter,
         max_tokens=max_tokens,
@@ -168,7 +179,7 @@ def pre_agent_hook(
             "messages": [
                 RemoveMessage(REMOVE_ALL_MESSAGES),
                 *trimmed_messages,
-                messages[-1],
+                *messages[turn_start:],
             ]
         }
     return {"messages": trimmed_messages}
