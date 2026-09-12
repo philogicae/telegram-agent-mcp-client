@@ -4,10 +4,9 @@
     "Authorization": "Bearer {ENV:KANEO_API_KEY}"
   }
 }
-/* all found tools: 42
+/* all found tools: 58
 attach_label_to_task
 bulk_update_tasks
-configure_telegram_notifications
 create_column
 create_label
 create_project
@@ -22,9 +21,11 @@ delete_task_comment
 delete_task_relation
 detach_label_from_task
 get_project
+get_public_url
 get_task
 get_task_relations
 get_time_entry
+get_workspace_invite_link
 list_notifications
 list_project_columns
 list_projects
@@ -38,6 +39,21 @@ list_workspaces
 move_task
 reorder_columns
 search
+telegram_configure_notifications
+telegram_create_bot
+telegram_create_chat
+telegram_create_rule
+telegram_delete_bot
+telegram_delete_chat
+telegram_delete_rule
+telegram_get_rule
+telegram_list_bots
+telegram_list_chats
+telegram_list_config
+telegram_list_rules
+telegram_update_bot
+telegram_update_chat
+telegram_update_rule
 update_column
 update_project
 update_task

@@ -224,6 +224,8 @@
         "search",
         "list_projects",
         "get_project",
+        "get_public_url",
+        "get_workspace_invite_link",
         "create_project",
         "update_project",
         "list_project_columns",
