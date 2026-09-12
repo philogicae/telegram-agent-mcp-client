@@ -1,6 +1,6 @@
 """Telegram bot handlers."""
 
-from asyncio import Event, create_subprocess_exec, gather, sleep
+from asyncio import Event, Queue, create_subprocess_exec, create_task, gather, sleep
 from datetime import datetime
 from io import BytesIO
 from os import getenv
@@ -23,7 +23,7 @@ from ...core.progress import (
     set_progress_sink,
     set_turn_tracker,
 )
-from ...utils import extract_response
+from ...utils import Timer, extract_response
 from ..abstract import AgenticBot, handler
 from ..utils import str_size, unpack_user
 
@@ -188,7 +188,16 @@ def _user_admin(instance: AgenticBot, cmd: str) -> str:
 async def telegram_chat(
     instance: AgenticBot, msg: Message, overwrite: Message | None = None
 ) -> None:
-    """Handle chat messages and orchestrate agent responses."""
+    """Queue a chat message for sequential per-chat processing.
+
+    Telegram delivers updates concurrently, so a user can send another message
+    while the previous turn is still running. Instead of rejecting it with a
+    "still working..." reply, the message is appended to the chat's FIFO queue
+    and a per-chat worker drains it one turn at a time. This keeps the UX
+    non-blocking and guarantees the shared conversation history - the LangGraph
+    checkpointer state keyed by chat id - is only ever written by a single turn
+    per chat; different chats stay fully independent.
+    """
     timer = instance.log.received(msg)
     # Reject anonymous users and users not in admin or allowed - no reply at all.
     # Relay-injected messages carry message_id 0 (Telegram never sends it) and
@@ -228,14 +237,42 @@ async def telegram_chat(
             await instance.bot.send(msg, "Nothing to cancel.")
         return
 
-    # Rate limiting: reject if this chat already has an active agent run
-    if chat_id in instance.cancel_events:
-        await instance.bot.send(
-            msg, "⏳ I'm still working on your previous message. Send /cancel to abort."
-        )
-        return
+    # Enqueue and make sure a worker is draining this chat's queue.
+    queue = instance.chat_queues.setdefault(chat_id, Queue())
+    queue.put_nowait((msg, overwrite, timer))
+    worker = instance.chat_workers.get(chat_id)
+    if worker is None or worker.done():
+        instance.chat_workers[chat_id] = create_task(_chat_worker(instance, chat_id))
 
-    # Claim the slot immediately to prevent concurrent runs in the same chat.
+
+async def _chat_worker(instance: AgenticBot, chat_id: int) -> None:
+    """Drain one chat's FIFO queue, running exactly one turn at a time.
+
+    Serialising turns per chat is what keeps conversation history consistent:
+    the checkpointer state for a chat id is never read or written by two turns
+    at once, while different chats keep running independently. The queue is
+    unbounded; capping it is only worth it if one chat ever floods it.
+    """
+    queue = instance.chat_queues[chat_id]
+    try:
+        while not queue.empty():
+            msg, overwrite, timer = queue.get_nowait()
+            try:
+                await _run_turn(instance, msg, overwrite, timer)
+            except Exception:
+                print_exc()
+    finally:
+        instance.chat_workers.pop(chat_id, None)
+        instance.chat_queues.pop(chat_id, None)
+
+
+async def _run_turn(
+    instance: AgenticBot, msg: Message, overwrite: Message | None, timer: Timer
+) -> None:
+    """Run one agent turn for a chat; `_chat_worker` prevents concurrency."""
+    chat_id = msg.chat.id
+
+    # Claim the cancel slot for this turn: /cancel sets it to abort mid-run.
     # This must happen before any await to avoid a TOCTOU race.
     cancel_event = Event()
     instance.cancel_events[chat_id] = cancel_event
@@ -445,18 +482,10 @@ async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
         voice = msg.voice
         if not voice:
             return
-        # Rate limiting: reject early before expensive download/transcription
-        if msg.chat.id in instance.cancel_events:
-            await instance.bot.send(
-                msg,
-                "⏳ I'm still working on your previous message. Send /cancel to abort.",
-            )
-            return
-        # Claim the slot immediately to prevent concurrent runs.
-        cancel_event = Event()
-        instance.cancel_events[msg.chat.id] = cancel_event
         session_token = _OPENCODE_SESSION.set(str(msg.chat.id))
-        # Send "I'm listening..." immediately, before download/transcription
+        # Send "I'm listening..." immediately, before download/transcription.
+        # The turn itself is queued (no busy rejection - _chat_worker
+        # serialises turns per chat).
         init = instance.bot.reply if msg.chat.type != "private" else instance.bot.send
         reply = await init(msg, "🔊 I'm listening...")
         file_info = await instance.bot.core.get_file(voice.file_id)
@@ -475,15 +504,13 @@ async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
             "current": 0,
             "content": [instance.bot.waiting],
         }
-        # telegram_chat will claim the slot we already set; pass overwrite so
-        # it skips the init() call and reuses our reply.
-        instance.cancel_events.pop(msg.chat.id, None)
+        # Queue the turn (telegram_chat serialises per chat); pass overwrite so
+        # it reuses the "I'm listening..." reply.
         await telegram_chat(instance, msg, overwrite=reply)
     except Exception as e:
         print_exc()
         await telegram_report_issue(instance, msg, reply or msg, e)
     finally:
-        instance.cancel_events.pop(msg.chat.id, None)
         if session_token is not None:
             _OPENCODE_SESSION.reset(session_token)
 
@@ -500,13 +527,6 @@ async def telegram_image(instance: AgenticBot, msg: Message) -> None:
     reply = None
     try:
         if not msg.photo:
-            return
-        # Rate limiting: reject early before expensive download
-        if msg.chat.id in instance.cancel_events:
-            await instance.bot.send(
-                msg,
-                "⏳ I'm still working on your previous message. Send /cancel to abort.",
-            )
             return
         is_album = bool(msg.media_group_id)
         if not is_album:
@@ -554,16 +574,8 @@ async def telegram_image(instance: AgenticBot, msg: Message) -> None:
 
         caption = (album_msg.caption or "").strip()
         if caption:
-            # Caption present: process immediately through agent.
-            # Check rate limiting BEFORE storing pending media so we don't
-            # leak orphaned images into pending_media if telegram_chat rejects.
-            if album_msg.chat.id in instance.cancel_events:
-                await instance.bot.edit(
-                    reply,
-                    "⏳ I'm still working on your previous message. Send /cancel to abort.",
-                    replace=True,
-                )
-                return
+            # Caption present: queue the turn. _chat_worker serialises turns
+            # per chat, so there is no rejection/busy check to do here.
             instance.pending_media.setdefault(album_msg.chat.id, []).extend(images)
             album_msg.text = caption
             # Replace "I'm analyzing..." with "I'm thinking..." and set up edit cache
@@ -572,8 +584,7 @@ async def telegram_image(instance: AgenticBot, msg: Message) -> None:
                 "current": 0,
                 "content": [instance.bot.waiting],
             }
-            # telegram_chat will claim the slot; pass overwrite so it skips
-            # the init() call and reuses our reply.
+            # Queue the turn; pass overwrite so telegram_chat reuses our reply.
             await telegram_chat(instance, album_msg, overwrite=reply)
         else:
             # No caption: store as pending, wait for next text/voice

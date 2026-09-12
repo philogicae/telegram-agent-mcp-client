@@ -1,7 +1,7 @@
 """Abstract base classes for bot architecture."""
 
 from abc import ABC, abstractmethod
-from asyncio import Event, Lock, gather, sleep
+from asyncio import Event, Lock, Queue, Task, gather, sleep
 from collections.abc import Awaitable, Callable
 from functools import partial, wraps
 from logging import INFO, WARNING, basicConfig, getLogger
@@ -310,6 +310,13 @@ class AgenticBot(ABC):
         self.pending_media: dict[int, list[tuple[bytes, str]]] = {}
         self.tts_enabled: dict[int, bool] = {}
         self.cancel_events: dict[int, Event] = {}
+        # Per-chat FIFO of pending messages and the worker task draining it.
+        # Turns in the same chat run strictly one after another so the shared
+        # conversation history (checkpointer state keyed by chat id) is never
+        # interleaved, while different chats stay fully independent. See
+        # handlers/telegram.py.
+        self.chat_queues: dict[int, Queue[Any]] = {}
+        self.chat_workers: dict[int, Task[Any]] = {}
 
     def __enter__(self) -> Self:
         return self
