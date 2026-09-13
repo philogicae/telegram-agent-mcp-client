@@ -4,7 +4,7 @@
     "Authorization": "Bearer {ENV:KANEO_API_KEY}"
   }
 }
-/* all found tools: 58
+/* all found tools: 59
 attach_label_to_task
 bulk_update_tasks
 create_column
@@ -19,6 +19,7 @@ delete_label
 delete_task
 delete_task_comment
 delete_task_relation
+delete_time_entry
 detach_label_from_task
 get_project
 get_public_url

@@ -68,6 +68,28 @@ def _raw_model_summary(msg: Any) -> str:
     )
 
 
+def _last_error(messages: list[AnyMessage]) -> str | None:
+    """Most recent tool error of the turn, as a short actionable cause.
+
+    When the empty-reply retry loop exhausts its budget, the model likely got
+    stuck after a failed tool (e.g. a 403 from search, an unavailable dev
+    server). Surfacing that error gives the user the real cause and a
+    fallback path instead of a vague "internal error" (TAM-17).
+    """
+    for msg in reversed(messages):
+        if getattr(msg, "type", "") != "tool":
+            continue
+        text, _ = extract_response(msg)
+        content = (text or "").strip()
+        if not content:
+            continue
+        if getattr(msg, "status", None) == "error" or content.lower().startswith(
+            ("error", "failed", "exception")
+        ):
+            return content.splitlines()[0][:300]
+    return None
+
+
 def _media_blocks(media: list[dict]) -> list[dict]:
     """Convert internal media dicts into multimodal content blocks.
 
@@ -746,8 +768,13 @@ class Agent:
                         thread_id,
                         _raw_model_summary(state_msgs[-1] if state_msgs else None),
                     )
+                    cause = _last_error(state_msgs)
                     step = (
-                        "The same internal error occurred 3 times in a row... "
+                        f"⚠️ I couldn't complete the task after 3 attempts. "
+                        f"Last error: {cause}. Try again, or ask me for a "
+                        "different approach."
+                        if cause
+                        else "The same internal error occurred 3 times in a row... "
                         "Please try again."
                     )
 

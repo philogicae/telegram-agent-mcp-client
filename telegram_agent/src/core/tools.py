@@ -1,5 +1,6 @@
 """MCP tool configuration and loading."""
 
+from functools import wraps
 from importlib.util import module_from_spec, spec_from_file_location
 from inspect import getmembers
 from os import getenv
@@ -9,6 +10,7 @@ from pathlib import Path
 from re import DOTALL, sub
 from re import compile as re_compile
 from shlex import join as shlex_join
+from time import monotonic
 from typing import Any
 
 from dotenv import load_dotenv
@@ -252,6 +254,56 @@ def _apply_tool_edits(tool: BaseTool, edits: dict[str, str]) -> BaseTool:
     return tool
 
 
+# ============================================================
+# INTROSPECTION CACHE
+# ============================================================
+
+# Read-only workspace metadata (workspaces, columns, members, labels) is
+# re-fetched at the start of nearly every agent turn; caching it in-process
+# for a few minutes removes that redundant MCP round-trip tax (TAM-17).
+_CACHEABLE_TOOLS = frozenset(
+    {
+        "list_workspaces",
+        "list_project_columns",
+        "list_workspace_members",
+        "list_workspace_labels",
+    }
+)
+try:
+    _INTROSPECTION_TTL = float(getenv("MCP_INTROSPECTION_TTL", "600"))
+except ValueError:
+    _INTROSPECTION_TTL = 600.0
+_introspection_cache: dict[tuple[str, str], tuple[float, Any]] = {}
+
+
+def _cache_introspection(tool: BaseTool) -> BaseTool:
+    """Wrap a metadata tool's coroutine with a per-arguments TTL cache.
+
+    Tools not in `_CACHEABLE_TOOLS` are returned untouched; cached tools keep
+    their name, description and schema (only the coroutine is wrapped), so the
+    model sees no change and the tool remains callable normally.
+    """
+    if tool.name not in _CACHEABLE_TOOLS:
+        return tool
+    original = getattr(tool, "coroutine", None)
+    if original is None:
+        return tool
+
+    @wraps(original)
+    async def cached(*args: Any, **kwargs: Any) -> Any:
+        key = (tool.name, repr((args, sorted(kwargs.items()))))
+        hit = _introspection_cache.get(key)
+        now = monotonic()
+        if hit and now - hit[0] < _INTROSPECTION_TTL:
+            return hit[1]
+        result = await original(*args, **kwargs)
+        _introspection_cache[key] = (now, result)
+        return result
+
+    tool.coroutine = cached
+    return tool
+
+
 # JSON-Schema meta keys carry no validation semantics, but MCP inputSchemas
 # are forwarded verbatim to providers and Gemini rejects them one warning per
 # key ("Key '$schema' is not supported in schema, ignoring"). Strip them at
@@ -368,7 +420,7 @@ async def get_tools(
         if tools:
             _console.print(", ".join(t.name for t in tools), style="bold green")
 
-    return tools
+    return [_cache_introspection(tool) for tool in tools]
 
 
 async def print_tools(only_file: str | None = None) -> None:

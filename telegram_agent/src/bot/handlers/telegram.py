@@ -1,5 +1,6 @@
 """Telegram bot handlers."""
 
+import re
 from asyncio import Event, Queue, create_subprocess_exec, create_task, gather, sleep
 from datetime import datetime
 from io import BytesIO
@@ -31,6 +32,18 @@ load_dotenv()
 TELEGRAM_CHAT_DEV = getenv("TELEGRAM_CHAT_DEV")
 _RECEIVED_DIR = Path(getenv("DATA_DIR", "./data")) / "image_received"
 _RECEIVED_DIR.mkdir(parents=True, exist_ok=True)
+
+# STT providers sometimes prefix each transcribed chunk with a timestamp
+# ("[00:01] ... 00:15 ..."), which is noise in the LLM context. Strip
+# bracketed timestamps at any hour and plain zero-hour ones (TAM-17).
+_VOICE_TS_RE = re.compile(
+    r"(?:[\[(]\s*\d{1,2}:\d{2}(?::\d{2})?\s*[\])]|\b00:\d{2}(?::\d{2})?\b)\s*"
+)
+
+
+def _strip_voice_timestamps(text: str) -> str:
+    """Remove transcription chunk timestamps and collapse leftover spaces."""
+    return re.sub(r"[ \t]{2,}", " ", _VOICE_TS_RE.sub(" ", text)).strip()
 
 
 async def _save_received_image(img_bytes: bytes) -> str:
@@ -98,7 +111,8 @@ async def _media_to_text(media: list[dict], context: str = "") -> str:
         prompt += f"\n\nUser's message for context: {context}"
     parts = [{"type": "text", "text": prompt}, *media]
     response = await LLM.get(helper).ainvoke([HumanMessage(content=parts)])
-    return extract_response(response)[0].strip()
+    text = extract_response(response)[0].strip()
+    return _strip_voice_timestamps(text) if cap == "stt" else text
 
 
 def _make_progress_sink(instance: AgenticBot, reply: Message) -> Any:
@@ -188,15 +202,17 @@ def _user_admin(instance: AgenticBot, cmd: str) -> str:
 async def telegram_chat(
     instance: AgenticBot, msg: Message, overwrite: Message | None = None
 ) -> None:
-    """Queue a chat message for sequential per-chat processing.
+    """Queue a chat message and supersede any running turn in that chat.
 
     Telegram delivers updates concurrently, so a user can send another message
     while the previous turn is still running. Instead of rejecting it with a
-    "still working..." reply, the message is appended to the chat's FIFO queue
-    and a per-chat worker drains it one turn at a time. This keeps the UX
-    non-blocking and guarantees the shared conversation history - the LangGraph
-    checkpointer state keyed by chat id - is only ever written by a single turn
-    per chat; different chats stay fully independent.
+    "still working..." reply or making the user wait for the previous run to
+    finish, the new message interrupts the active turn at its next step and the
+    per-chat worker runs it immediately after. The interrupted turn's history
+    (checkpointer state keyed by chat id) is preserved, so the new turn resumes
+    with the new message in context - and turns still never overlap, which
+    keeps the shared conversation history consistent. Different chats stay
+    fully independent.
     """
     timer = instance.log.received(msg)
     # Reject anonymous users and users not in admin or allowed - no reply at all.
@@ -240,6 +256,11 @@ async def telegram_chat(
     # Enqueue and make sure a worker is draining this chat's queue.
     queue = instance.chat_queues.setdefault(chat_id, Queue())
     queue.put_nowait((msg, overwrite, timer))
+    # A message arriving while a turn runs supersedes it: signal the active
+    # turn to stop at its next step so the user never waits for the previous
+    # run to finish; the worker picks this message up right after.
+    if (active := instance.cancel_events.get(chat_id)) is not None:
+        active.set()
     worker = instance.chat_workers.get(chat_id)
     if worker is None or worker.done():
         instance.chat_workers[chat_id] = create_task(_chat_worker(instance, chat_id))
@@ -248,10 +269,12 @@ async def telegram_chat(
 async def _chat_worker(instance: AgenticBot, chat_id: int) -> None:
     """Drain one chat's FIFO queue, running exactly one turn at a time.
 
-    Serialising turns per chat is what keeps conversation history consistent:
-    the checkpointer state for a chat id is never read or written by two turns
-    at once, while different chats keep running independently. The queue is
-    unbounded; capping it is only worth it if one chat ever floods it.
+    Serialising turns per chat keeps the conversation history consistent (the
+    checkpointer state for a chat id is never read or written by two turns at
+    once), while different chats keep running independently. A new message
+    interrupts the active turn (see `telegram_chat`), so the queue never makes
+    the user wait for a previous run to finish. The queue is unbounded; capping
+    it is only worth it if one chat ever floods it.
     """
     queue = instance.chat_queues[chat_id]
     try:
@@ -497,7 +520,12 @@ async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
             msg.text = "🎤 [voice message]"
         else:
             transcription = await _media_to_text(media)
-            msg.text = f"🎤 [voice message]: {transcription}"
+            # Pass the transcript as the message content, without the old
+            # "🎤 [voice message]: <text>" framing: that label matches the
+            # raw-audio placeholder stored in history (voice used to be sent
+            # to an stt-capable main model), and a text-only main model then
+            # dismissed the transcript as "not transcribed" (TAM-23).
+            msg.text = f"🎤 {transcription}" if transcription else "🎤 [voice message]"
         # Replace "I'm listening..." with "I'm thinking..." and set up edit cache
         await instance.bot.edit(reply, instance.bot.waiting, replace=True)
         instance.bot.edit_cache[reply.id] = {  # ty: ignore[unresolved-attribute]

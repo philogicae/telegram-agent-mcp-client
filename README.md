@@ -14,7 +14,7 @@ A multi-agent Telegram bot built on [LangGraph Swarm](https://github.com/langcha
 - **MCP + native tools** - discovered recursively from `config/tools/`: MCP servers as `.json` (stdio or HTTP/SSE), native Python tools as `.py` `@tool` functions - see [config/tools/README.md](config/tools/README.md)
 - **Multimodal** - text, voice (transcribed or passed as audio to models with `stt`), images (inline for `vision`-capable models, or described on-the-fly by the first capable fallback provider and persisted to disk so context survives across sessions)
 - **TTS replies** - per-user `/tts` toggle generates voice messages via OpenRouter TTS; an LLM-driven `tts_adapt` step rewrites text to be speakable, not summarized
-- **Rate limiting & cancel** - concurrent runs in the same chat are rejected; `/cancel` aborts the active run; 429 flood-waits are respected and capped at 60s
+- **Rate limiting & supersede** - a new same-chat message interrupts the running turn at its next step and is processed immediately (turns never overlap, history stays consistent); `/cancel` aborts the active run; 429 flood-waits are respected and capped at 60s
 - **Streaming edits** - tool logs and model reasoning stream into the message with live edits; final messages render as rich Telegram HTML via `sendRichMessage`, intermediate edits fall back to classic HTML with graceful failure handling
 - **Remote coding sessions** - OpenCode Dev starts, resumes, watches, and aborts sessions through the OpenCode HTTP server API; long runs return resumable timeout markers and expose live progress/session links
 - **Authenticated HTTP relay** - external services can securely enqueue a notice and self-prompt through `POST /relay`

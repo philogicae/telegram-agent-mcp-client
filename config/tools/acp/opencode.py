@@ -8,7 +8,7 @@ from functools import wraps
 from json import JSONDecodeError, dumps, loads
 from os import getenv
 from pathlib import Path
-from time import monotonic
+from time import monotonic, time
 from typing import Annotated, Any
 from urllib.parse import quote, urlsplit, urlunsplit
 
@@ -39,6 +39,10 @@ _PASSWORD = getenv("OPENCODE_SERVER_PASSWORD", "")
 _TIMEOUT = float(getenv("OPENCODE_SERVER_TIMEOUT", "600"))
 _MAX_OUTPUT = int(getenv("OPENCODE_SERVER_MAX_OUTPUT", "20000"))
 _PROGRESS_POLL = float(getenv("OPENCODE_SERVER_PROGRESS_POLL", "3"))
+# A session reports 'busy' but makes no message progress (and no running tool
+# outlived its own timeout) for this long is considered orphaned/stalled
+# instead of silently waiting forever (TAM-20).
+_STALL_TIMEOUT = float(getenv("OPENCODE_SERVER_STALL_TIMEOUT", "300"))
 _PROGRESS_LINES = default_max_lines()  # ponytail: single parser lives in progress.py
 _WEB_URL = getenv("OPENCODE_WEB_URL", "").strip().rstrip("/")
 _ERRORS = (ClientError, PermissionError, RuntimeError, TimeoutError)
@@ -569,15 +573,152 @@ async def _start_tracker(session_id: str) -> ProgressTracker | None:
     return tracker
 
 
+class SessionStalled(Exception):
+    """Raised when a run is orphaned: session 'busy' without any progress.
+
+    Happens after a server-side interruption (restart, manual intervention in
+    the web UI) where `/session/status` stays on 'busy' forever and the newest
+    assistant message never completes. Waiting cannot resolve it; the caller
+    aborts the orphaned run and reports the stall instead (TAM-20).
+    """
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+        self.detail = detail
+
+
+def _now_ms() -> int:
+    """Current wall-clock time in milliseconds (opencode message timestamps)."""
+    return int(datetime.now(UTC).timestamp() * 1000)
+
+
+def _newest_assistant(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The most recent assistant message, complete or not."""
+    matching = [m for m in messages if (m.get("info") or {}).get("role") == "assistant"]
+    return matching[-1] if matching else None
+
+
+def _activity_fingerprint(message: dict[str, Any] | None) -> tuple[Any, ...]:
+    """Cheap signature of a message's progress; any run advance changes it.
+
+    Covers part count/ids, tool statuses and their output length, and text
+    growth, so a silent-but-running tool is not mistaken for a stalled one.
+    """
+    if not message:
+        return ()
+    info = message.get("info") or {}
+    parts = message.get("parts") or []
+    return (
+        info.get("id"),
+        tuple(
+            (
+                part.get("id"),
+                part.get("type"),
+                (part.get("state") or {}).get("status"),
+                len(
+                    str(
+                        (part.get("state") or {}).get("metadata", {}).get("output")
+                        or ""
+                    )
+                ),
+                len(part.get("text") or ""),
+            )
+            for part in parts
+        ),
+    )
+
+
+def _completed_at(message: dict[str, Any] | None) -> float | None:
+    """Completion timestamp (epoch seconds) of a message, or None if unfinished."""
+    if not message:
+        return None
+    completed = ((message.get("info") or {}).get("time") or {}).get("completed")
+    return float(completed) / 1000 if completed else None
+
+
+def _running_tools(message: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Tool parts of a message still marked running."""
+    return [
+        part
+        for part in (message or {}).get("parts") or []
+        if part.get("type") == "tool"
+        and (part.get("state") or {}).get("status") == "running"
+    ]
+
+
+def _hung_tool(message: dict[str, Any] | None, now: float) -> str | None:
+    """Name of a running tool that outlived its own timeout, or None.
+
+    The server normally kills a tool at `input.timeout`; a run still marked
+    'running' well past it was orphaned (e.g. by a server restart), which also
+    leaves `/session/status` stuck on 'busy' forever. Tools without a declared
+    timeout fall back to `_STALL_TIMEOUT`.
+    """
+    for part in _running_tools(message):
+        state = part.get("state") or {}
+        start_ms = (state.get("time") or {}).get("start")
+        if not start_ms:
+            continue
+        timeout_ms = (state.get("input") or {}).get("timeout")
+        limit = (float(timeout_ms) / 1000 if timeout_ms else 0) + _STALL_TIMEOUT
+        if now - float(start_ms) / 1000 > limit:
+            return str(part.get("tool") or "tool")
+    return None
+
+
+async def _poll_messages(session_id: str, limit: int = 5) -> list[dict[str, Any]]:
+    """Fetch recent messages, tolerating transient poll failures."""
+    try:
+        return await _client.messages(session_id, limit=limit)
+    except _ERRORS:
+        return []
+
+
 async def _wait_for_idle(
     session_id: str, deadline: float, tracker: ProgressTracker | None
 ) -> None:
-    """Poll /session/status until the session is idle or the deadline passes."""
+    """Poll /session/status until the session is idle or the deadline passes.
+
+    Raises SessionStalled when the session stays 'busy' with no progress past
+    its running tool's own timeout (or for `_STALL_TIMEOUT` without any
+    change), so a run orphaned by a restart/manual intervention cannot loop
+    forever on a status that will never clear (TAM-20).
+    """
+
+    async def fail(detail: str) -> None:
+        if tracker:
+            tracker.set_status("🔸 Status: Stalled (aborted)")
+            await tracker.emit()
+        raise SessionStalled(detail)
+
+    last_change = monotonic()
+    fingerprint: tuple[Any, ...] | None = None
     while monotonic() < deadline:
         status = (await _client.session_status()) or {}
         state = (status.get(session_id) or {}).get("type")
         if state is None or state == "idle":
             return
+        newest = _newest_assistant(await _poll_messages(session_id))
+        if hung := _hung_tool(newest, time()):
+            await fail(f"stuck on a running `{hung}` tool past its timeout")
+        finished = _completed_at(newest)
+        if (
+            finished
+            and not _running_tools(newest)
+            and time() - finished > _STALL_TIMEOUT
+        ):
+            # Busy with an already-finished message and nothing running: the
+            # status was never cleared (server restart / crashed run).
+            await fail("busy with no runnable message")
+        current = _activity_fingerprint(newest)
+        if current != fingerprint:
+            fingerprint = current
+            last_change = monotonic()
+        elif not _running_tools(newest) and monotonic() - last_change > _STALL_TIMEOUT:
+            # A running tool is judged by its own timeout above (a silent but
+            # legitimate long test must not be aborted early); this fallback
+            # only covers a model that stopped streaming with nothing running.
+            await fail("no message progress while the session stayed busy")
         await asyncio.sleep(_PROGRESS_POLL)
     if tracker:
         tracker.set_status("🔸 Status: Timed out (still running)")
@@ -586,28 +727,74 @@ async def _wait_for_idle(
 
 
 def _completed_message(
-    messages: list[dict[str, Any]], role: str = "assistant"
+    messages: list[dict[str, Any]],
+    role: str = "assistant",
+    since_ms: int | None = None,
 ) -> dict[str, Any] | None:
-    matching = [m for m in messages if (m.get("info") or {}).get("role") == role]
-    if not matching:
-        return None
-    latest = matching[-1]
-    info = latest.get("info") or {}
-    if (info.get("time") or {}).get("completed") or info.get("error"):
-        return latest
+    """Newest completed message matching `role`, skipping trailing incomplete ones.
+
+    An interrupted run or a manually interleaved user message can leave an
+    incomplete assistant message as the latest entry; the previous completed
+    message is still the usable result (TAM-20).
+    """
+    matching = [
+        m
+        for m in messages
+        if (m.get("info") or {}).get("role") == role
+        and (
+            since_ms is None
+            or ((m.get("info") or {}).get("time") or {}).get("created", 0) >= since_ms
+        )
+    ]
+    for latest in reversed(matching):
+        info = latest.get("info") or {}
+        if (info.get("time") or {}).get("completed") or info.get("error"):
+            return latest
     return None
 
 
 async def _wait_for_message(
-    session_id: str, deadline: float, role: str = "assistant"
+    session_id: str,
+    deadline: float,
+    role: str = "assistant",
+    since_ms: int | None = None,
 ) -> dict[str, Any] | None:
     """Poll /session/{id}/message for the latest completed message matching `role`."""
     while monotonic() < deadline:
         messages = await _client.messages(session_id, limit=10)
-        if message := _completed_message(messages, role):
+        if message := _completed_message(messages, role, since_ms):
             return message
         await asyncio.sleep(_PROGRESS_POLL)
     return None
+
+
+async def _recover_stalled(session_id: str) -> None:
+    """Abort an orphaned run so /session/status becomes usable again (best effort)."""
+    with suppress(*_ERRORS):
+        await _client.abort(session_id)
+
+
+async def _stalled_result(session_id: str, detail: str) -> dict[str, Any]:
+    """Result for a stalled session: last completed output + explicit stall flag.
+
+    Returning the last available result keeps the caller's context; the flag
+    tells it to stop waiting/re-attaching instead of burning another timeout.
+    """
+    newest = _completed_message(await _poll_messages(session_id, limit=20))
+    prefix = f"[stalled: {detail}; orphaned run aborted]"
+    if newest:
+        result = _format_run(session_id, newest)
+        result["stalled"] = True
+        result["output"] = f"{prefix} {result.get('output', '')}".strip()
+        return result
+    result: dict[str, Any] = {
+        "stalled": True,
+        "session_id": session_id,
+        "output": prefix,
+    }
+    if url := _session_url(session_id):
+        result["session_url"] = url
+    return result
 
 
 async def _run_with_watcher(
@@ -620,6 +807,7 @@ async def _run_with_watcher(
     """
     start = monotonic()
     deadline = start + _TIMEOUT
+    baseline = _now_ms()
     tracker = await _start_tracker(session_id)
     watcher: asyncio.Task | None = None
     try:
@@ -636,7 +824,7 @@ async def _run_with_watcher(
                 await tracker.emit()
             raise
         await _wait_for_idle(session_id, deadline, tracker)
-        newest = await _wait_for_message(session_id, deadline)
+        newest = await _wait_for_message(session_id, deadline, since_ms=baseline)
         if newest and (newest.get("info") or {}).get("role") == "assistant":
             message = newest
     finally:
@@ -693,6 +881,9 @@ async def init_dev_session(
         message, tracker = await _run_with_watcher(session_id, prompt)
     except TimeoutError:
         return _timeout_result(session_id, _session_url(session_id or ""))
+    except SessionStalled as e:
+        await _recover_stalled(session_id or "")
+        return await _stalled_result(session_id or "", e.detail)
     except _ERRORS as e:
         if session_id:
             with suppress(*_ERRORS):
@@ -753,6 +944,9 @@ async def resume_dev_session(
         message, tracker = await _run_with_watcher(sid, prompt)
     except TimeoutError:
         return _timeout_result(sid, _session_url(sid))
+    except SessionStalled as e:
+        await _recover_stalled(sid)
+        return await _stalled_result(sid, e.detail)
     except _ERRORS as e:
         return {"error": f"Opencode server error: {e}"}
     if tracker:
@@ -856,6 +1050,9 @@ async def watch_dev_session(
         return _format_run(sid, newest)
     except TimeoutError:
         return _timeout_result(sid, _session_url(sid))
+    except SessionStalled as e:
+        await _recover_stalled(sid)
+        return await _stalled_result(sid, e.detail)
     except _ERRORS as e:
         return {"error": f"Opencode server error: {e}"}
     finally:
