@@ -2,6 +2,7 @@
 
 import re
 from asyncio import Event, Queue, create_subprocess_exec, create_task, gather, sleep
+from contextlib import suppress
 from datetime import datetime
 from io import BytesIO
 from os import getenv
@@ -362,9 +363,11 @@ async def _run_turn(
     turn_tracker = TurnTrackerPanel(max_lines=default_max_lines())
     tracker_token = set_turn_tracker(turn_tracker)
     session_token = _OPENCODE_SESSION.set(str(chat_id))
+    cancelled = False
     try:
         async for agent, step, done, extra in instance.agent.chat(msg):
             if cancel_event.is_set():
+                cancelled = True
                 break
             if step != prev:
                 prev = step
@@ -417,6 +420,11 @@ async def _run_turn(
                                 InputMediaPhoto(InputFile(BytesIO(b))) for b in imgs
                             ]
                             await instance.bot.core.send_media_group(msg.chat.id, media)
+        if cancelled:
+            # A superseded turn leaves an explicit marker instead of a frozen
+            # live-status panel (TAM-21); the next turn keeps the history.
+            with suppress(Exception):
+                await instance.bot.edit(reply, "⏹️ Interrompu", final=True)
             # TTS: send audio of the final response if enabled
             if (
                 done
