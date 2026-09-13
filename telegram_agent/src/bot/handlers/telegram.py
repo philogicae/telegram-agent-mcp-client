@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from langchain.messages import HumanMessage
 from telebot.types import InputFile, InputMediaPhoto, Message
 
+from ...core.cancel import reset_active_turn_cancel, set_active_turn_cancel
 from ...core.llm import _OPENCODE_SESSION, LLM, can_listen, can_see
 from ...core.progress import (
     TurnTrackerPanel,
@@ -299,6 +300,9 @@ async def _run_turn(
     # This must happen before any await to avoid a TOCTOU race.
     cancel_event = Event()
     instance.cancel_events[chat_id] = cancel_event
+    # Expose the event to in-process tools so a turn blocked in a long tool can
+    # yield to a newer same-chat message instead of finishing the tool first.
+    cancel_token = set_active_turn_cancel(cancel_event)
 
     # Consume pending images for this chat
     pending = instance.pending_media.pop(msg.chat.id, [])
@@ -461,6 +465,7 @@ async def _run_turn(
         reset_progress_sink(sink_token)
         reset_turn_tracker(tracker_token)
         instance.cancel_events.pop(chat_id, None)
+        reset_active_turn_cancel(cancel_token)
         _OPENCODE_SESSION.reset(session_token)
     instance.log.sent(msg, timer)
 

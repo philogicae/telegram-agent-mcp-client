@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from langchain.tools import tool
 from pydantic import Field
 
+from telegram_agent.src.core.cancel import active_turn_cancelled
 from telegram_agent.src.core.progress import (
     ProgressTracker,
     TurnTrackerPanel,
@@ -549,6 +550,28 @@ def _timeout_result(
     }
 
 
+def _cancelled_result(session_id: str | None) -> dict[str, Any]:
+    """Result when the active turn was superseded while waiting on a session.
+
+    The remote run is NOT aborted: it keeps executing server-side, so the
+    session (and its link) stay usable with `watch_dev_session` later. Unlike a
+    timeout this is immediate: the turn yields to the newer user message
+    (TAM-21).
+    """
+    result: dict[str, Any] = {
+        "cancelled": True,
+        "session_id": session_id or "",
+        "message": (
+            "Superseded by a newer user message; the dev session keeps running "
+            "server-side. Re-attach with `watch_dev_session` when you want its "
+            "result."
+        ),
+    }
+    if url := _session_url(session_id or ""):
+        result["session_url"] = url
+    return result
+
+
 async def _start_tracker(session_id: str) -> ProgressTracker | None:
     """Bind the session to its per-session tracker on the turn's panel.
 
@@ -585,6 +608,37 @@ class SessionStalled(Exception):
     def __init__(self, detail: str) -> None:
         super().__init__(detail)
         self.detail = detail
+
+
+class TurnCancelled(Exception):
+    """The active Telegram turn was superseded by a newer same-chat message.
+
+    Raised from the wait loops so a turn blocked on a long dev session yields
+    immediately instead of finishing the tool first (TAM-21). The remote run is
+    left running.
+    """
+
+
+async def _await_cancellable(awaitable: Any, poll: float = 0.5) -> Any:
+    """Await a coroutine while polling the active turn's cancel flag.
+
+    On cancel the inner coroutine is cancelled (the remote run keeps going
+    server-side) and TurnCancelled is raised so the caller can return
+    `_cancelled_result` without waiting for the tool to finish (TAM-21).
+    """
+    task = asyncio.ensure_future(awaitable)
+    try:
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=poll)
+            if done:
+                return task.result()
+            if active_turn_cancelled():
+                raise TurnCancelled
+    finally:
+        if not task.done():
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
 
 
 def _now_ms() -> int:
@@ -694,11 +748,19 @@ async def _wait_for_idle(
     last_change = monotonic()
     fingerprint: tuple[Any, ...] | None = None
     while monotonic() < deadline:
+        if active_turn_cancelled():
+            raise TurnCancelled
         status = (await _client.session_status()) or {}
         state = (status.get(session_id) or {}).get("type")
         if state is None or state == "idle":
             return
-        newest = _newest_assistant(await _poll_messages(session_id))
+        messages = await _poll_messages(session_id, limit=10)
+        if _final_message(messages):
+            # The turn closed (final assistant message) even though the status
+            # still says busy: a manual intervention can leave the status
+            # uncleared, so trust the message state and stop waiting (TAM-20).
+            return
+        newest = _newest_assistant(messages)
         if hung := _hung_tool(newest, time()):
             await fail(f"stuck on a running `{hung}` tool past its timeout")
         finished = _completed_at(newest)
@@ -753,6 +815,50 @@ def _completed_message(
     return None
 
 
+_INTERMEDIATE_FINISH = ("tool-calls", "unknown")
+
+
+def _final_message(
+    messages: list[dict[str, Any]], since_ms: int | None = None
+) -> dict[str, Any] | None:
+    """Newest assistant message that closes its turn, else None while it runs.
+
+    Mirrors the server's own loop-exit predicate: completed (or errored),
+    `finish` is not an intermediate value, no pending tool part, and the
+    message answers the newest user message. Unlike `/session/status`, which
+    can stay stuck on 'busy' after a manual intervention, the message state is
+    reliable, so completion is detected even when the status never clears
+    (TAM-20).
+    """
+    users = [m for m in messages if (m.get("info") or {}).get("role") == "user"]
+    last_user = (users[-1].get("info") or {}).get("id") if users else None
+    assistants = [
+        m for m in messages if (m.get("info") or {}).get("role") == "assistant"
+    ]
+    for message in reversed(assistants):
+        info = message.get("info") or {}
+        created = (info.get("time") or {}).get("created", 0)
+        if since_ms is not None and created < since_ms:
+            return None
+        finished = bool((info.get("time") or {}).get("completed"))
+        errored = bool(info.get("error"))
+        if not finished and not errored:
+            continue
+        finish = info.get("finish")
+        if finish in _INTERMEDIATE_FINISH or (not finish and not errored):
+            continue
+        if any(
+            part.get("type") == "tool"
+            and (part.get("state") or {}).get("status") in ("running", "pending")
+            for part in message.get("parts") or []
+        ):
+            continue
+        if last_user is not None and info.get("parentID") != last_user:
+            continue
+        return message
+    return None
+
+
 async def _wait_for_message(
     session_id: str,
     deadline: float,
@@ -761,9 +867,16 @@ async def _wait_for_message(
 ) -> dict[str, Any] | None:
     """Poll /session/{id}/message for the latest completed message matching `role`."""
     while monotonic() < deadline:
+        if active_turn_cancelled():
+            raise TurnCancelled
         messages = await _client.messages(session_id, limit=10)
-        if message := _completed_message(messages, role, since_ms):
-            return message
+        found = (
+            _final_message(messages, since_ms)
+            if role == "assistant"
+            else _completed_message(messages, role, since_ms)
+        )
+        if found:
+            return found
         await asyncio.sleep(_PROGRESS_POLL)
     return None
 
@@ -815,7 +928,7 @@ async def _run_with_watcher(
             watcher = asyncio.create_task(_watch_progress(session_id, tracker))
         try:
             message = await asyncio.wait_for(
-                _client.prompt(session_id, prompt),
+                _await_cancellable(_client.prompt(session_id, prompt)),
                 timeout=deadline - monotonic(),
             )
         except TimeoutError:
@@ -879,6 +992,8 @@ async def init_dev_session(
         if not session_id:
             return {"error": "Opencode server did not return a session id"}
         message, tracker = await _run_with_watcher(session_id, prompt)
+    except TurnCancelled:
+        return _cancelled_result(session_id)
     except TimeoutError:
         return _timeout_result(session_id, _session_url(session_id or ""))
     except SessionStalled as e:
@@ -942,6 +1057,8 @@ async def resume_dev_session(
 
     try:
         message, tracker = await _run_with_watcher(sid, prompt)
+    except TurnCancelled:
+        return _cancelled_result(sid)
     except TimeoutError:
         return _timeout_result(sid, _session_url(sid))
     except SessionStalled as e:
@@ -1048,6 +1165,8 @@ async def watch_dev_session(
             tracker.set_status("✅ Status: Done")
             await tracker.emit()
         return _format_run(sid, newest)
+    except TurnCancelled:
+        return _cancelled_result(sid)
     except TimeoutError:
         return _timeout_result(sid, _session_url(sid))
     except SessionStalled as e:
