@@ -29,8 +29,8 @@ type ToolFilterConfig = dict[str, dict[str, Any]]
 type ToolConfig = tuple[ServerConfig, ToolFilterConfig]
 ENV_NOT_FOUND = "ENV_NOT_FOUND"
 
-# Configuration
-TOOL_DIR = Path(getenv("CONFIG", "./config")) / "tools"
+# Configuration - CONFIG_DIR is the documented name; CONFIG is the legacy fallback
+TOOL_DIR = Path(getenv("CONFIG_DIR") or getenv("CONFIG") or "./config") / "tools"
 _console = Console()
 
 

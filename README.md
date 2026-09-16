@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/philogicae/telegram-agent-mcp-client)
 
-A multi-agent Telegram bot built on [LangGraph Swarm](https://github.com/langchain-ai/langgraph-swarm). A friendly coordinator routes user requests to specialized agents - Search, Image Manager, Media, Home Assistant, and OpenCode Dev - each backed by tools loaded from **MCP servers** and **native Python tools**. Handles multimodal input (text, voice, images), TTS voice replies, and ships with a Next.js docs UI.
+A multi-agent Telegram bot built on [LangGraph Swarm](https://github.com/langchain-ai/langgraph-swarm). A friendly coordinator routes user requests to specialized agents - Search, Image Manager, Media, Planning Manager (Kaneo), Home Assistant, Opencode Dev, and more - declared in `config/agent_config.json` and backed by tools loaded from **MCP servers** and **native Python tools**. Handles multimodal input (text, voice, images) and TTS voice replies.
 
 ## Features
 
@@ -14,15 +14,15 @@ A multi-agent Telegram bot built on [LangGraph Swarm](https://github.com/langcha
 - **MCP + native tools** - discovered recursively from `config/tools/`: MCP servers as `.json` (stdio or HTTP/SSE), native Python tools as `.py` `@tool` functions - see [config/tools/README.md](config/tools/README.md)
 - **Multimodal** - text, voice (transcribed or passed as audio to models with `stt`), images (inline for `vision`-capable models, or described on-the-fly by the first capable fallback provider and persisted to disk so context survives across sessions)
 - **TTS replies** - per-user `/tts` toggle generates voice messages via OpenRouter TTS; an LLM-driven `tts_adapt` step rewrites text to be speakable, not summarized
-- **Rate limiting & supersede** - a new same-chat message interrupts the running turn at its next step and is processed immediately (turns never overlap, history stays consistent); `/cancel` aborts the active run; 429 flood-waits are respected and capped at 60s
+- **Supersede & cancel** - a new same-chat message interrupts the running turn at its next step and is processed immediately (turns never overlap, history stays consistent); `/cancel` aborts the active run; 429 flood-waits are respected and capped at 60s
 - **Streaming edits** - tool logs and model reasoning stream into the message with live edits; final messages render as rich Telegram HTML via `sendRichMessage`, intermediate edits fall back to classic HTML with graceful failure handling
-- **Remote coding sessions** - OpenCode Dev starts, resumes, watches, and aborts sessions through the OpenCode HTTP server API; long runs return resumable timeout markers and expose live progress/session links
+- **Remote coding sessions** - Opencode Dev starts, resumes, and watches sessions through the OpenCode HTTP server API; long runs return resumable timeout markers and expose live progress/session links
 - **Authenticated HTTP relay** - external services can securely enqueue a notice and self-prompt through `POST /relay`
-- **Docker-first** - `compose.yaml` runs the bot + docs UI; `extended.yaml` adds optional Transmission and torrent-search services
+- **Docker-first** - `compose.yaml` runs the bot; `extended.yaml` adds optional Transmission and torrent-search services
 
 ## Requirements
 
-Python 3.14+, [uv](https://docs.astral.sh/uv/), Node.js + npm (MCP servers + Playwright), a Telegram bot token, and at least one LLM provider in `.env` - Gemini, OpenRouter, OpenCode, Fireworks, or Ollama. ffmpeg is optional (TTS voice encoding).
+Python 3.14+, [uv](https://docs.astral.sh/uv/), Node.js + npm (MCP servers + Playwright), a Telegram bot token, and at least one configured LLM provider in `.env` - Gemini, OpenCode, Fireworks, or Ollama (OpenRouter powers TTS). ffmpeg is optional (TTS voice encoding).
 
 ## Quick start
 
@@ -39,23 +39,24 @@ Edit `.env` to set `TELEGRAM_BOT_TOKEN`, `GEMINI_API_KEY`, and `LLM_ORDER` / `LL
 ### Docker
 
 ```bash
-./scripts/deploy-agent.sh    # bot + docs-ui
+./scripts/deploy-agent.sh    # bot only
 ./scripts/deploy-tools.sh    # extended services (Transmission and torrent search)
 ```
 
 ## CLI
 
 ```
-telegram-agent-mcp-client [--telegram] [--dev] [--tools] [--agents] [--png]
+telegram-agent-mcp-client [--telegram] [--dev] [--tools] [--agents] [--persist] [--png]
 ```
 
-| Flag         | Action                                         |
-| ------------ | ---------------------------------------------- |
-| `--telegram` | Run as Telegram bot (default: interactive CLI) |
-| `--dev`      | Use `TELEGRAM_BOT_TOKEN_DEV`                   |
-| `--tools`    | Print loaded tools and exit                    |
-| `--agents`   | Print configured agents and exit               |
-| `--png`      | Render the swarm graph to PNG and exit         |
+| Flag         | Action                                                                 |
+| ------------ | ---------------------------------------------------------------------- |
+| `--telegram` | Run as Telegram bot (default: interactive CLI)                         |
+| `--dev`      | Use `TELEGRAM_BOT_TOKEN_DEV`                                           |
+| `--tools`    | Print loaded tools and exit                                            |
+| `--agents`   | Print configured agents and exit                                       |
+| `--persist`  | Persist checkpoints to SQLite instead of memory (compose runs with it) |
+| `--png`      | Render the swarm graph to PNG and exit                                 |
 
 ## Configuration
 
@@ -63,16 +64,18 @@ telegram-agent-mcp-client [--telegram] [--dev] [--tools] [--agents] [--png]
 
 See [`.env.example`](.env.example) for the full list.
 
-| Variable                                        | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_BOT_TOKEN_DEV` | Bot tokens for prod/dev                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `LLM_ORDER` / `LLM_ORDER_FAST`                  | Comma-separated provider run order (main + fast/utility tasks). First **configured** provider wins; when a capability is required, the first capable provider is selected. Runtime failures immediately fall over to the next candidate: each failure cools a provider down (`LLM_DEAD_COOLDOWN`, 300s) and 3 strikes jail it for 24h (`LLM_JAIL_STRIKES`/`LLM_JAIL_HOURS`). Values: `ollama`, `gemini`, `gemini-small`, `fireworks`, `opencode`, `opencode-alt` |
-| Model capability suffixes                       | Append `<model_code>\|<option1>[+<option2>]` to any `*_API_MODEL`: `text`, `vision` (images in), `stt` (audio in), `video`, `pdf`, `image` (image gen), `tts` (speech out), `structured` (native JSON output). Lookup: [models.dev](https://models.dev)                                                                                                                                                                                                          |
-| `GEMINI_API_KEY`                                | Google Gemini (vision, image generation)                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `OPENROUTER_API_KEY` / `OPENROUTER_TTS_SPEED`   | OpenRouter TTS; speed clamped to `[0.25, 4.0]` (default `1.15`)                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `OPENCODE_ACP_URL` / `OPENCODE_SERVER_*`        | OpenCode HTTP server URL, Basic Auth credentials, timeout/progress polling, output limit, and local session-cache settings. Despite the historical variable name, this integration uses the server HTTP API rather than ACP JSON-RPC. `OPENCODE_WEB_URL` enables clickable session links.                                                                                                                                                                        |
-| `AGENT_RELAY_TOKEN` / `AGENT_RELAY_PORT`        | Enables the authenticated `POST /relay` endpoint for external self-prompts; the port defaults to `4041`. Callers such as torrent-search-mcp use `AGENT_RELAY_URL` plus the same token.                                                                                                                                                                                                                                                                           |
-| `DATA_DIR` / `CONFIG_DIR`                       | Persisted data and tool config paths                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Variable                                        | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_BOT_TOKEN_DEV` | Bot tokens for prod/dev                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `LLM_ORDER` / `LLM_ORDER_FAST`                  | Comma-separated provider run order (main + fast/utility tasks). First **configured** provider wins; when a capability is required, the first capable provider is selected. Runtime failures immediately fall over to the next candidate: each failure cools a provider down (`LLM_DEAD_COOLDOWN`, 300s) and 3 strikes jail it for 24h (`LLM_JAIL_STRIKES`/`LLM_JAIL_HOURS`). Values: `ollama`, `gemini`, `gemini-small`, `fireworks`, `opencode`, `opencode-alt`, `openrouter-tts` |
+| Model capability suffixes                       | Append `<model_code>\|<option1>[+<option2>]` to any `*_API_MODEL`: `text`, `vision` (images in), `stt` (audio in), `video`, `pdf`, `image` (image gen), `tts` (speech out), `structured` (native JSON output). Lookup: [models.dev](https://models.dev)                                                                                                                                                                                                                            |
+| `GEMINI_API_KEY`                                | Google Gemini (vision, image generation)                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `OPENROUTER_API_KEY` / `OPENROUTER_TTS_SPEED`   | OpenRouter TTS; speed clamped to `[0.25, 4.0]` (default `1.15`)                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `OPENCODE_ACP_URL` / `OPENCODE_SERVER_*`        | OpenCode HTTP server URL, Basic Auth credentials, timeout/progress polling, output limit, and local session-cache settings. Despite the historical variable name, this integration uses the server HTTP API rather than ACP JSON-RPC. `OPENCODE_WEB_URL` enables clickable session links.                                                                                                                                                                                          |
+| `AGENT_RELAY_TOKEN` / `AGENT_RELAY_PORT`        | Enables the authenticated `POST /relay` endpoint for external self-prompts; the port defaults to `4041`. Callers such as torrent-search-mcp use `AGENT_RELAY_URL` plus the same token.                                                                                                                                                                                                                                                                                             |
+| `KANEO_URL` / `KANEO_API_KEY`                   | Kaneo server URL + API key, used by the Planning Manager agent's MCP tools                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `TELEGRAM_CHAT_DEV`                             | Admin chat that receives automatic error reports (optional)                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `DATA_DIR` / `CONFIG_DIR`                       | Persisted data and config paths (the legacy `CONFIG` name is still accepted)                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ### Agent & user config
 
@@ -83,7 +86,7 @@ See [`.env.example`](.env.example) for the full list.
 
 `config/tools/` holds tool definitions organized by category:
 
-- **`.json`** - MCP server config (stdio command or HTTP/SSE URL), with `{ENV:VAR}` substitution, `enable`/`disable` filters, and `edit` overrides
+- **`.json`** - MCP server config (stdio command or HTTP/SSE URL), with `{ENV:VAR}` / `{ENV:VAR:-default}` substitution, `enable`/`disable` filters, and `edit` overrides
 - **`.py`** - native LangChain `@tool` functions loaded into the agent process
 
 See [config/tools/README.md](config/tools/README.md) for the full spec and [`_template.py`](config/tools/_template.py) for a scaffold.
@@ -94,10 +97,11 @@ See [config/tools/README.md](config/tools/README.md) for the full spec and [`_te
 telegram_agent/
   __main__.py              CLI entry point + Playwright install
   src/
-    core/                  agent · config · llm · tools · utils
-    bot/                   abstract · bots · instances · handlers · managers · utils
+    core/                  agent · cancel · config · llm · progress · stats · tools · utils
+    bot/                   abstract · bots · handlers · instances · logging · managers · relay · utils
+  tests/                   manual regression runner (test_prune.py)
 config/                    agent_config.json · user_config.json · tools/
-scripts/                   dev.sh · deploy-agent.sh · deploy-tools.sh
+scripts/                   dev.sh · deploy-agent.sh · deploy-tools.sh · load-env.sh
 compose.yaml · extended.yaml
 ```
 
@@ -105,6 +109,9 @@ compose.yaml · extended.yaml
 
 ```bash
 ./scripts/dev.sh    # uv lock/sync · Ruff format/lint · ty · shfmt/shellcheck · Prettier
+
+# Manual regression check (no pytest suite)
+uv run python -m telegram_agent.tests.test_prune
 ```
 
 CI runs Ruff format/lint and `ty` on every push; tagged builds also publish distributions. See [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml).

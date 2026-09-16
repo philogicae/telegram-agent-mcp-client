@@ -501,7 +501,7 @@ async def telegram_file(instance: AgenticBot, msg: Message) -> None:
             await instance.managers["document"].file_too_large(
                 msg.chat.id, str(getattr(msg.document, "file_name", "unknown"))
             )
-            instance.log.warning("File: too big. Redirected to Docs UI.")
+            instance.log.warning("File: too big for Telegram (20MB limit).")
         else:
             await telegram_report_issue(instance, msg, msg, e)
             instance.log.exception("File handling error")

@@ -1,24 +1,28 @@
 # Tools Configuration
 
-This directory contains the tool definitions for the Fractal Agents system. The system supports two primary ways to define tools: **Native Python Tools** and **MCP (Model Context Protocol) Servers**.
+This directory contains the tool definitions for the Telegram Agent MCP Client. The system supports two primary ways to define tools: **Native Python Tools** and **MCP (Model Context Protocol) Servers**.
 
 ## 📂 Structure
 
-Tools are organized by category folders (e.g., `local`, `web`, `media`, `utils`). The system recursively scans `config/tools/` for configuration files.
+Tools are organized by category folders (e.g., `acp`, `home`, `media`, `utils`, `web`). The system recursively scans `config/tools/` for configuration files.
 
 ```text
 config/tools/
-├── local/
-│   ├── filesystem.json   # MCP Server config
+├── acp/
+│   └── opencode.py              # Native Python tool (OpenCode dev sessions)
+├── home/
+│   ├── gree_ac.py               # Native Python tool (GREE AC control)
+│   └── kaneo.json               # MCP Server config
+├── media/
+│   ├── torrent_client.json      # MCP Server config
 │   └── ...
 ├── web/
-│   ├── web_search.json   # MCP Server config
 │   └── ...
-├── utils/
-│   ├── sequential_thinking.py  # Native Python tool
-│   └── ...
+├── _template.py                 # Scaffold for native tools (never loaded)
 └── README.md
 ```
+
+Files starting with `_` (underscore) are skipped by the loader - use the prefix to park a configuration you don't want to load.
 
 ## 🐍 Native Python Tools (`.py`)
 
@@ -26,7 +30,7 @@ Native tools are Python files that define functions or classes decorated with `@
 
 ### How to Create
 
-1. Create a `.py` file in any subdirectory of `config/tools/`.
+1. Copy `config/tools/_template.py` to a new `.py` file in any subdirectory (without the leading underscore - underscore-prefixed files are not loaded).
 2. Import `tool` from `langchain.tools`.
 3. Decorate your function with `@tool`.
 4. Add a docstring (this becomes the tool description for the LLM).
@@ -56,7 +60,9 @@ MCP (Model Context Protocol) allows agents to connect to external tools running 
 
 ### Configuration Format
 
-Create a `.json` file in any subdirectory. The configuration supports two transport modes: **Command** (stdio) and **URL** (SSE/HTTP).
+Create a `.json` file in any subdirectory. Files are JSON5, so `//` comments are allowed (the loader also maintains a `/* all found tools */` comment listing what the server currently exposes). The configuration supports two transport modes: **Command** (stdio) and **URL** (SSE/HTTP).
+
+The optional `description` field is metadata for humans only - it is not passed to the MCP server.
 
 #### 1. Command-Based (Stdio)
 
@@ -72,17 +78,17 @@ Runs a local command (e.g., `npx`, `python`, `docker`) to start the MCP server.
 }
 ```
 
-_Note: You can also combine command and args into a single `"command"` string._
+_Note: You can also combine command and args into a single `"command"` string. Leading `VAR=value` prefixes in the command are hoisted into `env`._
 
 #### 2. URL-Based (SSE/HTTP)
 
-Connects to a running MCP server over HTTP/SSE.
+Connects to a running MCP server. The transport is inferred from the URL: `/sse` → SSE, otherwise streamable HTTP.
 
 ```json
 {
   "url": "http://localhost:8000/sse",
-  "env": {
-    "API_KEY": "{ENV:MY_API_KEY}"
+  "headers": {
+    "Authorization": "Bearer {ENV:MY_API_KEY}"
   }
 }
 ```
@@ -91,13 +97,16 @@ Connects to a running MCP server over HTTP/SSE.
 
 #### Environment Variable Substitution
 
-Use `{ENV:VAR_NAME}` to inject environment variables securely.
+Use `{ENV:VAR_NAME}` to inject environment variables securely, and `{ENV:VAR_NAME:-default}` to fall back to a default when the variable is unset (or empty):
 
 ```json
 "env": {
-  "API_KEY": "{ENV:OPENAI_API_KEY}"
+  "API_KEY": "{ENV:OPENAI_API_KEY}",
+  "SEARXNG_URL": "{ENV:SEARXNG_BASE_URL}:{ENV:SEARXNG_PORT:-8080}"
 }
 ```
+
+If a referenced variable has no value and no default, the whole server is skipped (with a log line).
 
 #### Tool Customization (`edit`)
 
@@ -133,7 +142,11 @@ You can disable specific tools from a server, or disable the entire server.
 "disable": true
 ```
 
-**Note**: You cannot use both `enable` and `disable` for the same server. If both are provided, `disable` will take precedence for tools that appear in either list.
+**Note**: `enable` and `disable` can be combined - a tool is only loaded when it is in `enable` (if an `enable` list is present) and not in `disable`.
+
+#### Unsupported Options
+
+Options not recognized by the selected transport (or the client) are ignored with a log line instead of failing the whole server.
 
 ## 🚀 Adding a New Tool
 
@@ -154,6 +167,6 @@ Use this for external integrations (GitHub, Slack, Database) or to leverage the 
 
 ## 🔍 Troubleshooting
 
-- **Ignored Files**: Files starting with `_` (underscore) are ignored by the loader (except `_template.py`).
-- **Missing Env Vars**: If a required `{ENV:VAR}` is missing, the server config will be skipped.
-- **Logs**: The system logs loaded tools and any errors during startup. Check the console output.
+- **Ignored Files**: files starting with `_` (underscore) are skipped by the loader, including `_template.py`.
+- **Missing Env Vars**: if a required `{ENV:VAR}` has no value and no `:-default`, the server config is skipped.
+- **Logs**: the system logs loaded tools and any errors during startup. Check the console output.

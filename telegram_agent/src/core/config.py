@@ -20,8 +20,8 @@ from .utils import pre_agent_hook
 
 load_dotenv()
 
-# Configuration
-CONFIG_DIR = getenv("CONFIG") or "./config"
+# Configuration - CONFIG_DIR is the documented name; CONFIG is the legacy fallback
+CONFIG_DIR = getenv("CONFIG_DIR") or getenv("CONFIG") or "./config"
 
 
 class PruneHistory(AgentMiddleware):

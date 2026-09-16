@@ -15,6 +15,7 @@ Telegram agent with MCP (Model Context Protocol) client capabilities. Python-bas
 uv run ruff format .      # format only
 uv run ruff check .       # lint only
 uv run ty check           # type check
+uv run python -m telegram_agent.tests.test_prune   # manual regression checks
 uv run telegram-agent-mcp-client --tools    # verify tool discovery
 uv run telegram-agent-mcp-client --agents   # verify agent config
 ```
@@ -25,34 +26,32 @@ uv run telegram-agent-mcp-client --agents   # verify agent config
 
 ## Testing instructions
 
-- No automated test suite (lint/typecheck only) - manual QA via dev bot.
+- No pytest suite. One manual regression runner: `uv run python -m telegram_agent.tests.test_prune` (history pruning, media token counting, voice passthrough). Everything else: manual QA via dev bot.
 
 ## Security considerations
 
 - Allowlist audited 2026-08-28: keyed by Telegram user ID, all handler paths gated, groups handled (any group allowed, only allowlisted users handled), self-prompt/CLI preserved via the `"-1": "Developer"` sentinel. Closed.
 - [ ] Relay `sender` is caller-controlled - the relay token is the only gate on spoofing (`bot/relay.py`).
-- [ ] `{ENV:VAR}` substitution in MCP tool configs - confirm no secrets leak into logs or `--tools` output.
+- [ ] `{ENV:VAR}` substitution in MCP tool configs - tool-loading errors print the raw exception (`core/tools.py`), which may echo URLs/headers containing secrets; confirm no secrets leak into logs or `--tools` output.
 - [ ] Config writes (`/allow-user`, `/ban-user`) are last-write-wins vs manual edits of the bind-mounted `config/` volume; add a file lock if it ever matters.
 
 ## Architecture backlog
 
 ### Core (`telegram_agent/src/core/`)
 
-- [ ] Review `core/stats.py` - ensure it doesn't block the agent loop or leak file handles.
 - [ ] `core/llm.py` - provider fallback policy (cooldown + jail via `LLM_DEAD_COOLDOWN`/`LLM_JAIL_STRIKES`) keeps growing; extract to its own module if it continues.
-- [ ] `core/llm.py` - add tests for model capability suffix parsing (missing `|`, unknown options, duplicates).
+- [ ] `core/llm.py` - add tests for model capability suffix parsing (missing `|`, unknown options, duplicates) to `telegram_agent/tests/`.
 
 ### Bot (`telegram_agent/src/bot/`)
 
-- [ ] `instances/telegram.py` - evaluate Bot API rich drafts (private chats) as an opt-in; raw `_rich_request` wrapper may be removable on pytelegrambotapi ≥ 4.36.
-- [ ] `handlers/telegram.py` - verify rate-limit/`/cancel` interplay still holds for concurrent runs (voice/image → chat handoff).
+- [ ] `instances/telegram.py` - `_rich_request` is still used for `sendRichMessage`; pytelegrambotapi 4.36.1 exposes `send_rich_message`/`send_rich_message_draft`/`send_message_draft`, so the raw wrapper may be removable.
+- [ ] `handlers/telegram.py` - verify the per-chat FIFO queue + cancel-event supersede path for concurrent runs (voice/image → chat handoff); no automated coverage yet.
 
 ### Infra / Config & tooling
 
 - [ ] Agent relay (`bot/relay.py`) - production rollout pending.
-- [ ] torrent-search-api service: confirm env drift `extended.yaml` vs `compose.yaml` (`torrent-search-api` is only in `extended.yaml`, not `compose.yaml`).
 
 ## Accepted trade-offs
 
-- No automated test suite (lint/typecheck only) - manual QA via dev bot.
+- No pytest suite (lint/typecheck + one manual regression runner only) - manual QA via dev bot.
 - GraphRAG/neo4j memory stack removed deliberately (commit `59acc66`); context persistence relies on SQLite checkpointer + persisted image descriptions.
