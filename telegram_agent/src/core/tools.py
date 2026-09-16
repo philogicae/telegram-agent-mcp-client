@@ -14,8 +14,8 @@ from time import monotonic
 from typing import Any
 
 from dotenv import load_dotenv
+from langchain.mcp import MCPAdapter
 from langchain.tools import BaseTool
-from langchain_mcp_adapters.client import MultiServerMCPClient
 from pyjson5 import loads
 from rich.console import Console
 from rich.panel import Panel
@@ -82,42 +82,29 @@ def _load_server_configs(only_file: str | None = None) -> ServerConfig:
 
 _ENV_PREFIX_RE = re_compile(r"[A-Za-z_]\w*=")
 
-# Whitelisted config keys per transport: recent langchain-mcp-adapters
-# forwards every key verbatim to the session builder, which rejects
-# unknown kwargs (e.g. metadata like 'description').
+# Whitelisted config keys per transport, limited to the fields a standard
+# MCPConfig server entry accepts: FastMCP validates every entry and rejects
+# unknown keys (e.g. metadata like 'description'), and options the old
+# adapters forwarded per session (encoding, session_kwargs,
+# httpx_client_factory, ...) have no MCPConfig equivalent.
 _TRANSPORT_KEYS = {
-    "stdio": {
-        "transport",
-        "command",
-        "args",
-        "env",
-        "cwd",
-        "encoding",
-        "encoding_error_handler",
-        "session_kwargs",
-    },
+    "stdio": {"transport", "command", "args", "env", "cwd"},
     "sse": {
         "transport",
         "url",
         "headers",
+        "auth",
         "timeout",
         "sse_read_timeout",
-        "session_kwargs",
-        "httpx_client_factory",
-        "auth",
     },
-    "streamable_http": {
+    "http": {
         "transport",
         "url",
         "headers",
+        "auth",
         "timeout",
         "sse_read_timeout",
-        "terminate_on_close",
-        "session_kwargs",
-        "httpx_client_factory",
-        "auth",
     },
-    "websocket": {"transport", "url", "session_kwargs"},
 }
 
 
@@ -150,7 +137,9 @@ def _configure_transport(settings: ServerConfig) -> None:
             ]
     elif url := settings.get("url"):
         settings["url"] = url.rstrip("/")
-        settings["transport"] = "sse" if "/sse" in url else "streamable_http"
+        # MCPConfig spells Streamable HTTP as "http"; FastMCP maps it (and the
+        # inferred default) to a StreamableHttpTransport.
+        settings["transport"] = "sse" if "/sse" in url else "http"
     allowed = _TRANSPORT_KEYS.get(settings.get("transport"), set())
     for key in set(settings) - allowed:
         _console.print(f"Ignored unsupported server option '{key}'", style="orange3")
@@ -260,7 +249,7 @@ def _apply_tool_edits(tool: BaseTool, edits: dict[str, str]) -> BaseTool:
 
 # Read-only workspace metadata (workspaces, columns, members, labels) is
 # re-fetched at the start of nearly every agent turn; caching it in-process
-# for a few minutes removes that redundant MCP round-trip tax (TAM-17).
+# for a few minutes removes that redundant MCP round-trip tax.
 _CACHEABLE_TOOLS = frozenset(
     {
         "list_workspaces",
@@ -381,13 +370,16 @@ async def get_tools(
         tools.extend([tool for tools in py_tools.values() for tool in tools])
 
     if mcp_config:
-        client = MultiServerMCPClient(mcp_config)
         for server, config in mcp_config.items():
             try:
                 _console.print(
                     f"[cyan]Loading tools from:[/cyan] [yellow]{server}[/yellow] [dim]({config['transport']})[/dim]"
                 )
-                raw_tools = await client.get_tools(server_name=server)
+                # One adapter per server: a single-server MCPConfig connects
+                # directly, so tool names stay unprefixed and a failing server
+                # can't take down the others.
+                adapter = MCPAdapter({"mcpServers": {server: config}})
+                raw_tools = await adapter.list_tools()
 
                 # Update server.json with tools list if needed
                 if server in mcp_config:

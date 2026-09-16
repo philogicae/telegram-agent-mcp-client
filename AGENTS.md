@@ -11,22 +11,25 @@ Telegram agent with MCP (Model Context Protocol) client capabilities. Python-bas
 ## Setup commands
 
 ```bash
-./scripts/dev.sh          # uv lock/sync · ruff format/lint · ty · shfmt/shellcheck · Prettier
+./scripts/dev.sh          # uv lock/sync · ruff format/lint · ty · pytest · shfmt/shellcheck · Prettier
 uv run ruff format .      # format only
 uv run ruff check .       # lint only
 uv run ty check           # type check
+uv run pytest             # test suite (add --cov=telegram_agent for a coverage report)
 uv run python -m telegram_agent.tests.test_prune   # manual regression checks
 uv run telegram-agent-mcp-client --tools    # verify tool discovery
 uv run telegram-agent-mcp-client --agents   # verify agent config
 ```
 
-- CI: `.github/workflows/ci-cd.yml` runs Ruff format/lint and `ty` on every push; tagged builds also publish distributions.
+- CI: `.github/workflows/ci-cd.yml` runs Ruff format/lint, `ty` and `pytest` (coverage appended to the job summary) on every push; tagged builds only publish when the lint and test jobs pass.
 - Local tooling additionally formats/checks shell files and formats Markdown/JSON.
-- Tooling: `ruff` (lint/format, see `ruff.toml`) + `ty` (types, `no-matching-overload` ignored in `pyproject.toml`).
+- Tooling: `ruff` (lint/format, see `ruff.toml`) + `ty` (types, `no-matching-overload` ignored and `telegram_agent/tests` excluded in `pyproject.toml`) + `pytest`/`pytest-asyncio`/`pytest-xdist`/`pytest-cov` (config in `pyproject.toml`).
 
 ## Testing instructions
 
-- No pytest suite. One manual regression runner: `uv run python -m telegram_agent.tests.test_prune` (history pruning, media token counting, voice passthrough). Everything else: manual QA via dev bot.
+- pytest suite: `uv run pytest` (or `-n auto --dist worksteal --cov=telegram_agent` for CI parity). Tests live in `telegram_agent/tests/`; ~440 tests at ~95% line coverage. No network/Telegram/LLM calls: external boundaries are faked via `telegram_agent/tests/fakes.py`, and `conftest.py` disables `.env` loading and redirects `CONFIG_DIR`/`DATA_DIR` to a throwaway directory.
+- `uv run python -m telegram_agent.tests.test_prune` remains the manual regression runner (also exercised by `pytest` via `test_prune_pytest.py`).
+- Everything else (bot behavior end-to-end): manual QA via dev bot.
 
 ## Security considerations
 

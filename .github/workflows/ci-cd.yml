@@ -33,10 +33,26 @@ jobs:
       - name: Run ty check
         run: uv run ty check
 
+  tests:
+    name: Run pytest 🧪
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv with cache
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: 3.14
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install dependencies
+        run: uv sync --dev --frozen
+      - name: Run pytest
+        run: uv run pytest -v --tb=no -n auto --dist worksteal --cov=telegram_agent --cov-report=term-missing --cov-report=markdown-append:$GITHUB_STEP_SUMMARY
+
   build:
     name: Build distribution 📦
     if: startsWith(github.ref, 'refs/tags/')
-    needs: lint
+    needs: [lint, tests]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

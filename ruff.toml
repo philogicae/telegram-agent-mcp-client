@@ -61,7 +61,7 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
-"tests/**/*.py" = [
+"**/tests/**/*.py" = [
     # pytest / test style
     "S101",  # assert used in tests
     "S104",  # bind to all interfaces in tests

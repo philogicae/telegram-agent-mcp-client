@@ -2,7 +2,6 @@
 
 from .telegram import (
     telegram_chat,
-    telegram_file,
     telegram_image,
     telegram_report_issue,
     telegram_voice,
@@ -10,7 +9,6 @@ from .telegram import (
 
 __all__ = [
     "telegram_chat",
-    "telegram_file",
     "telegram_image",
     "telegram_report_issue",
     "telegram_voice",

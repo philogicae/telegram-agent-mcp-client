@@ -7,10 +7,10 @@ from typing import Any
 from dotenv import load_dotenv
 
 from .abstract import AgenticBot
-from .handlers import telegram_chat, telegram_file, telegram_image, telegram_voice
+from .handlers import telegram_chat, telegram_image, telegram_voice
 from .instances import TelegramBot
 from .logging import TelegramLogger
-from .managers import DocumentManager, DownloadManager
+from .managers import DownloadManager
 from .relay import serve, start_relay
 
 load_dotenv()
@@ -50,9 +50,6 @@ async def run_telegram_bot(dev: bool = False, persist: bool = False) -> None:
     }
     if getenv("TRANSMISSION_URL"):
         managers["download_torrent"] = DownloadManager
-    if getenv("RAG_URL"):
-        managers["document"] = DocumentManager
-        handlers["document"] = telegram_file
     if getenv("GEMINI_API_KEY"):
         handlers["voice"] = telegram_voice
         handlers["image"] = telegram_image

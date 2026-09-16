@@ -5,7 +5,6 @@ from typing import Any
 
 from telebot.types import InlineKeyboardMarkup, Message
 from telebot.util import quick_markup
-from unidecode import unidecode
 
 
 def unpack_user(msg: Message) -> tuple[str, str]:
@@ -248,30 +247,3 @@ def reply_markup(index: int, total: int) -> InlineKeyboardMarkup:
         },
         row_width=5,
     )
-
-
-def str_size(size: int) -> str:
-    """Format file size in human-readable format."""
-    return (
-        f"{size / 1024 / 1024:.2f}MB"
-        if size > 1024 * 1024
-        else f"{size / 1024:.2f}KB"
-        if size > 1024
-        else f"{size}B"
-    )
-
-
-def sanitize_filename(filename: str) -> str:
-    """Sanitize a filename for safe storage."""
-    filename = unidecode(filename)
-    splitted = filename.rsplit(".", maxsplit=1)
-    try:
-        return (
-            "".join(
-                char if char.isalnum() or char in "-_" else "_" for char in splitted[0]
-            )
-            + "."
-            + splitted[-1]
-        ).lower()
-    except Exception:
-        return ""

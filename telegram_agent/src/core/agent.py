@@ -74,7 +74,7 @@ def _last_error(messages: list[AnyMessage]) -> str | None:
     When the empty-reply retry loop exhausts its budget, the model likely got
     stuck after a failed tool (e.g. a 403 from search, an unavailable dev
     server). Surfacing that error gives the user the real cause and a
-    fallback path instead of a vague "internal error" (TAM-17).
+    fallback path instead of a vague "internal error".
     """
     for msg in reversed(messages):
         if getattr(msg, "type", "") != "tool":
@@ -426,6 +426,10 @@ class Agent:
             final, retry = False, 0
             while not final:
                 pending_images.clear()
+                # Per-attempt state: a stream that yields no chunk at all must
+                # still reach the empty-reply retry below.
+                step: str = ""
+                done: bool = False
                 async for _, chunk in swarm.agent.astream(
                     {"messages": forced_messages or messages}, config, subgraphs=True
                 ):
@@ -496,9 +500,9 @@ class Agent:
                         continue
 
                     # Logging
-                    step: str = ""
-                    done: bool = False
-                    extra: dict[str, Any] = {}
+                    step = ""
+                    done = False
+                    extra = {}
 
                     if msg_type == "tools":  # Process ALL parallel tool results
                         for tmsg in tool_results:

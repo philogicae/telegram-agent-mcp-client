@@ -17,6 +17,9 @@ uv run ruff check --fix
 echo "==> Type checking"
 uv run ty check
 
+echo "==> Running tests with coverage (parallel)"
+uv run pytest -n 3 --dist worksteal --cov=telegram_agent --cov-report=term-missing
+
 # ---------------------------------------------------------------------------
 # Bash checks (scripts + config)
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 [project]
 name = "telegram-agent-mcp-client"
-version = "2.5.2"
+version = "2.6.0"
 description = "Telegram Agent MCP Client"
 authors = [{ name = "philogicae" }]
 requires-python = ">=3.14,<4.0"
@@ -11,11 +11,9 @@ dependencies = [
     "aiofiles",
     "aiohttp",
     "aiosqlite",
-    "langchain",
+    "langchain[mcp,google-genai,anthropic,openai,ollama,deepseek]>=1.4.0",
     "langchain-core",
-    "langchain-mcp-adapters",
-    "mcp>=1.28.0,<2.0.0",
-    "langchain[google-genai,anthropic,openai,ollama,deepseek]",
+    "mcp>=2.0.0,<3.0.0",
     "langgraph",
     "langgraph-checkpoint-sqlite",
     "langgraph-swarm",
@@ -27,7 +25,6 @@ dependencies = [
     "python-dotenv",
     "rich",
     "transmission-mcp",
-    "unidecode",
 ]
 
 [project.urls]
@@ -39,10 +36,43 @@ DeepWiki = "https://deepwiki.com/philogicae/telegram-agent-mcp-client"
 telegram-agent-mcp-client = "telegram_agent.__main__:cli"
 
 [dependency-groups]
-dev = ["ruff", "ty"]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.8.0",
+    "ruff",
+    "ty",
+]
 
 [tool.ty.rules]
 no-matching-overload = "ignore"
+
+[tool.ty.src]
+# The suite is intentionally dynamic (fakes, mocks, duck-typed stubs);
+# type-checking it would require annotations that add no safety there.
+exclude = ["telegram_agent/tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["telegram_agent/tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    # Expected third-party noise, anchored to the exact message/category:
+    # google-genai's Python 3.17 type-shim note, and the deliberate use of the
+    # beta `langchain.mcp` namespace. Both are DeprecationWarning
+    # subclasses, so they only surface under pytest's warning filters.
+    "ignore:'_UnionGenericAlias' is deprecated:DeprecationWarning:google.genai.*",
+    "ignore:`langchain.mcp` is in beta:langchain_core._api.LangChainBetaWarning",
+]
+
+[tool.coverage.run]
+source = ["telegram_agent"]
+omit = ["telegram_agent/tests/*"]
+
+[tool.coverage.report]
+show_missing = true
 
 [tool.hatch.build]
 include = ["telegram_agent"]

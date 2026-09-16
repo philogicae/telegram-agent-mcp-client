@@ -1,4 +1,4 @@
-"""Cooperative cancellation for the active per-chat turn (supersede, TAM-21).
+"""Cooperative cancellation for the active per-chat turn (supersede).
 
 The Telegram worker runs exactly one turn per chat; a new message from the same
 chat sets the active turn's cancel event so the turn stops at its next step.

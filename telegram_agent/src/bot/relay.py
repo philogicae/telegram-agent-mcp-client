@@ -72,8 +72,13 @@ def start_relay(instance: AgenticBot) -> web.Application | None:
     """Build the relay app, or None when AGENT_RELAY_TOKEN is unset."""
     if not _RELAY_TOKEN:
         return None
+
+    async def handle(request: web.Request) -> web.Response:
+        """Async wrapper: aiohttp deprecated bare (non-async) handlers."""
+        return await _handle_relay(instance, request)
+
     app = web.Application()
-    app.router.add_post("/relay", lambda r: _handle_relay(instance, r))
+    app.router.add_post("/relay", handle)
     return app
 
 

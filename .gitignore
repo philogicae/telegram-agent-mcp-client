@@ -13,6 +13,7 @@ wheels/
 .ruff_cache
 .mypy_cache
 .pytest_cache
+.coverage
 
 # Envs
 .env

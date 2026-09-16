@@ -28,7 +28,7 @@ from ...core.progress import (
 )
 from ...utils import Timer, extract_response
 from ..abstract import AgenticBot, handler
-from ..utils import str_size, unpack_user
+from ..utils import unpack_user
 
 load_dotenv()
 TELEGRAM_CHAT_DEV = getenv("TELEGRAM_CHAT_DEV")
@@ -37,7 +37,7 @@ _RECEIVED_DIR.mkdir(parents=True, exist_ok=True)
 
 # STT providers sometimes prefix each transcribed chunk with a timestamp
 # ("[00:01] ... 00:15 ..."), which is noise in the LLM context. Strip
-# bracketed timestamps at any hour and plain zero-hour ones (TAM-17).
+# bracketed timestamps at any hour and plain zero-hour ones.
 _VOICE_TS_RE = re.compile(
     r"(?:[\[(]\s*\d{1,2}:\d{2}(?::\d{2})?\s*[\])]|\b00:\d{2}(?::\d{2})?\b)\s*"
 )
@@ -422,7 +422,7 @@ async def _run_turn(
                             await instance.bot.core.send_media_group(msg.chat.id, media)
         if cancelled:
             # A superseded turn leaves an explicit marker instead of a frozen
-            # live-status panel (TAM-21); the next turn keeps the history.
+            # live-status panel; the next turn keeps the history.
             with suppress(Exception):
                 await instance.bot.edit(reply, "⏹️ Interrompu", final=True)
             # TTS: send audio of the final response if enabled
@@ -479,35 +479,6 @@ async def _run_turn(
 
 
 @handler
-async def telegram_file(instance: AgenticBot, msg: Message) -> None:
-    """Handle file/document uploads from users."""
-    if not msg.from_user or not instance.agent.is_allowed(msg.from_user.id):
-        return
-    try:
-        if msg.document:
-            file_name = msg.document.file_name
-            file_info = await instance.bot.core.get_file(msg.document.file_id)
-            file_path = file_info.file_path
-            file_size = str_size(file_info.file_size)
-            msg.text = f"DOCUMENT ({file_size}): {file_name} = {file_path}"
-            timer = instance.log.received(msg)
-            await instance.managers["document"].notify(
-                msg.chat.id,
-                {"filename": file_name, "size": file_size, "path": file_path},
-            )
-            instance.log.sent(msg, timer)
-    except Exception as e:
-        if str(e).endswith("too big"):
-            await instance.managers["document"].file_too_large(
-                msg.chat.id, str(getattr(msg.document, "file_name", "unknown"))
-            )
-            instance.log.warning("File: too big for Telegram (20MB limit).")
-        else:
-            await telegram_report_issue(instance, msg, msg, e)
-            instance.log.exception("File handling error")
-
-
-@handler
 async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
     """Handle voice messages: attach audio as media and process through agent."""
     if not msg.from_user or not instance.agent.is_allowed(msg.from_user.id):
@@ -537,7 +508,7 @@ async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
             # "🎤 [voice message]: <text>" framing: that label matches the
             # raw-audio placeholder stored in history (voice used to be sent
             # to an stt-capable main model), and a text-only main model then
-            # dismissed the transcript as "not transcribed" (TAM-23).
+            # dismissed the transcript as "not transcribed".
             msg.text = f"🎤 {transcription}" if transcription else "🎤 [voice message]"
         # Replace "I'm listening..." with "I'm thinking..." and set up edit cache
         await instance.bot.edit(reply, instance.bot.waiting, replace=True)

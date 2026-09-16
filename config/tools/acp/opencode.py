@@ -42,7 +42,7 @@ _MAX_OUTPUT = int(getenv("OPENCODE_SERVER_MAX_OUTPUT", "20000"))
 _PROGRESS_POLL = float(getenv("OPENCODE_SERVER_PROGRESS_POLL", "3"))
 # A session reports 'busy' but makes no message progress (and no running tool
 # outlived its own timeout) for this long is considered orphaned/stalled
-# instead of silently waiting forever (TAM-20).
+# instead of silently waiting forever.
 _STALL_TIMEOUT = float(getenv("OPENCODE_SERVER_STALL_TIMEOUT", "300"))
 _PROGRESS_LINES = default_max_lines()  # ponytail: single parser lives in progress.py
 _WEB_URL = getenv("OPENCODE_WEB_URL", "").strip().rstrip("/")
@@ -555,8 +555,7 @@ def _cancelled_result(session_id: str | None) -> dict[str, Any]:
 
     The remote run is NOT aborted: it keeps executing server-side, so the
     session (and its link) stay usable with `watch_dev_session` later. Unlike a
-    timeout this is immediate: the turn yields to the newer user message
-    (TAM-21).
+    timeout this is immediate: the turn yields to the newer user message.
     """
     result: dict[str, Any] = {
         "cancelled": True,
@@ -602,7 +601,7 @@ class SessionStalled(Exception):
     Happens after a server-side interruption (restart, manual intervention in
     the web UI) where `/session/status` stays on 'busy' forever and the newest
     assistant message never completes. Waiting cannot resolve it; the caller
-    aborts the orphaned run and reports the stall instead (TAM-20).
+    aborts the orphaned run and reports the stall instead.
     """
 
     def __init__(self, detail: str) -> None:
@@ -614,7 +613,7 @@ class TurnCancelled(Exception):
     """The active Telegram turn was superseded by a newer same-chat message.
 
     Raised from the wait loops so a turn blocked on a long dev session yields
-    immediately instead of finishing the tool first (TAM-21). The remote run is
+    immediately instead of finishing the tool first. The remote run is
     left running.
     """
 
@@ -624,7 +623,7 @@ async def _await_cancellable(awaitable: Any, poll: float = 0.5) -> Any:
 
     On cancel the inner coroutine is cancelled (the remote run keeps going
     server-side) and TurnCancelled is raised so the caller can return
-    `_cancelled_result` without waiting for the tool to finish (TAM-21).
+    `_cancelled_result` without waiting for the tool to finish.
     """
     task = asyncio.ensure_future(awaitable)
     try:
@@ -736,7 +735,7 @@ async def _wait_for_idle(
     Raises SessionStalled when the session stays 'busy' with no progress past
     its running tool's own timeout (or for `_STALL_TIMEOUT` without any
     change), so a run orphaned by a restart/manual intervention cannot loop
-    forever on a status that will never clear (TAM-20).
+    forever on a status that will never clear.
     """
 
     async def fail(detail: str) -> None:
@@ -758,7 +757,7 @@ async def _wait_for_idle(
         if _final_message(messages):
             # The turn closed (final assistant message) even though the status
             # still says busy: a manual intervention can leave the status
-            # uncleared, so trust the message state and stop waiting (TAM-20).
+            # uncleared, so trust the message state and stop waiting.
             return
         newest = _newest_assistant(messages)
         if hung := _hung_tool(newest, time()):
@@ -797,7 +796,7 @@ def _completed_message(
 
     An interrupted run or a manually interleaved user message can leave an
     incomplete assistant message as the latest entry; the previous completed
-    message is still the usable result (TAM-20).
+    message is still the usable result.
     """
     matching = [
         m
@@ -827,8 +826,7 @@ def _final_message(
     `finish` is not an intermediate value, no pending tool part, and the
     message answers the newest user message. Unlike `/session/status`, which
     can stay stuck on 'busy' after a manual intervention, the message state is
-    reliable, so completion is detected even when the status never clears
-    (TAM-20).
+    reliable, so completion is detected even when the status never clears.
     """
     users = [m for m in messages if (m.get("info") or {}).get("role") == "user"]
     last_user = (users[-1].get("info") or {}).get("id") if users else None

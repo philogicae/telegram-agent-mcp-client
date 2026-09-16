@@ -1,4 +1,4 @@
-"""Regression check for the TAM-18 prune fix and voice-message passthrough.
+"""Regression check for the history-prune fix and voice-message passthrough.
 
 No pytest in this repo: run with `uv run python -m telegram_agent.tests.test_prune`.
 """
@@ -29,7 +29,7 @@ def main() -> None:
     )
     plain = [HumanMessage("hello"), AIMessage("hi")]
 
-    # Media payload counted once at ~chars/4: ignored would keep the TAM-18
+    # Media payload counted once at ~chars/4: ignored would keep the memory
     # leak alive, double counting would evict even short voice turns.
     count = token_counter([media_msg])
     check(count > 7500, "media payload size not counted")

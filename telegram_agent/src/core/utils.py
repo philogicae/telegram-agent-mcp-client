@@ -114,7 +114,7 @@ def token_counter(messages: list[BaseMessage] | Any) -> int:
 
     Media payloads count once at chars/4: without it a message holding
     ~80 MB of base64 would count as a few tokens and never trigger pruning
-    or ReContext (see TAM-18 diagnostic). RemoveMessage stubs are tokenless
+    or ReContext. RemoveMessage stubs are tokenless
     markers; skipping them keeps the counter usable on state slices that
     still contain one.
     """
@@ -157,7 +157,7 @@ def pre_agent_hook(
     # state -> empty Gemini contents -> "contents are required"). Keeping the
     # current turn intact also guarantees the model never receives zero
     # non-tool messages, while RemoveMessage + trimmed suffix still
-    # re-anchors the checkpointer to a bounded size (TAM-18).
+    # re-anchors the checkpointer to a bounded size.
     exempt = remove_all and bool(messages)
     turn_start = len(messages) - 1
     if exempt:

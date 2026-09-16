@@ -320,7 +320,7 @@ class TelegramBot(Bot):
             if final:
                 # The live tool-status block (tool_block) is transient: it is
                 # intentionally dropped here so the final response is not
-                # polluted by a frozen "🛠️ Tool..." status panel (TAM-17).
+                # polluted by a frozen "🛠️ Tool..." status panel.
                 tool_logs = [c for c in content if c != self.waiting]
                 edited = self.logify(agent, tool_logs)
                 if text:
