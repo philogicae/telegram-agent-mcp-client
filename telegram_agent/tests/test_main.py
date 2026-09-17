@@ -145,5 +145,26 @@ class TestInstallPlaywright:
         assert excinfo.value.code == 1
 
 
+class TestImportHygiene:
+    def test_import_is_quiet(self):
+        """Importing the package must not leak the langchain.mcp beta warning,
+        and `httpx2` INFO traffic must stay muted once the root logger is
+        raised to INFO by `transmission_client`'s import-time basicConfig."""
+        code = (
+            "import logging; import telegram_agent; "
+            "logging.getLogger('httpx2').info('httpx2-noise'); "
+            "from langchain.mcp import MCPAdapter"
+        )
+        proc = subprocess.run(  # noqa: S603
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=60,
+        )
+        assert "LangChainBetaWarning" not in proc.stderr
+        assert "httpx2-noise" not in proc.stderr
+
+
 def _boom(value: Path) -> Path:
     raise RuntimeError("unexpected")

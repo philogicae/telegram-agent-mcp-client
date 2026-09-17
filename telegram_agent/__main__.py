@@ -1,8 +1,8 @@
 """Main entry point for Telegram Agent MCP Client."""
 
-from .patch_pydantic_v1 import _PYDANTIC_V1_ANCHOR
+from .patch_warnings import _PATCH_ANCHOR
 
-_PYDANTIC_V1_ANCHOR  # noqa: B018
+_PATCH_ANCHOR  # noqa: B018
 
 import argparse
 import shutil

@@ -1,5 +1,11 @@
 """Telegram Agent MCP Client package."""
 
+# Must run before `.src`: its import chain reaches `langchain.mcp`, whose beta
+# warning would otherwise fire before `patch_warnings` can filter it.
+from .patch_warnings import _PATCH_ANCHOR
+
+_PATCH_ANCHOR  # noqa: B018
+
 from .src import (
     Agent,
     AgenticBot,

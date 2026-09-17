@@ -36,7 +36,7 @@ ignore = [
     "E501",   # line-too-long - ruff fmt handles this
     "COM812", # missing trailing comma - ruff fmt handles this
     "ISC001", # single-line-implicit-concatenation - ruff fmt handles this
-    "E402",   # module-level import not at top - intentional _PYDANTIC_V1_ANCHOR pattern
+    "E402",   # module-level import not at top - intentional _PATCH_ANCHOR pattern
     # Already accepted technical debt / style
     "BLE001",   # blind except - fix gradually
     "G201",     # .exception vs .error(exc_info=True)
