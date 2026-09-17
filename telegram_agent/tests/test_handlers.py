@@ -538,3 +538,79 @@ class TestImageHandler:
         await h.telegram_image(instance, msg)
         report.assert_awaited_once()
         assert "g2" not in h._media_groups
+
+
+class TestVoiceTranscription:
+    """Long voice notes are segmented and length-checked.
+
+    The STT helper intermittently returns a fraction of a long transcript;
+    segments below ~10 chars per audio second are retried with the main model
+    and the longest attempt wins.
+    """
+
+    def pcm(self, seconds: float) -> bytes:
+        return bytes(int(h._STT_PCM_RATE * 2 * seconds))
+
+    def test_wav_segments_split_into_self_contained_files(self, monkeypatch):
+        monkeypatch.setattr(h, "_STT_SEGMENT_SECONDS", 1)
+        segments = h._wav_segments(self.pcm(2.5))
+        assert [round(secs, 2) for _, secs in segments] == [1.0, 1.0, 0.5]
+        for data, _ in segments:
+            assert data[:4] == b"RIFF"
+            assert data[8:12] == b"WAVE"
+
+    async def test_short_voice_note_keeps_single_call(self, monkeypatch):
+        monkeypatch.setattr(h, "_STT_MIN_CHARS_PER_SECOND", 0.0)
+        transcribe = AsyncMock(return_value="bonjour")
+        monkeypatch.setattr(h, "_media_to_text", transcribe)
+        out = await h._transcribe_voice(b"OGG", duration=10)
+        assert out == "bonjour"
+        transcribe.assert_awaited_once()
+        assert transcribe.await_args.args[0][0]["mime_type"] == "audio/ogg"
+
+    async def test_long_voice_note_is_segmented_and_joined(self, monkeypatch):
+        monkeypatch.setattr(h, "_STT_SEGMENT_SECONDS", 1)
+        monkeypatch.setattr(h, "_decode_pcm", AsyncMock(return_value=self.pcm(2.5)))
+        transcribe = AsyncMock(
+            side_effect=["un deux trois", "quatre cinq six", "sept huit"]
+        )
+        monkeypatch.setattr(h, "_media_to_text", transcribe)
+        out = await h._transcribe_voice(b"OGG", duration=2.5)
+        assert out == "un deux trois quatre cinq six sept huit"
+        assert transcribe.await_count == 3
+        assert all(
+            call.args[0][0]["mime_type"] == "audio/wav"
+            for call in transcribe.await_args_list
+        )
+
+    async def test_truncated_segment_is_retried_with_main_model(self, monkeypatch):
+        calls = []
+
+        async def fake(media, context="", fast=True):
+            calls.append(fast)
+            return "court" if len(calls) == 1 else "x" * 120
+
+        monkeypatch.setattr(h, "_media_to_text", fake)
+        out = await h._transcribe_segment(b"A", "audio/wav", duration=10)
+        assert calls == [True, False]
+        assert out == "x" * 120
+
+    async def test_decode_failure_falls_back_to_single_ogg_call(self, monkeypatch):
+        monkeypatch.setattr(h, "_STT_MIN_CHARS_PER_SECOND", 0.0)
+        monkeypatch.setattr(
+            h, "_decode_pcm", AsyncMock(side_effect=RuntimeError("no ffmpeg"))
+        )
+        transcribe = AsyncMock(return_value="texte")
+        monkeypatch.setattr(h, "_media_to_text", transcribe)
+        out = await h._transcribe_voice(b"OGG", duration=600)
+        assert out == "texte"
+        transcribe.assert_awaited_once()
+        assert transcribe.await_args.args[0][0]["mime_type"] == "audio/ogg"
+
+    async def test_all_attempts_failing_raises_last_error(self, monkeypatch):
+        async def boom(media, context="", fast=True):
+            raise RuntimeError("provider down")
+
+        monkeypatch.setattr(h, "_media_to_text", boom)
+        with pytest.raises(RuntimeError, match="provider down"):
+            await h._transcribe_segment(b"A", "audio/ogg", duration=10)

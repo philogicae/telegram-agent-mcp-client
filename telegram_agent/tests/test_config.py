@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
 from telegram_agent.src.core import config as config_mod
@@ -234,6 +234,44 @@ class TestPruneHistory:
 
     def test_max_tokens_default(self):
         assert config_mod.PruneHistory().max_tokens == 120_000
+
+
+class TestStripMessageNames:
+    def test_strips_names_without_mutating_originals(self):
+        tagged = AIMessage("hi", name="Geppetto")
+        tagged.additional_kwargs["name"] = "Geppetto"
+        clean = HumanMessage("yo")
+        out = config_mod.StripMessageNames._strip([tagged, clean])
+        assert out[0].name is None
+        assert "name" not in out[0].additional_kwargs
+        assert out[1] is clean  # untagged messages are reused as-is
+        assert tagged.name == "Geppetto"  # original history untouched
+
+    async def test_hooks_sanitize_the_request_copy(self):
+        middleware = config_mod.StripMessageNames()
+        seen: dict[str, Any] = {}
+
+        class FakeRequest:
+            messages = [AIMessage("hi", name="Geppetto")]
+
+            def override(self, **kwargs: Any) -> FakeRequest:
+                seen.update(kwargs)
+                return self
+
+        async def handler(request: Any) -> str:
+            return "ok"
+
+        assert await middleware.awrap_model_call(FakeRequest(), handler) == "ok"
+        assert seen["messages"][0].name is None
+        assert middleware.wrap_model_call(FakeRequest(), lambda r: "ok") == "ok"
+
+    def test_attached_to_every_agent(self, config_dir, patched_agent_creation):
+        write_config(config_dir, BASE)
+        config_mod.get_agent_config([], display=False)
+        assert patched_agent_creation  # two agents created
+        for kwargs in patched_agent_creation:
+            kinds = {type(m).__name__ for m in kwargs["middleware"]}
+            assert {"PruneHistory", "StripMessageNames"} <= kinds
 
 
 class TestPrintAgents:

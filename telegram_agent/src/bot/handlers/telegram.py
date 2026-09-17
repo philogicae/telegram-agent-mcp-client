@@ -5,11 +5,13 @@ from asyncio import Event, Queue, create_subprocess_exec, create_task, gather, s
 from contextlib import suppress
 from datetime import datetime
 from io import BytesIO
+from logging import getLogger
 from os import getenv
 from pathlib import Path
 from subprocess import DEVNULL, PIPE
 from traceback import print_exc
 from typing import Any
+from wave import open as wave_open
 
 import aiofiles.os  # ty: explicit submodule import
 from dotenv import load_dotenv
@@ -62,17 +64,20 @@ async def _read_image(path: str) -> bytes:
         return await f.read()
 
 
-async def _media_to_text(media: list[dict], context: str = "") -> str:
+async def _media_to_text(
+    media: list[dict], context: str = "", fast: bool = True
+) -> str:
     """
     Transcribe audio or describe images into text via a capable fallback LLM.
 
     Called when the main LLM lacks the matching multimodal capability.
     For images, returns a structured JSON description matching the
     `generate_image` schema so the agent can reuse it for edits or
-    regeneration.
+    regeneration. `fast` selects the fast helper model when available;
+    transcription retries use the main capable model instead.
     """
     cap = "stt" if any("audio" in m.get("mime_type", "") for m in media) else "vision"
-    helper = LLM.pick(cap, fast=True)
+    helper = LLM.pick(cap, fast=fast)
     if not helper:
         return f"[Unsupported media: no {cap}-capable provider configured]"
     if cap == "stt":
@@ -115,6 +120,104 @@ async def _media_to_text(media: list[dict], context: str = "") -> str:
     response = await LLM.get(helper).ainvoke([HumanMessage(content=parts)])
     text = extract_response(response)[0].strip()
     return _strip_voice_timestamps(text) if cap == "stt" else text
+
+
+# Long voice notes are decoded and transcribed in segments: the STT helper
+# intermittently stops mid-transcript on long audio (observed 2026-09-15: a
+# ~7-minute note came back as 38 seconds of text, finish_reason STOP, 577 of
+# ~6200 expected chars), while short segments transcribe reliably. Every
+# segment is checked against its spoken duration (>= ~10 chars per audio
+# second for French speech) and retried, alternating between the fast and the
+# main capable model, until it looks whole.
+_STT_SEGMENT_SECONDS = 120
+_STT_ATTEMPTS = 3
+_STT_MIN_CHARS_PER_SECOND = 10.0
+_STT_PCM_RATE = 16000
+
+
+async def _decode_pcm(audio: bytes) -> bytes:
+    """Decode compressed audio into raw 16 kHz mono s16le PCM via ffmpeg."""
+    proc = await create_subprocess_exec(
+        "ffmpeg",
+        "-i",
+        "pipe:0",
+        "-f",
+        "s16le",
+        "-ac",
+        "1",
+        "-ar",
+        str(_STT_PCM_RATE),
+        "pipe:1",
+        stdin=PIPE,
+        stdout=PIPE,
+        stderr=DEVNULL,
+    )
+    pcm, _ = await proc.communicate(audio)
+    if proc.returncode != 0 or not pcm:
+        raise RuntimeError("ffmpeg could not decode the voice note")
+    return pcm
+
+
+def _wav_segments(pcm: bytes) -> list[tuple[bytes, float]]:
+    """Cut raw PCM into self-contained WAV segments, as (audio, seconds)."""
+    step = _STT_PCM_RATE * 2 * _STT_SEGMENT_SECONDS  # 16-bit mono frames
+    segments: list[tuple[bytes, float]] = []
+    for offset in range(0, len(pcm), step):
+        raw = pcm[offset : offset + step]
+        buffer = BytesIO()
+        with wave_open(buffer, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(_STT_PCM_RATE)
+            wav.writeframes(raw)
+        segments.append((buffer.getvalue(), len(raw) / (_STT_PCM_RATE * 2)))
+    return segments
+
+
+async def _transcribe_segment(audio: bytes, mime: str, duration: float) -> str:
+    """Transcribe one audio segment, retrying while it looks cut short.
+
+    Anything below `_STT_MIN_CHARS_PER_SECOND` per audio second is treated as
+    a truncated transcript and retried, alternating between the fast and the
+    main capable model; the longest attempt wins.
+    """
+    best = ""
+    error: Exception | None = None
+    for attempt in range(_STT_ATTEMPTS):
+        try:
+            text = await _media_to_text(
+                [{"type": "media", "data": audio, "mime_type": mime}],
+                fast=attempt % 2 == 0,
+            )
+        except Exception as exc:  # provider hiccup: try the next attempt
+            error = exc
+            continue
+        if len(text) > len(best):
+            best = text
+        if not duration or len(best) >= duration * _STT_MIN_CHARS_PER_SECOND:
+            break
+    if not best and error is not None:
+        raise error
+    return best
+
+
+async def _transcribe_voice(audio: bytes, duration: float | None) -> str:
+    """Transcribe a voice note, segmenting long audio for reliability."""
+    if not duration or duration <= _STT_SEGMENT_SECONDS * 1.25:
+        return await _transcribe_segment(audio, "audio/ogg", duration or 0.0)
+    try:
+        segments = _wav_segments(await _decode_pcm(audio))
+    except Exception:
+        getLogger(__name__).warning(
+            "Voice note decode failed, transcribing in one piece", exc_info=True
+        )
+        return await _transcribe_segment(audio, "audio/ogg", duration)
+    if len(segments) < 2:
+        return await _transcribe_segment(audio, "audio/ogg", duration)
+    parts = await gather(
+        *(_transcribe_segment(data, "audio/wav", secs) for data, secs in segments)
+    )
+    return " ".join(part for part in parts if part)
 
 
 def _make_progress_sink(instance: AgenticBot, reply: Message) -> Any:
@@ -503,7 +606,14 @@ async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
             msg.media = media  # ty: ignore[unresolved-attribute]
             msg.text = "🎤 [voice message]"
         else:
-            transcription = await _media_to_text(media)
+            transcription = await _transcribe_voice(
+                audio, getattr(voice, "duration", None)
+            )
+            instance.log.info(
+                f"[{msg.chat.id}] Voice note transcribed"
+                f" ({getattr(voice, 'duration', '?')}s"
+                f" -> {len(transcription)} chars)"
+            )
             # Pass the transcript as the message content, without the old
             # "🎤 [voice message]: <text>" framing: that label matches the
             # raw-audio placeholder stored in history (voice used to be sent

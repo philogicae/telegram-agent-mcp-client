@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain.agents.middleware import AgentMiddleware
 from langchain.tools import BaseTool
+from langchain_core.messages import BaseMessage
 from langgraph_swarm import create_handoff_tool
 from pydantic import BaseModel
 from pyjson5 import loads
@@ -37,6 +38,40 @@ class PruneHistory(AgentMiddleware):
 
     async def abefore_agent(self, state: Any, runtime: Any) -> dict[str, Any] | None:
         return pre_agent_hook(state, remove_all=True, max_tokens=self.max_tokens)
+
+
+class StripMessageNames(AgentMiddleware):
+    """Strip message `name` fields from provider requests.
+
+    `create_agent(name=...)` tags every model reply with the agent name, and
+    langchain-openai forwards `message.name` in the payload. Some
+    OpenAI-compatible endpoints (opencode zen) reject the field with
+    `400 messages[N]: "name" is not supported by this endpoint` as soon as a
+    tagged reply is replayed in the history. Only the request copy is
+    sanitized, so the tagged history (checkpointer, display) stays intact.
+    """
+
+    @staticmethod
+    def _strip(messages: list[BaseMessage]) -> list[BaseMessage]:
+        cleaned: list[BaseMessage] = []
+        for message in messages:
+            if not message.name and "name" not in message.additional_kwargs:
+                cleaned.append(message)
+                continue
+            additional = dict(message.additional_kwargs)
+            additional.pop("name", None)
+            cleaned.append(
+                message.model_copy(
+                    update={"name": None, "additional_kwargs": additional}
+                )
+            )
+        return cleaned
+
+    def wrap_model_call(self, request: Any, handler: Any) -> Any:
+        return handler(request.override(messages=self._strip(request.messages)))
+
+    async def awrap_model_call(self, request: Any, handler: Any) -> Any:
+        return await handler(request.override(messages=self._strip(request.messages)))
 
 
 class AgentConfig(BaseModel):
@@ -173,7 +208,7 @@ def get_agent_config(
 
         agent: Any = create_agent(
             model=model,
-            middleware=[PruneHistory()],
+            middleware=[PruneHistory(), StripMessageNames()],
             name=name,
             system_prompt=prompt
             or f"Missing system prompt for {name}. Signal it to the user.",

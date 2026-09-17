@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from telebot.asyncio_helper import ApiException
@@ -72,6 +72,38 @@ class TestPollingExceptionHandler:
 
     async def test_other_exception_keeps_polling(self):
         assert await _PollingExceptionHandler().handle(ValueError("x")) is True
+
+    async def test_episode_warns_once_then_recovers(self, caplog):
+        handler = _PollingExceptionHandler()
+        exc = ApiException(
+            "Bad Gateway", "getUpdates", {"error_code": 502, "description": "blip"}
+        )
+        with caplog.at_level(
+            "INFO", logger="telegram_agent.src.bot.instances.telegram"
+        ):
+            for _ in range(7):
+                await handler.handle(exc)
+            handler.recovered()
+            await handler.handle(exc)  # a new episode warns again
+        own = [
+            r
+            for r in caplog.records
+            if r.name == "telegram_agent.src.bot.instances.telegram"
+        ]
+        warnings = [r for r in own if r.levelname == "WARNING"]
+        infos = [r for r in own if r.levelname == "INFO"]
+        assert len(warnings) == 2
+        assert len(infos) == 1
+        assert "after 7 hiccup" in infos[0].getMessage()
+
+    async def test_recovered_without_episode_is_silent(self, caplog):
+        with caplog.at_level("INFO"):
+            _PollingExceptionHandler().recovered()
+        assert not [
+            r
+            for r in caplog.records
+            if r.name == "telegram_agent.src.bot.instances.telegram"
+        ]
 
 
 class TestDynamicLength:
@@ -174,6 +206,34 @@ class TestEdit:
         assert result is rich
         bot.delete.assert_awaited_once_with(message)
         assert message.id not in bot.edit_cache
+
+    async def test_final_keeps_completed_tool_logs(self):
+        """The final reply shows what ran, minus live status lines."""
+        bot = make_bot()
+        message = make_message("orig")
+        bot.edit_cache[message.id] = {
+            "current": 0,
+            "content": ["🔁 Transfer", bot.waiting],
+            "tool_block": "🛠️ Search...\n✅ Search: 1.20s\n❌ List Tasks: 0.30s",
+        }
+        bot._send_rich = AsyncMock(return_value=make_message("rich"))
+        bot.delete = AsyncMock(return_value=True)
+        await bot.edit(message, "done", final=True)
+        html = bot._send_rich.await_args.args[1]
+        assert "🔁 Transfer" in html
+        assert "✅ Search: 1.20s" in html
+        assert "❌ List Tasks: 0.30s" in html
+        assert "🛠️" not in html
+        assert "done" in html
+
+    async def test_final_without_completed_tools_is_text_only(self):
+        bot, message = self.setup_edit()
+        bot._send_rich = AsyncMock(return_value=make_message("rich"))
+        bot.delete = AsyncMock(return_value=True)
+        await bot.edit(message, "done", final=True)
+        html = bot._send_rich.await_args.args[1]
+        assert "done" in html
+        assert "<pre>" not in html
 
     async def test_long_edit_uses_pagination(self):
         bot, message = self.setup_edit()
@@ -332,3 +392,18 @@ class TestInitializeAndStart:
         bot.core.infinity_polling.assert_awaited_once_with(
             skip_pending=True, timeout=30
         )
+
+    async def test_start_reports_recovery_after_successful_poll(self):
+        bot = make_bot()
+        poll = AsyncMock(return_value=[])
+        bot.core.get_updates = poll
+        recovered = Mock()
+        bot._exception_handler.recovered = recovered
+
+        async def poll_once(**kwargs: Any) -> None:
+            await bot.core.get_updates()
+
+        bot.core.infinity_polling = AsyncMock(side_effect=poll_once)
+        await bot.start()
+        recovered.assert_called_once()
+        poll.assert_awaited_once()

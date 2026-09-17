@@ -71,17 +71,30 @@ class _PollingExceptionHandler(ExceptionHandler):
     getUpdates (server-side, unavoidable). Without a registered handler
     telebot marks every occurrence "Unhandled exception"; the immediate
     retry often hits the same blip, producing bursts of scary errors.
-    This handler logs one compact line and keeps polling (handled=True,
-    telebot's own backoff still applies). Non-API exceptions keep their
-    traceback for debuggability.
+    Consecutive failed polls form one episode: a single WARNING covers the
+    whole episode, then one INFO line reports the recovery when a poll
+    succeeds again (wired in `TelegramBot.start`). Non-API exceptions keep
+    their traceback for debuggability. Handled=True keeps polling, and
+    telebot's own backoff still applies.
     """
+
+    def __init__(self) -> None:
+        self._hiccups = 0
 
     async def handle(self, exception: Exception) -> bool:
         if isinstance(exception, ApiException):
-            logger.warning("Telegram API hiccup (polling continues): %s", exception)
+            self._hiccups += 1
+            if self._hiccups == 1:
+                logger.warning("Telegram API hiccup (polling continues): %s", exception)
         else:
             logger.error("Polling error: %s", exception, exc_info=exception)
         return True
+
+    def recovered(self) -> None:
+        """Close the current episode after a successful poll, once."""
+        if self._hiccups:
+            logger.info("Telegram polling recovered after %d hiccup(s)", self._hiccups)
+            self._hiccups = 0
 
 
 class TelegramBot(Bot):
@@ -115,10 +128,11 @@ class TelegramBot(Bot):
         super().__init__(delay, group_msg_trigger, waiting, retries)
         if max_msg_length:
             self.max_msg_length = max_msg_length
+        self._exception_handler = _PollingExceptionHandler()
         self.core = AsyncTeleBot(
             token=telegram_id,
             parse_mode="HTML",
-            exception_handler=_PollingExceptionHandler(),
+            exception_handler=self._exception_handler,
         )
         self.edit_cache: dict[int, Any] = {}
 
@@ -244,6 +258,16 @@ class TelegramBot(Bot):
 
     async def start(self) -> None:
         """Start the bot's polling loop."""
+        handler = self._exception_handler
+        poll = self.core.get_updates
+
+        async def watched_get_updates(*args: Any, **kwargs: Any) -> Any:
+            updates = await poll(*args, **kwargs)
+            handler.recovered()
+            return updates
+
+        # Report the end of a hiccup episode once polling succeeds again.
+        self.core.get_updates = watched_get_updates  # ty: ignore[invalid-assignment]
         # Long-poll 30s: short cycles recycle connections before they go stale
         # (transient 502s heal on the next poll); latency is unaffected since
         # polls return immediately when updates arrive.
@@ -318,10 +342,15 @@ class TelegramBot(Bot):
             tb = cache.get("tool_block", "")
             orig = _render_logify(self.logify, self.waiting, agent, content, mt, tb)
             if final:
-                # The live tool-status block (tool_block) is transient: it is
-                # intentionally dropped here so the final response is not
-                # polluted by a frozen "🛠️ Tool..." status panel.
+                # The completed tool log stays in the final reply, while the
+                # transient in-progress "🛠️ Tool..." status lines are
+                # dropped so the final message never freezes a live panel.
                 tool_logs = [c for c in content if c != self.waiting]
+                completed = [
+                    line for line in tb.splitlines() if line[:1] in ("✅", "❌", "🔸")
+                ]
+                if completed:
+                    tool_logs = [*tool_logs, "\n".join(completed)]
                 edited = self.logify(agent, tool_logs)
                 if text:
                     edited = (edited + f"\n{text}").strip()
