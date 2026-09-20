@@ -4,12 +4,15 @@
     "Authorization": "Bearer {ENV:KANEO_API_KEY}"
   }
 }
-/* all found tools: 65
+/* all found tools: 77
+archive_project
+assign_task_milestone
 attach_label_to_task
 bulk_update_tasks
 create_appointment
 create_column
 create_label
+create_milestone
 create_project
 create_task
 create_task_comment
@@ -18,6 +21,7 @@ create_time_entry
 delete_appointment
 delete_column
 delete_label
+delete_milestone
 delete_task
 delete_task_comment
 delete_task_relation
@@ -27,22 +31,27 @@ get_appointment
 get_project
 get_public_url
 get_task
+get_task_by_short_id
 get_task_relations
 get_time_entry
 get_workspace_invite_link
 list_appointments
+list_milestones
 list_notifications
 list_project_columns
 list_projects
 list_task_activity
 list_task_comments
+list_task_labels
 list_task_time_entries
 list_tasks
 list_workspace_labels
 list_workspace_members
+list_workspace_tasks
 list_workspaces
 move_task
 move_task_to_appointments
+qualify_task
 reorder_columns
 search
 telegram_configure_notifications
@@ -60,8 +69,11 @@ telegram_list_rules
 telegram_update_bot
 telegram_update_chat
 telegram_update_rule
+unarchive_project
 update_appointment
 update_column
+update_label
+update_milestone
 update_project
 update_task
 update_task_assignee

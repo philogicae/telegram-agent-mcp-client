@@ -12,11 +12,16 @@
       "Voice messages arrive as transcriptions prefixed with 🎤 - treat that text as the user's spoken message, never as a placeholder"
     ],
     "routines": {
-      "guidelines": ["Routines are not callable tools, but higher‑level recipes to follow to perform complex tasks", "Always follow routines when one is relevant or triggered"],
+      "guidelines": [
+        "Routines are not callable tools, but higher‑level recipes to follow to perform complex tasks",
+        "Always follow routines when one is relevant or triggered"
+      ],
       "default": {
         "available_tools": {
           "trigger": "for requests looking like 'What can you do?' or 'What are your tools?'",
-          "steps": ["Reply with the list of available tools and also all available routines for the current agent"]
+          "steps": [
+            "Reply with the list of available tools and also all available routines for the current agent"
+          ]
         }
       }
     },
@@ -177,7 +182,7 @@
             "`list_workspaces` to find the 'Personal' workspace, then `list_workspace_members` to check whether the user already has a Kaneo account (match by name)",
             "If the user has no Kaneo account, `get_public_url` for the site URL and `get_workspace_invite_link` for the 'Personal' workspace, then send both the site URL and the invitation link so they can sign up and join",
             "Run the `ensure_personal_project` routine to create (or reuse) the user's personal project in the 'Personal' workspace",
-            "`telegram_list_bots` to get the stored bot id (for example 'Geppetto'), then `telegram_create_rule` with that bot id, telegramChatId = the chat id from step 1, label = the user's name, workspaceId = the 'Personal' workspace, and projectId = the user's personal project - mirror the existing per-user rules in the bot setup so only their project's notifications reach their own chat",
+            "`telegram_list_bots` to get the stored bot id (for example 'Geppetto'), then `telegram_create_chat` with that bot id, telegramChatId = the chat id from step 1 and label = the user's name to register their chat as a notification target, then `telegram_create_rule` with the same bot id and telegramChatId, workspaceId = the 'Personal' workspace and projectId = the user's personal project - mirror the existing per-user rules in the bot setup so only their project's notifications reach their own chat",
             "Confirm onboarding: site URL, invitation link (if sent), personal project, and enabled Telegram notifications"
           ]
         },
@@ -187,11 +192,11 @@
             "Determine the target project: personal tasks go to the user's Personal project, team tasks go to the relevant Shared/Private project - `list_projects` to find it",
             "`list_project_columns` on the target project to confirm valid board status slugs",
             "`list_workspace_labels` on the target workspace to discover available labels and their IDs",
+            "`list_workspace_members` to resolve the requesting user's Kaneo user ID (match by name) - if the task explicitly names a different owner, resolve that person's ID instead",
             "Determine placement: if the user explicitly says 'backlog' or the item is vague/future/unqualified, use status `planned` (backlog); otherwise use `to-do` (board)",
-            "`create_task` with title, description, priority (default 'medium'), and the chosen status",
+            "`create_task` with title, description, priority (default 'medium'), the chosen status, and userId - always assign the task: the requesting user by default, or the person explicitly named as owner",
             "If the user gave a date/time, duration, reminder, or repetition, set `startDate`/`dueDate` (ISO 8601 - explicit offset or local time + `timezone`), `reminderOffsets` (minutes before `startDate`), and `recurrence` ({frequency, interval}) accordingly",
-            "MANDATORY: match the task content against the fetched labels and `attach_label_to_task` for each relevant one (batch in parallel) - don't over-label: pick the most relevant few. At least one label MUST be attached. If no existing label fits, `create_label` first then `attach_label_to_task` - never leave a newly created task unlabeled.",
-            "If the task mentions a specific person, `list_workspace_members` to resolve their user ID and assign via `update_task_assignee`"
+            "MANDATORY: match the task content against the fetched labels and `attach_label_to_task` for each relevant one (batch in parallel) - don't over-label: pick the most relevant few. At least one label MUST be attached. If no existing label fits, `create_label` first then `attach_label_to_task` - never leave a newly created task unlabeled."
           ]
         },
         "daily_review": {
@@ -240,70 +245,78 @@
         }
       },
       "tools": [
+        // general
+        "search",
+        "list_notifications",
+        "get_public_url",
+        // workspaces
         "list_workspaces",
         "list_workspace_members",
         "list_workspace_labels",
-        "list_notifications",
-        "search",
+        "list_workspace_tasks",
+        "get_workspace_invite_link",
+        // projects & columns
         "list_projects",
         "get_project",
-        "get_public_url",
-        "get_workspace_invite_link",
         "create_project",
         "update_project",
         "list_project_columns",
-        "create_column",
-        "update_column",
-        "delete_column",
-        "reorder_columns",
+        // tasks
         "list_tasks",
         "get_task",
+        "get_task_by_short_id",
         "create_task",
+        "qualify_task",
         "update_task",
-        "bulk_update_tasks",
-        "delete_task",
-        "move_task",
         "update_task_status",
         "update_task_assignee",
         "update_task_due_date",
+        "bulk_update_tasks",
+        "move_task",
+        "delete_task",
         "list_task_activity",
+        // comments
         "list_task_comments",
         "create_task_comment",
         "update_task_comment",
         "delete_task_comment",
+        // labels
+        "list_task_labels",
         "create_label",
+        "update_label",
         "delete_label",
         "attach_label_to_task",
         "detach_label_from_task",
+        // relations
         "create_task_relation",
         "get_task_relations",
         "delete_task_relation",
+        // appointments
         "list_appointments",
         "get_appointment",
         "create_appointment",
         "update_appointment",
         "delete_appointment",
         "move_task_to_appointments",
+        // time entries
         "list_task_time_entries",
         "get_time_entry",
         "create_time_entry",
         "update_time_entry",
         "delete_time_entry",
-        "telegram_configure_notifications",
-        "telegram_create_bot",
-        "telegram_create_chat",
-        "telegram_create_rule",
-        "telegram_delete_bot",
-        "telegram_delete_chat",
-        "telegram_delete_rule",
-        "telegram_get_rule",
+        // telegram notifications
         "telegram_list_bots",
         "telegram_list_chats",
-        "telegram_list_config",
         "telegram_list_rules",
-        "telegram_update_bot",
+        "telegram_list_config",
+        "telegram_get_rule",
+        "telegram_create_chat",
         "telegram_update_chat",
+        "telegram_delete_chat",
+        "telegram_create_rule",
         "telegram_update_rule",
+        "telegram_delete_rule",
+        "telegram_configure_notifications",
       ],
       "transfer": "for any request involving managing projects, tasks, appointments, workspaces, labels, comments, time tracking, or task relations in Kaneo (create, update, list, search, schedule, comment, label, plan, review, or organize tasks and events - including reminders and recurring items)"
     },
