@@ -24,7 +24,7 @@ from rich.markup import escape
 from rich.panel import Panel
 from telebot.types import Message as TelegramMessage
 
-from ..utils import Timer, extract_response
+from ..utils import Timer, extract_response, parse_tool_call_markup
 from .config import get_agent_config
 from .tools import get_tools
 from .utils import (
@@ -564,8 +564,28 @@ class Agent:
                                     extra["tool_ok"] = step.startswith("✅")
                                 if tcall in tool_block:
                                     tool_block[tcall] = step
-                                    step = "\n".join(tool_block.values())
-                                    extra["tool_block"] = True
+                                else:
+                                    # Result without a matching call line
+                                    # (id mismatch across providers): attach
+                                    # to the pending same-name line, else
+                                    # append its own - a result must never
+                                    # displace other lines from the block.
+                                    pending = next(
+                                        (
+                                            key
+                                            for key, tool_name in tool_names.items()
+                                            if tool_name == tname
+                                            and tool_block.get(key, "").startswith("🛠️")
+                                        ),
+                                        None,
+                                    )
+                                    if pending:
+                                        tool_block[pending] = step
+                                    else:
+                                        tool_block[tcall] = step
+                                        tool_names.setdefault(tcall, tname)
+                                step = "\n".join(tool_block.values())
+                                extra["tool_block"] = True
                                 extra["tool"] = tname
                                 extra["output"] = ttext
                     elif text:
@@ -627,19 +647,6 @@ class Agent:
                                 name = t.get("name")
                                 if name and not str(name).startswith("transfer_to_"):
                                     call_id = str(t.get("id") or name)
-                                    # Collapse completed same-name entries so a
-                                    # sequential re-call replaces its previous
-                                    # line, while parallel same-name calls keep
-                                    # distinct per-call entries.
-                                    for stale in [
-                                        key
-                                        for key, tool_name in tool_names.items()
-                                        if tool_name == name
-                                        and tool_block.get(key, "")[:1]
-                                        in ("✅", "❌", "🔸")
-                                    ]:
-                                        tool_block.pop(stale, None)
-                                        tool_names.pop(stale, None)
                                     tool_names[call_id] = str(name)
                                     tool_block[call_id] = (
                                         f"🛠️ {format_called_tool(name)}..."
@@ -713,6 +720,48 @@ class Agent:
                     last_messages = (await self.state(swarm, thread_id)).values.get(
                         "messages", []
                     )
+                    # Markup tool calls auto-recovery: the model serialized
+                    # its tool calls as plain text (GLM-family leak) so they
+                    # were never executed. Re-prompt silently - the user only
+                    # ever sees the eventual proper reply, never the leak.
+                    _, leaked_calls = parse_tool_call_markup(step or "")
+                    if leaked_calls:
+                        log.warning(
+                            "Tool calls serialized as text (thread %s): %s",
+                            thread_id,
+                            [(c["name"], c["args"]) for c in leaked_calls],
+                        )
+                        available = swarm.config.tools_by_agent.get(
+                            swarm.active[thread_id], []
+                        )
+                        names = list(dict.fromkeys(c["name"] for c in leaked_calls))
+                        missing = [n for n in names if n not in available]
+                        transfer_hint = (
+                            f" Tool(s) {', '.join(missing)} are not available to "
+                            "you: transfer the task to the responsible agent "
+                            "instead of calling them yourself."
+                            if missing
+                            else ""
+                        )
+                        forced_messages.append(
+                            HumanMessage(
+                                f"[{end_date}] SYSTEM ALERT: Your last reply "
+                                "contained tool call(s) as plain text "
+                                f"({', '.join(names)}); they were NOT executed "
+                                "and the raw markup was never shown to anyone. "
+                                "Re-issue the same tool calls through your "
+                                "native tool-calling mechanism, not as message "
+                                f"text.{transfer_hint} Do not mention this alert."
+                            )
+                        )
+                        self.console.print(
+                            Panel(
+                                escape("ALERT: Tool calls as plain text"),
+                                title="↩ Back on Track",
+                                border_style="medium_violet_red",
+                            )
+                        )
+                        continue
                     # Guard: state may hold <2 messages on early failure
                     before_last_msg = (
                         last_messages[-2] if len(last_messages) >= 2 else None
@@ -783,6 +832,22 @@ class Agent:
                     )
 
                 # Final step
+                # Markup-leak guard (last resort once the silent re-prompt
+                # budget is exhausted - e.g. a non-repaired provider keeps
+                # leaking): strip the spans and never render them to the
+                # user (prod 2026-09-21 leaked raw <tool_call> spans).
+                prose, leaked = parse_tool_call_markup(step or "")
+                if leaked:
+                    log.warning(
+                        "Tool-call markup persisted after %d retries (thread %s): %s",
+                        retry,
+                        thread_id,
+                        [(c["name"], c["args"]) for c in leaked],
+                    )
+                    step = prose.strip() or (
+                        "⚠️ I couldn't complete that action: my tool "
+                        "request came out malformed. Please try again."
+                    )
                 if self.dev:
                     self.console.print(
                         f"{swarm.active[thread_id]} -> FINAL: "

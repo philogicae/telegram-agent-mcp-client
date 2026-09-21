@@ -2,7 +2,13 @@
 
 from types import SimpleNamespace
 
-from telegram_agent.src.utils import Singleton, Timer, extract_response
+from telegram_agent.src.utils import (
+    Singleton,
+    Timer,
+    extract_response,
+    is_tool_call_markup_only,
+    parse_tool_call_markup,
+)
 
 
 class TestSingleton:
@@ -92,3 +98,68 @@ class TestExtractResponse:
     def test_no_recognized_content_returns_empty(self):
         assert extract_response(SimpleNamespace(content=123)) == ("", None)
         assert extract_response(SimpleNamespace(content=[])) == ("", None)
+
+
+# =============================================================================
+# GLM tool-call markup: provider leaked tool calls as text (prod 2026-09-21).
+# =============================================================================
+
+_LEAK = (
+    "<tool_call>update_task<arg_key>status</arg_key><arg_value>completed</arg_value>"
+    "<arg_key>taskId</arg_key><arg_value>uf8zims25ea7a2s7qdq5mrr7</arg_value></tool_call>"
+    "<tool_call>update_task<arg_key>status</arg_key><arg_value>done</arg_value>"
+    "<arg_key>taskId</arg_key><arg_value>eh0ppchgcpoi1kp6hugave5t</arg_value></tool_call>"
+    '<tool_call>web_search<arg_key>query</arg_key><arg_value>{"q": "test", "limit": 5}'
+    "</arg_value></tool_call>"
+)
+
+
+class TestParseToolCallMarkup:
+    def test_extracts_concatenated_leaked_calls(self):
+        prose, calls = parse_tool_call_markup(_LEAK)
+        assert prose == ""
+        assert [c["name"] for c in calls] == [
+            "update_task",
+            "update_task",
+            "web_search",
+        ]
+        assert calls[0]["args"] == {
+            "status": "completed",
+            "taskId": "uf8zims25ea7a2s7qdq5mrr7",
+        }
+        assert calls[1]["args"] == {
+            "status": "done",
+            "taskId": "eh0ppchgcpoi1kp6hugave5t",
+        }
+        assert calls[2]["args"] == {"query": {"q": "test", "limit": 5}}
+        assert all(c["type"] == "tool_call" for c in calls)
+        assert len({c["id"] for c in calls}) == 3  # unique ids for result pairing
+
+    def test_keeps_prose_and_strips_spans(self):
+        prose, calls = parse_tool_call_markup("Working on it.\n\n" + _LEAK)
+        assert prose == "Working on it."
+        assert len(calls) == 3
+
+    def test_scalars_stay_strings_when_not_json(self):
+        prose, calls = parse_tool_call_markup(
+            "<tool_call>t<arg_key>k</arg_key><arg_value>{not json}</arg_value></tool_call>"
+        )
+        assert calls[0]["args"] == {"k": "{not json}"}
+
+    def test_unclosed_span_left_as_prose(self):
+        prose, calls = parse_tool_call_markup("<tool_call>update_task<arg_key>a")
+        assert calls == []
+        assert "update_task" in prose
+
+    def test_empty_and_none(self):
+        assert parse_tool_call_markup("") == ("", [])
+        assert parse_tool_call_markup("plain text") == ("plain text", [])
+
+
+class TestIsToolCallMarkupOnly:
+    def test_flags_spans_but_not_prose(self):
+        assert is_tool_call_markup_only(_LEAK)
+        assert is_tool_call_markup_only(_LEAK + "\n\n")  # blank edges ignored
+        assert not is_tool_call_markup_only("Working on it.\n\n" + _LEAK)
+        assert not is_tool_call_markup_only("")
+        assert not is_tool_call_markup_only("The <tool_call> syntax is XML-like.")

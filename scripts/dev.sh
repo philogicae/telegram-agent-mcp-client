@@ -17,9 +17,6 @@ uv run ruff check --fix
 echo "==> Type checking"
 uv run ty check
 
-echo "==> Running tests with coverage (parallel)"
-uv run pytest -n 3 --dist worksteal --cov=telegram_agent --cov-report=term-missing
-
 # ---------------------------------------------------------------------------
 # Bash checks (scripts + config)
 # ---------------------------------------------------------------------------
@@ -73,3 +70,10 @@ MISC_DIRS=("./config")
 
 echo "==> Formatting markdown and JSON files"
 npx --yes prettier --write --print-width 200 --log-level warn "${MISC_DIRS[*]/%//**/*.{md,json}}" ./*.md
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+
+echo "==> Running tests with coverage (parallel)"
+uv run pytest -n 3 --dist worksteal --cov=telegram_agent --cov-report=term-missing

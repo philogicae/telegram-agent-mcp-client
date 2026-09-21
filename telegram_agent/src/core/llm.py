@@ -10,8 +10,9 @@ from typing import Any
 import httpx
 from dotenv import load_dotenv
 from langchain.chat_models import BaseChatModel
-from langchain.messages import HumanMessage
+from langchain.messages import AIMessage, HumanMessage
 from langchain_anthropic import ChatAnthropic
+from langchain_core.outputs import ChatResult
 from langchain_deepseek import ChatDeepSeek
 from langchain_google_genai import (
     ChatGoogleGenerativeAI,
@@ -21,7 +22,7 @@ from langchain_google_genai import (
 from langchain_ollama import ChatOllama
 from openai import AsyncOpenAI
 
-from ..utils import Singleton, extract_response
+from ..utils import Singleton, extract_response, parse_tool_call_markup
 
 load_dotenv()
 
@@ -49,6 +50,69 @@ _OPENCODE_HTTP_CLIENT = httpx.Client(
 _OPENCODE_HTTP_ASYNC_CLIENT = httpx.AsyncClient(
     event_hooks={"request": [_aset_opencode_session_header]}
 )
+
+
+def _repair_tool_call_markup(message: Any) -> Any:
+    """Convert leaked GLM tool-call markup into structured tool calls.
+
+    GLM-family models behind the opencode gateway occasionally return their
+    tool calls serialized as plain text in GLM's native form
+    (<tool_call>name<arg_key>k</arg_key><arg_value>v</arg_value></tool_call>)
+    instead of structured tool_calls, so the agent loop sees a text-only turn
+    and the markup can leak into the final reply (prod 2026-09-21: repeated
+    <tool_call>update_task...</tool_call> text sent to the user, tool_calls: 0).
+    When the message carries no structured tool calls but its text does, the
+    spans are parsed into real tool calls and the text is trimmed to the
+    remaining prose; messages with structured calls pass through untouched.
+    """
+    if getattr(message, "tool_calls", None) or getattr(
+        message, "invalid_tool_calls", None
+    ):
+        return message
+    if not isinstance(message.content, str):
+        return message
+    prose, calls = parse_tool_call_markup(message.content)
+    if not calls:
+        return message
+    return AIMessage(
+        content=prose,
+        tool_calls=calls,
+        id=message.id,
+        name=message.name,
+        additional_kwargs=message.additional_kwargs,
+        response_metadata=message.response_metadata,
+        usage_metadata=message.usage_metadata,
+    )
+
+
+class OpenCodeChatModel(ChatDeepSeek):
+    """ChatDeepSeek over the opencode zen gateway with GLM leak repair.
+
+    Inbound repair: GLM tool calls serialized as plain text are converted
+    back into structured tool calls (see ``_repair_tool_call_markup``).
+    Outbound ``name`` stripping is handled by the StripMessageNames
+    middleware at the agent layer.
+    """
+
+    def _generate(
+        self, messages: Any, stop: Any = None, run_manager: Any = None, **kwargs: Any
+    ) -> ChatResult:
+        result = super()._generate(
+            messages, stop=stop, run_manager=run_manager, **kwargs
+        )
+        for gen in result.generations:
+            gen.message = _repair_tool_call_markup(gen.message)
+        return result
+
+    async def _agenerate(
+        self, messages: Any, stop: Any = None, run_manager: Any = None, **kwargs: Any
+    ) -> ChatResult:
+        result = await super()._agenerate(
+            messages, stop=stop, run_manager=run_manager, **kwargs
+        )
+        for gen in result.generations:
+            gen.message = _repair_tool_call_markup(gen.message)
+        return result
 
 
 def _order(key: str, default: str) -> list[str]:
@@ -291,7 +355,7 @@ class LLM(Singleton):
             api_key_opencode: Any = getenv("OPENCODE_API_KEY")
             model_opencode = SPECS["opencode"][0]
             if api_key_opencode and model_opencode:
-                obj.llm["opencode"] = ChatDeepSeek(
+                obj.llm["opencode"] = OpenCodeChatModel(
                     base_url="https://opencode.ai/zen/go/v1",
                     api_key=api_key_opencode,
                     model=model_opencode,
@@ -303,7 +367,7 @@ class LLM(Singleton):
 
             model_opencode_alt = SPECS["opencode-alt"][0]
             if api_key_opencode and model_opencode_alt:
-                obj.llm["opencode-alt"] = ChatDeepSeek(
+                obj.llm["opencode-alt"] = OpenCodeChatModel(
                     base_url="https://opencode.ai/zen/go/v1",
                     api_key=api_key_opencode,
                     model=model_opencode_alt,

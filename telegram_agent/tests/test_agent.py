@@ -245,6 +245,138 @@ class TestChat:
         events = [event async for event in agent.chat("hi")]
         assert events == [("A", "hello", True, {})]
 
+    async def test_markup_only_final_auto_recovers_invisibly(self):
+        leak = (
+            "<tool_call>update_task<arg_key>status</arg_key>"
+            "<arg_value>done</arg_value></tool_call>"
+        )
+        call = AIMessage(
+            "",
+            tool_calls=[{"name": "update_task", "id": "9", "args": {"status": "done"}}],
+        )
+        result = ToolMessage("ok", name="update_task", tool_call_id="9")
+        swarm = make_swarm(
+            tools_by_agent={"A": ["update_task"]},
+            streams=[
+                [chunk_model(AIMessage(leak))],
+                [
+                    chunk_model(call),
+                    chunk_tools(result),
+                    chunk_model(AIMessage("All done.")),
+                ],
+            ],
+            history=[AIMessage("previous")],
+        )
+        agent = self.make({"admin": {"users": {"-1": "Developer"}}}, {"admin": swarm})
+        events = [event async for event in agent.chat("hi")]
+        # The user only ever sees the proper reply: no leak, no error text.
+        assert events[-1][:3] == ("A", "All done.", True)
+        assert all("<tool_call>" not in e[1] and "⚠️" not in e[1] for e in events)
+        alert = swarm.agent.inputs[1]["messages"][-1].content
+        assert "plain text" in alert
+        assert "update_task" in alert
+        assert "not available to you" not in alert
+
+    async def test_markup_alert_hints_transfer_for_unavailable_tool(self):
+        leak = (
+            "<tool_call>update_task<arg_key>status</arg_key>"
+            "<arg_value>done</arg_value></tool_call>"
+        )
+        swarm = make_swarm(
+            tools_by_agent={"A": ["transfer_to_planning_manager"]},
+            streams=[
+                [chunk_model(AIMessage(leak))],
+                [chunk_model(AIMessage("Handled by the planner."))],
+            ],
+            history=[AIMessage("previous")],
+        )
+        agent = self.make({"admin": {"users": {"-1": "Developer"}}}, {"admin": swarm})
+        events = [event async for event in agent.chat("hi")]
+        assert events[-1][:3] == ("A", "Handled by the planner.", True)
+        alert = swarm.agent.inputs[1]["messages"][-1].content
+        assert "update_task" in alert
+        assert "transfer" in alert.lower()
+
+    async def test_markup_persisting_after_retry_budget_shows_fallback(self):
+        leak = (
+            "<tool_call>update_task<arg_key>status</arg_key>"
+            "<arg_value>done</arg_value></tool_call>"
+        )
+        swarm = make_swarm(
+            streams=[[chunk_model(AIMessage(leak))]] * 4,
+            history=[AIMessage("previous")],
+        )
+        agent = self.make({"admin": {"users": {"-1": "Developer"}}}, {"admin": swarm})
+        events = [event async for event in agent.chat("hi")]
+        assert events[-1][1] == (
+            "⚠️ I couldn't complete that action: my tool request came out "
+            "malformed. Please try again."
+        )
+        assert "<tool_call>" not in events[-1][1]
+
+    async def test_markup_in_prose_final_is_stripped_after_recovery(self):
+        leak = (
+            "Marking them now.\n\n<tool_call>update_task<arg_key>status</arg_key>"
+            "<arg_value>done</arg_value></tool_call>"
+        )
+        swarm = make_swarm(
+            streams=[
+                [chunk_model(AIMessage(leak))],
+                [chunk_model(AIMessage("Marking them now."))],
+            ],
+            history=[AIMessage("previous")],
+        )
+        agent = self.make({"admin": {"users": {"-1": "Developer"}}}, {"admin": swarm})
+        events = [event async for event in agent.chat("hi")]
+        assert events[-1][:3] == ("A", "Marking them now.", True)
+
+    async def test_tool_block_keeps_every_completed_call_line(self):
+        # Regression (log lines vanished when a same-name tool was re-called):
+        # every call keeps its own line in the block, forever.
+        def call(i: str) -> AIMessage:
+            return AIMessage(
+                "", tool_calls=[{"name": "update_task", "id": i, "args": {}}]
+            )
+
+        results = [
+            ToolMessage("ok", name="update_task", tool_call_id=i) for i in ("1", "2")
+        ]
+        swarm = make_swarm(
+            tools_by_agent={"A": ["update_task"]},
+            streams=[
+                [chunk_model(call("1")), chunk_tools(results[0])],
+                [chunk_model(call("2")), chunk_tools(results[1])],
+                [chunk_model(AIMessage("Both done."))],
+            ],
+            history=[AIMessage("previous")],
+        )
+        agent = self.make({"admin": {"users": {"-1": "Developer"}}}, {"admin": swarm})
+        events = [event async for event in agent.chat("hi")]
+        block_events = [e for e in events if e[3].get("tool_block")]
+        assert block_events
+        assert block_events[-1][1].count("✅ Update Task") == 2
+
+    async def test_tool_result_without_call_line_joins_block(self):
+        # A result whose call line is missing (id mismatch across providers:
+        # call carried id "9", result carries none) must attach to the
+        # pending same-name line instead of displacing block content.
+        call = AIMessage("", tool_calls=[{"name": "web_search", "id": "9", "args": {}}])
+        result = ToolMessage("ok", name="web_search", tool_call_id="")
+        swarm = make_swarm(
+            tools_by_agent={"A": ["web_search"]},
+            streams=[
+                [chunk_model(call), chunk_tools(result), chunk_model(AIMessage("here"))]
+            ],
+            history=[AIMessage("previous")],
+        )
+        agent = self.make({"admin": {"users": {"-1": "Developer"}}}, {"admin": swarm})
+        events = [event async for event in agent.chat("hi")]
+        assert events[-1][:3] == ("A", "here", True)
+        block_events = [e for e in events if e[3].get("tool_block")]
+        assert block_events
+        assert "✅ Web Search" in block_events[-1][1]
+        assert "🛠️ Web Search" not in block_events[-1][1]  # completed in place
+
     async def test_media_message_becomes_blocks(self):
         swarm = make_swarm(streams=[[chunk_model(AIMessage("seen"))]])
         agent = self.make({"admin": {"users": {"456": "Tester"}}}, {"admin": swarm})

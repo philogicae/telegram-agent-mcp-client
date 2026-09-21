@@ -111,6 +111,79 @@ def _convert_table(m: re.Match) -> str:
 
 _LIST_PATTERN = re.compile(r"<(ol|ul)>((?:(?!<(?:ol|ul)>).)*?)</\1>", re.DOTALL)
 
+# Official HTML parse mode tags (https://core.telegram.org/bots/api#html-style,
+# Bot API 10.3) - the only tags send_message/edit_message_text accept.
+_CLASSIC_TAGS = frozenset(
+    {
+        "a",
+        "b",
+        "blockquote",
+        "code",
+        "del",
+        "em",
+        "i",
+        "ins",
+        "pre",
+        "s",
+        "span",
+        "strike",
+        "strong",
+        "tg-emoji",
+        "tg-spoiler",
+        "tg-time",
+        "u",
+    }
+)
+# Rich-message extras (https://core.telegram.org/bots/api#rich-html-style):
+# valid in sendRichMessage content; _sanitize_classic converts/strips them
+# for classic sends. Interaction/draft-only tags (tg-button, tg-button-row,
+# tg-thinking) stay out on purpose: anything unknown is escaped to literal
+# text instead of reaching the wire, where an unsupported tag makes Telegram
+# reject the whole message (400 unsupported start tag) or leaves it to be
+# mangled by the plain-text fallback (a leaked <tool_call> did exactly that).
+_RICH_TAGS = _CLASSIC_TAGS | frozenset(
+    {
+        "aside",
+        "audio",
+        "br",
+        "caption",
+        "cite",
+        "details",
+        "figcaption",
+        "figure",
+        "footer",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "hr",
+        "img",
+        "input",
+        "li",
+        "mark",
+        "ol",
+        "p",
+        "sub",
+        "summary",
+        "sup",
+        "table",
+        "td",
+        "th",
+        "tg-collage",
+        "tg-document",
+        "tg-map",
+        "tg-math",
+        "tg-math-block",
+        "tg-reference",
+        "tg-slideshow",
+        "tr",
+        "ul",
+        "video",
+    }
+)
+
 
 def fixed_telegram(_: Any, text: str, classic: bool = True) -> str:
     """Convert markdown text to Telegram HTML format.
@@ -141,14 +214,17 @@ def fixed_telegram(_: Any, text: str, classic: bool = True) -> str:
 
     text = re.sub(r"(?m)^>\s?(.*)$", r"<blockquote>\1</blockquote>", text)
 
-    # Escape < and > that aren't part of HTML tags or entities.
+    # Escape < and > that aren't part of a known HTML tag or entity.
     result: list[str] = []
     i = 0
     while i < len(text):
         if text[i] == "<":
-            tag = re.match(r"</?[a-zA-Z][^>]*>", text[i:])
-            if tag:
+            tag = re.match(r"</?([a-zA-Z][a-zA-Z0-9-]*)[^>]*>", text[i:])
+            if tag and tag.group(1).lower() in _RICH_TAGS:
                 result.append(tag.group(0))
+                i += len(tag.group(0))
+            elif tag:
+                result.append(_escape_text(tag.group(0)))
                 i += len(tag.group(0))
             else:
                 result.append("&lt;")
@@ -183,6 +259,13 @@ def _sanitize_classic(html: str) -> str:
         html = new_html
 
     html = re.sub(r"<table>(.*?)</table>", _convert_table, html, flags=re.DOTALL)
+
+    # Model-emitted line breaks stay newlines, then unwrap any remaining
+    # rich-only tags so classic output only ever carries classic-valid tags
+    # (Telegram rejects the rest with 400 unsupported start tag).
+    html = re.sub(r"<br\s*/?>", "\n", html)
+    classic_alts = "|".join(sorted(_CLASSIC_TAGS, key=len, reverse=True))
+    html = re.sub(rf"</?(?!(?:{classic_alts})\b)[a-zA-Z][a-zA-Z0-9-]*[^>]*?>", "", html)
     return html
 
 

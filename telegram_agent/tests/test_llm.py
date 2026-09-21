@@ -6,13 +6,16 @@ from typing import Any
 import httpx
 import pytest
 from langchain_core.messages import AIMessage
+from langchain_deepseek import ChatDeepSeek
 
 from telegram_agent.src.core import llm as llm_mod
 from telegram_agent.src.core.llm import (
     _OPENCODE_SESSION,
     LLM,
+    OpenCodeChatModel,
     _env_num,
     _order,
+    _repair_tool_call_markup,
     _set_opencode_session_header,
     _split,
     can_docs,
@@ -404,3 +407,120 @@ class TestTts:
         speech = _FakeSpeech(error=RuntimeError("boom"))
         monkeypatch.setattr(clean_llm_state, "extra", {"openrouter-tts": speech})
         assert await LLM.tts("hi") is None
+
+
+# =============================================================================
+# GLM tool-call markup repair: leaked spans -> structured calls.
+# =============================================================================
+
+_LEAK = (
+    "<tool_call>update_task<arg_key>status</arg_key><arg_value>completed</arg_value>"
+    "<arg_key>taskId</arg_key><arg_value>uf8zims25ea7a2s7qdq5mrr7</arg_value></tool_call>"
+    "<tool_call>update_task<arg_key>status</arg_key><arg_value>done</arg_value>"
+    "<arg_key>taskId</arg_key><arg_value>eh0ppchgcpoi1kp6hugave5t</arg_value></tool_call>"
+)
+
+
+def _leak_message(**kwargs: Any) -> AIMessage:
+    return AIMessage(content=_LEAK, **kwargs)
+
+
+class TestRepairToolCallMarkup:
+    def test_converts_leaked_text_into_tool_calls(self):
+        repaired = _repair_tool_call_markup(_leak_message(id="m1"))
+        assert len(repaired.tool_calls) == 2
+        assert repaired.content == ""
+        assert repaired.id == "m1"
+        assert repaired.tool_calls[0]["args"] == {
+            "status": "completed",
+            "taskId": "uf8zims25ea7a2s7qdq5mrr7",
+        }
+
+    def test_preserves_metadata_and_reasoning(self):
+        msg = AIMessage(
+            content=_LEAK,
+            id="m2",
+            additional_kwargs={"reasoning_content": "mark tasks done"},
+            response_metadata={"finish_reason": "stop", "model_name": "glm-5.3-flash"},
+            usage_metadata={
+                "input_tokens": 10,
+                "output_tokens": 20,
+                "total_tokens": 30,
+            },
+        )
+        repaired = _repair_tool_call_markup(msg)
+        assert repaired.additional_kwargs["reasoning_content"] == "mark tasks done"
+        assert repaired.response_metadata["finish_reason"] == "stop"
+        assert repaired.usage_metadata["input_tokens"] == 10
+
+    def test_keeps_prose_alongside_calls(self):
+        repaired = _repair_tool_call_markup(
+            AIMessage(content="Marking them now.\n\n" + _LEAK, id="m3")
+        )
+        assert repaired.content == "Marking them now."
+        assert len(repaired.tool_calls) == 2
+
+    def test_leaves_clean_messages_untouched(self):
+        clean = AIMessage(content="The answer is 42.", id="m4")
+        assert _repair_tool_call_markup(clean) is clean
+
+    def test_skips_messages_with_structured_tool_calls(self):
+        with_calls = AIMessage(
+            content=_LEAK,
+            tool_calls=[{"name": "t", "args": {}, "id": "call_x", "type": "tool_call"}],
+            id="m5",
+        )
+        assert _repair_tool_call_markup(with_calls) is with_calls
+
+    def test_skips_non_string_content(self):
+        blocks = AIMessage(
+            content=[{"type": "text", "text": "<tool_call>x</tool_call>"}]
+        )
+        assert _repair_tool_call_markup(blocks) is blocks
+
+
+class TestOpenCodeChatModel:
+    def _model(self) -> OpenCodeChatModel:
+        return OpenCodeChatModel(model="glm-5.3-flash", api_key="test-key")
+
+    def _patch_super(self, monkeypatch, message: AIMessage, async_: bool = False):
+        from langchain_core.outputs import ChatGeneration, ChatResult
+
+        result = ChatResult(generations=[ChatGeneration(message=message)])
+        if async_:
+
+            async def fake(*args: Any, **kwargs: Any):
+                return result
+
+        else:
+
+            def fake(*args: Any, **kwargs: Any):
+                return result
+
+        monkeypatch.setattr(ChatDeepSeek, "_agenerate" if async_ else "_generate", fake)
+
+    async def test_agenerate_repairs_leaked_markup(self, monkeypatch):
+        self._patch_super(monkeypatch, _leak_message(id="m6"), async_=True)
+        result = await self._model()._agenerate([])
+        assert len(result.generations[0].message.tool_calls) == 2
+
+    def test_generate_repairs_leaked_markup(self, monkeypatch):
+        self._patch_super(monkeypatch, _leak_message(id="m7"))
+        result = self._model()._generate([])
+        assert len(result.generations[0].message.tool_calls) == 2
+
+    def test_opencode_providers_routed_through_repair_model(
+        self, monkeypatch, clean_llm_state
+    ):
+        monkeypatch.setenv("OPENCODE_API_KEY", "test-key")
+        monkeypatch.setattr(
+            llm_mod,
+            "SPECS",
+            {
+                **llm_mod.SPECS,
+                "opencode": ("deepseek-v4-flash", frozenset({"text"})),
+                "opencode-alt": ("glm-5.3-flash", frozenset({"text"})),
+            },
+        )
+        assert isinstance(LLM.get("opencode"), OpenCodeChatModel)
+        assert isinstance(LLM.get("opencode-alt"), OpenCodeChatModel)

@@ -1,11 +1,74 @@
 """Utility classes for Telegram Agent MCP Client."""
 
 import re
+from hashlib import sha256
+from json import JSONDecodeError, loads
 from threading import Lock
 from time import time
 from typing import Any
 
 THINKING_RE = re.compile(r"<think(?:ing)?>(.*?)(?:</think(?:ing)?>|\Z)", re.DOTALL)
+
+# GLM-native tool-call markup: the opencode zen gateway occasionally returns
+# GLM tool calls serialized as plain text (<tool_call>name<arg_key>k</arg_key>
+# <arg_value>v</arg_value></tool_call>) instead of structured tool_calls.
+# `key` ends at its own closing tag; `value` ends at its own closing tag (the
+# format is ambiguous beyond that) and may span multiple lines (JSON filters).
+_TOOL_CALL_BLOCK_RE = re.compile(
+    r"<tool_call>\s*(?P<name>[^<\s>]+)\s*(?P<args>.*?)</tool_call>", re.DOTALL
+)
+_TOOL_CALL_ARG_RE = re.compile(
+    r"<arg_key>(?P<key>[^<]+?)</arg_key><arg_value>(?P<value>.*?)</arg_value>",
+    re.DOTALL,
+)
+
+
+def _to_hash(payload: str) -> str:
+    """Hash a payload using SHA256 (first 16 hex chars)."""
+    return sha256(payload.encode()).hexdigest()[:16]
+
+
+def parse_tool_call_markup(text: str) -> tuple[str, list[dict[str, Any]]]:
+    """Split GLM-native tool-call markup out of a message text.
+
+    Returns the remaining prose (markup spans removed, edges stripped) and the
+    parsed calls as langchain ``ToolCall`` dicts (name/args/id/type). Args
+    listed as JSON objects/arrays are deserialized; other values stay strings.
+    """
+    calls: list[dict[str, Any]] = []
+
+    def _collect(match: re.Match) -> str:
+        args: dict[str, Any] = {}
+        for arg in _TOOL_CALL_ARG_RE.finditer(match.group("args")):
+            key, value = arg.group("key"), arg.group("value")
+            if value[:1] in "{[":
+                try:
+                    args[key] = loads(value)
+                    continue
+                except JSONDecodeError:
+                    pass
+            args[key] = value
+        calls.append(
+            {
+                "name": match.group("name"),
+                "args": args,
+                "id": f"call_{_to_hash(f'{match.group("name")}:{match.start()}')}",
+                "type": "tool_call",
+            }
+        )
+        return ""
+
+    prose = _TOOL_CALL_BLOCK_RE.sub(_collect, text or "").strip()
+    return prose, calls
+
+
+def is_tool_call_markup_only(text: str) -> bool:
+    """Whether a message text is nothing but tool-call markup spans.
+
+    Blank lines around and between spans are ignored; any real prose means
+    the text is an answer that happens to contain markup, not markup-only.
+    """
+    return bool(text) and not parse_tool_call_markup(text)[0]
 
 
 class Singleton:
