@@ -385,6 +385,59 @@ class TestInitializeAndStart:
         )
         assert bot.id == "42"
 
+    async def test_voice_handler_claims_audio_and_audio_documents(self):
+        bot = make_bot()
+        bot.core.set_my_commands = AsyncMock()
+        bot.core.get_me = AsyncMock(return_value=SimpleNamespace(id=42))
+        await bot.initialize(chat=AsyncMock(), voice=AsyncMock())
+        handler = next(
+            h
+            for h in bot.core.message_handlers
+            if h["filters"].get("content_types") == ["voice", "audio", "document"]
+        )
+        audio_doc = make_message(
+            "",
+            document={
+                "file_id": "d",
+                "file_unique_id": "u",
+                "file_name": "note.ogg",
+                "mime_type": "audio/ogg",
+            },
+        )
+        assert handler["filters"]["func"](audio_doc)
+
+    async def test_document_handler_skips_audio_documents(self):
+        bot = make_bot()
+        bot.core.set_my_commands = AsyncMock()
+        bot.core.get_me = AsyncMock(return_value=SimpleNamespace(id=42))
+        await bot.initialize(chat=AsyncMock(), document=AsyncMock(), voice=AsyncMock())
+        handler = next(
+            h
+            for h in bot.core.message_handlers
+            if h["filters"].get("content_types") == ["document"]
+        )
+        func = handler["filters"]["func"]
+        pdf = make_message(
+            "",
+            document={
+                "file_id": "d",
+                "file_unique_id": "u",
+                "file_name": "report.pdf",
+                "mime_type": "application/pdf",
+            },
+        )
+        ogg = make_message(
+            "",
+            document={
+                "file_id": "d",
+                "file_unique_id": "u",
+                "file_name": "note.ogg",
+                "mime_type": "audio/ogg",
+            },
+        )
+        assert func(pdf)
+        assert not func(ogg)
+
     async def test_start_polls_with_timeout(self):
         bot = make_bot()
         bot.core.infinity_polling = AsyncMock()

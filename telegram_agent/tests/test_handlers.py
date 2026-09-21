@@ -381,17 +381,33 @@ class TestRunTurn:
         await h._run_turn(instance, make_message("hi"), None, "timer")
         assert any(edit[1] == "⏹️ Interrompu" for edit in instance.bot.edits)
 
-    async def test_cancel_with_tts_failure_path(self, monkeypatch):
-        instance = self.make_instance([])
-        monkeypatch.setattr(h, "sleep", AsyncMock())
+    async def test_completed_turn_sends_tts_voice(self, monkeypatch):
+        instance = self.make_instance([("A", "final", True, {})])
+        instance.tts_enabled[456] = True
 
-        class CancellingAgent(FakeAgent):
-            async def chat(self, content: Any):
-                yield ("A", "final", True, {})
-                instance.cancel_events[123].set()
-                yield ("A", "ignored", True, {})
+        async def fake_exec(*args: Any, **kwargs: Any) -> Any:
+            async def communicate(data: bytes) -> tuple[bytes, bytes]:
+                return b"OGG", b""
 
-        instance.agent = CancellingAgent()
+            return SimpleNamespace(communicate=communicate, returncode=0)
+
+        monkeypatch.setattr(h, "create_subprocess_exec", fake_exec)
+        monkeypatch.setattr(
+            h,
+            "LLM",
+            SimpleNamespace(
+                pick=staticmethod(lambda *caps, **kw: "tts"),
+                tts_adapt=staticmethod(AsyncMock(return_value="spoken")),
+                tts=staticmethod(AsyncMock(return_value=b"AUDIO")),
+            ),
+        )
+        await h._run_turn(instance, make_message("hi"), None, "timer")
+        calls = [name for name, _, _ in instance.bot.core.calls]
+        assert "send_voice" in calls
+        assert not any(edit[1] == "⏹️ Interrompu" for edit in instance.bot.edits)
+
+    async def test_completed_turn_tts_failure_reports(self, monkeypatch):
+        instance = self.make_instance([("A", "final", True, {})])
         instance.tts_enabled[456] = True
         monkeypatch.setattr(
             h,
@@ -404,6 +420,43 @@ class TestRunTurn:
         )
         await h._run_turn(instance, make_message("hi"), None, "timer")
         assert any("TTS failed" in (sent[1] or "") for sent in instance.bot.sent)
+        assert all(name != "send_voice" for name, _, _ in instance.bot.core.calls)
+
+    async def test_cancelled_turn_sends_no_tts(self, monkeypatch):
+        instance = self.make_instance([])
+        monkeypatch.setattr(h, "sleep", AsyncMock())
+
+        class CancellingAgent(FakeAgent):
+            async def chat(self, content: Any):
+                yield ("A", "step one", False, {})
+                instance.cancel_events[123].set()
+                yield ("A", "never", True, {})
+
+        instance.agent = CancellingAgent()
+        instance.tts_enabled[456] = True
+        monkeypatch.setattr(
+            h,
+            "LLM",
+            SimpleNamespace(
+                pick=staticmethod(lambda *caps, **kw: "tts"),
+                tts_adapt=staticmethod(AsyncMock(return_value="spoken")),
+                tts=staticmethod(AsyncMock(return_value=b"AUDIO")),
+            ),
+        )
+        await h._run_turn(instance, make_message("hi"), None, "timer")
+        assert any(edit[1] == "⏹️ Interrompu" for edit in instance.bot.edits)
+        assert all(name != "send_voice" for name, _, _ in instance.bot.core.calls)
+
+    async def test_empty_stream_with_tts_enabled_does_not_raise(self, monkeypatch):
+        instance = self.make_instance([])
+        instance.tts_enabled[456] = True
+        monkeypatch.setattr(
+            h,
+            "LLM",
+            SimpleNamespace(pick=staticmethod(lambda *caps, **kw: "tts")),
+        )
+        await h._run_turn(instance, make_message("hi"), None, "timer")
+        assert all(name != "send_voice" for name, _, _ in instance.bot.core.calls)
 
 
 class TestVoiceHandler:
@@ -453,6 +506,76 @@ class TestVoiceHandler:
         instance = self.make_instance()
         await h.telegram_voice(instance, make_message("voice"))
         assert instance.bot.sent == []
+
+    async def test_ogg_document_queued_with_audio_media(self, monkeypatch):
+        instance = self.make_instance()
+        instance.bot.core.get_file = AsyncMock(
+            return_value=SimpleNamespace(file_path="note.ogg")
+        )
+        instance.bot.core.download_file = AsyncMock(return_value=b"AUDIO")
+        monkeypatch.setattr(
+            h, "LLM", SimpleNamespace(pick=staticmethod(lambda *a, **k: "p"))
+        )
+        monkeypatch.setattr(h, "can_listen", lambda p: True)
+        chat = AsyncMock()
+        monkeypatch.setattr(h, "telegram_chat", chat)
+        msg = make_message(
+            "",
+            document={
+                "file_id": "d",
+                "file_unique_id": "u",
+                "file_name": "note.ogg",
+                "mime_type": "audio/ogg",
+            },
+        )
+        await h.telegram_voice(instance, msg)
+        chat.assert_awaited_once()
+        assert msg.media[0]["data"] == b"AUDIO"
+        assert msg.media[0]["mime_type"] == "audio/ogg"
+
+    async def test_audio_file_transcribed_with_its_mime(self, monkeypatch):
+        instance = self.make_instance()
+        instance.bot.core.get_file = AsyncMock(
+            return_value=SimpleNamespace(file_path="song.mp3")
+        )
+        instance.bot.core.download_file = AsyncMock(return_value=b"AUDIO")
+        monkeypatch.setattr(
+            h, "LLM", SimpleNamespace(pick=staticmethod(lambda *a, **k: "p"))
+        )
+        monkeypatch.setattr(h, "can_listen", lambda p: False)
+        transcribe = AsyncMock(return_value="paroles")
+        monkeypatch.setattr(h, "_transcribe_voice", transcribe)
+        chat = AsyncMock()
+        monkeypatch.setattr(h, "telegram_chat", chat)
+        msg = make_message(
+            "",
+            audio={
+                "file_id": "a",
+                "file_unique_id": "u",
+                "duration": 12,
+                "mime_type": "audio/mpeg",
+            },
+        )
+        await h.telegram_voice(instance, msg)
+        transcribe.assert_awaited_once_with(b"AUDIO", 12, "audio/mpeg")
+        assert msg.text == "🎤 paroles"
+
+    async def test_non_audio_document_ignored(self):
+        instance = self.make_instance()
+        instance.bot.core.get_file = AsyncMock()
+        instance.bot.core.download_file = AsyncMock()
+        msg = make_message(
+            "",
+            document={
+                "file_id": "d",
+                "file_unique_id": "u",
+                "file_name": "report.pdf",
+                "mime_type": "application/pdf",
+            },
+        )
+        await h.telegram_voice(instance, msg)
+        assert instance.bot.sent == []
+        instance.bot.core.get_file.assert_not_awaited()
 
     async def test_voice_error_reported(self, monkeypatch):
         instance = self.make_instance()
@@ -582,6 +705,30 @@ class TestVoiceTranscription:
             call.args[0][0]["mime_type"] == "audio/wav"
             for call in transcribe.await_args_list
         )
+
+    async def test_document_audio_decodes_once_and_segments(self, monkeypatch):
+        monkeypatch.setattr(h, "_STT_SEGMENT_SECONDS", 1)
+        decode = AsyncMock(return_value=self.pcm(2.5))
+        monkeypatch.setattr(h, "_decode_pcm", decode)
+        transcribe = AsyncMock(
+            side_effect=["un deux trois", "quatre cinq six", "sept huit"]
+        )
+        monkeypatch.setattr(h, "_media_to_text", transcribe)
+        out = await h._transcribe_voice(b"OGG", None, "audio/ogg")
+        assert out == "un deux trois quatre cinq six sept huit"
+        decode.assert_awaited_once()
+        assert transcribe.await_count == 3
+
+    async def test_document_audio_short_keeps_its_mime(self, monkeypatch):
+        monkeypatch.setattr(h, "_STT_MIN_CHARS_PER_SECOND", 0.0)
+        decode = AsyncMock(return_value=self.pcm(5))
+        monkeypatch.setattr(h, "_decode_pcm", decode)
+        transcribe = AsyncMock(return_value="bonjour")
+        monkeypatch.setattr(h, "_media_to_text", transcribe)
+        out = await h._transcribe_voice(b"OGG", None, "audio/mpeg")
+        assert out == "bonjour"
+        transcribe.assert_awaited_once()
+        assert transcribe.await_args.args[0][0]["mime_type"] == "audio/mpeg"
 
     async def test_truncated_segment_is_retried_with_main_model(self, monkeypatch):
         calls = []

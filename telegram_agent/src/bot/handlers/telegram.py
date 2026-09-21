@@ -30,7 +30,7 @@ from ...core.progress import (
 )
 from ...utils import Timer, extract_response
 from ..abstract import AgenticBot, handler
-from ..utils import unpack_user
+from ..utils import audio_payload, unpack_user
 
 load_dotenv()
 TELEGRAM_CHAT_DEV = getenv("TELEGRAM_CHAT_DEV")
@@ -201,19 +201,33 @@ async def _transcribe_segment(audio: bytes, mime: str, duration: float) -> str:
     return best
 
 
-async def _transcribe_voice(audio: bytes, duration: float | None) -> str:
-    """Transcribe a voice note, segmenting long audio for reliability."""
-    if not duration or duration <= _STT_SEGMENT_SECONDS * 1.25:
-        return await _transcribe_segment(audio, "audio/ogg", duration or 0.0)
+async def _transcribe_voice(
+    audio: bytes, duration: float | None, mime: str = "audio/ogg"
+) -> str:
+    """Transcribe a voice note or audio file, segmenting long audio."""
+    pcm: bytes | None = None
+    if duration is None:
+        # Audio files sent as documents carry no duration metadata: decode
+        # once to derive it (and reuse the PCM for segmentation below).
+        try:
+            pcm = await _decode_pcm(audio)
+            duration = len(pcm) / (_STT_PCM_RATE * 2)
+        except Exception:
+            getLogger(__name__).warning(
+                "Audio decode failed, transcribing in one piece", exc_info=True
+            )
+            return await _transcribe_segment(audio, mime, 0.0)
+    if duration <= _STT_SEGMENT_SECONDS * 1.25:
+        return await _transcribe_segment(audio, mime, duration)
     try:
-        segments = _wav_segments(await _decode_pcm(audio))
+        segments = _wav_segments(pcm if pcm is not None else await _decode_pcm(audio))
     except Exception:
         getLogger(__name__).warning(
-            "Voice note decode failed, transcribing in one piece", exc_info=True
+            "Audio decode failed, transcribing in one piece", exc_info=True
         )
-        return await _transcribe_segment(audio, "audio/ogg", duration)
+        return await _transcribe_segment(audio, mime, duration)
     if len(segments) < 2:
-        return await _transcribe_segment(audio, "audio/ogg", duration)
+        return await _transcribe_segment(audio, mime, duration)
     parts = await gather(
         *(_transcribe_segment(data, "audio/wav", secs) for data, secs in segments)
     )
@@ -467,6 +481,7 @@ async def _run_turn(
     tracker_token = set_turn_tracker(turn_tracker)
     session_token = _OPENCODE_SESSION.set(str(chat_id))
     cancelled = False
+    done = False
     try:
         async for agent, step, done, extra in instance.agent.chat(msg):
             if cancel_event.is_set():
@@ -528,47 +543,46 @@ async def _run_turn(
             # live-status panel; the next turn keeps the history.
             with suppress(Exception):
                 await instance.bot.edit(reply, "⏹️ Interrompu", final=True)
-            # TTS: send audio of the final response if enabled
-            if (
-                done
-                and msg.from_user
-                and instance.tts_enabled.get(msg.from_user.id)
-                and LLM.pick("tts")
-            ):
-                instance.log.info(f"[{msg.chat.id}] Generating TTS voice message...")
-                await instance.bot.core.send_chat_action(msg.chat.id, "upload_voice")
-                recording = await instance.bot.send(msg, "🎙️ I'm recording...")
-                adapted = await LLM.tts_adapt(step)
-                audio_bytes = await LLM.tts(adapted)
-                if not audio_bytes:
-                    instance.log.warning(
-                        f"[{msg.chat.id}] TTS generation returned no audio"
-                    )
-                    await instance.bot.send(
-                        msg, "🎙️ TTS failed - check logs for details."
-                    )
-                if audio_bytes:
-                    # Telegram voice messages require OGG/OPUS
-                    proc = await create_subprocess_exec(
-                        "ffmpeg",
-                        "-i",
-                        "pipe:0",
-                        "-c:a",
-                        "libopus",
-                        "-f",
-                        "ogg",
-                        "pipe:1",
-                        stdin=PIPE,
-                        stdout=PIPE,
-                        stderr=DEVNULL,
-                    )
-                    ogg, _ = await proc.communicate(audio_bytes)
-                    voice = ogg if proc.returncode == 0 and ogg else audio_bytes
-                    await instance.bot.core.send_voice(
-                        msg.chat.id, InputFile(BytesIO(voice), file_name="voice.ogg")
-                    )
-                    instance.log.info(f"[{msg.chat.id}] TTS voice message sent")
-                await instance.bot.delete(recording)
+        # TTS: send audio of the final response if enabled. Only a normal
+        # completion has a final response to speak - a cancelled turn does not.
+        elif (
+            done
+            and msg.from_user
+            and instance.tts_enabled.get(msg.from_user.id)
+            and LLM.pick("tts")
+        ):
+            instance.log.info(f"[{msg.chat.id}] Generating TTS voice message...")
+            await instance.bot.core.send_chat_action(msg.chat.id, "upload_voice")
+            recording = await instance.bot.send(msg, "🎙️ I'm recording...")
+            adapted = await LLM.tts_adapt(step)
+            audio_bytes = await LLM.tts(adapted)
+            if not audio_bytes:
+                instance.log.warning(
+                    f"[{msg.chat.id}] TTS generation returned no audio"
+                )
+                await instance.bot.send(msg, "🎙️ TTS failed - check logs for details.")
+            if audio_bytes:
+                # Telegram voice messages require OGG/OPUS
+                proc = await create_subprocess_exec(
+                    "ffmpeg",
+                    "-i",
+                    "pipe:0",
+                    "-c:a",
+                    "libopus",
+                    "-f",
+                    "ogg",
+                    "pipe:1",
+                    stdin=PIPE,
+                    stdout=PIPE,
+                    stderr=DEVNULL,
+                )
+                ogg, _ = await proc.communicate(audio_bytes)
+                voice = ogg if proc.returncode == 0 and ogg else audio_bytes
+                await instance.bot.core.send_voice(
+                    msg.chat.id, InputFile(BytesIO(voice), file_name="voice.ogg")
+                )
+                instance.log.info(f"[{msg.chat.id}] TTS voice message sent")
+            await instance.bot.delete(recording)
     except Exception as e:
         print_exc()
         await telegram_report_issue(instance, msg, reply, e)
@@ -583,35 +597,39 @@ async def _run_turn(
 
 @handler
 async def telegram_voice(instance: AgenticBot, msg: Message) -> None:
-    """Handle voice messages: attach audio as media and process through agent."""
+    """Handle voice notes, audio files and audio documents.
+
+    Telegram delivers a recording as ``voice``, but the same audio sent as a
+    file arrives as ``audio`` (with metadata) or ``document`` (plain file);
+    all carry the same content and go through this pipeline.
+    """
     if not msg.from_user or not instance.agent.is_allowed(msg.from_user.id):
         return
     reply = None
     session_token = None
     try:
-        voice = msg.voice
-        if not voice:
+        payload = audio_payload(msg)
+        if not payload:
             return
+        file_id, duration, mime = payload
         session_token = _OPENCODE_SESSION.set(str(msg.chat.id))
         # Send "I'm listening..." immediately, before download/transcription.
         # The turn itself is queued (no busy rejection - _chat_worker
         # serialises turns per chat).
         init = instance.bot.reply if msg.chat.type != "private" else instance.bot.send
         reply = await init(msg, "🔊 I'm listening...")
-        file_info = await instance.bot.core.get_file(voice.file_id)
+        file_info = await instance.bot.core.get_file(file_id)
         audio = await instance.bot.core.download_file(file_info.file_path)
-        media = [{"type": "media", "data": audio, "mime_type": "audio/ogg"}]
+        media = [{"type": "media", "data": audio, "mime_type": mime}]
         main = LLM.pick()
         if can_listen(main):
             msg.media = media  # ty: ignore[unresolved-attribute]
             msg.text = "🎤 [voice message]"
         else:
-            transcription = await _transcribe_voice(
-                audio, getattr(voice, "duration", None)
-            )
+            transcription = await _transcribe_voice(audio, duration, mime)
             instance.log.info(
                 f"[{msg.chat.id}] Voice note transcribed"
-                f" ({getattr(voice, 'duration', '?')}s"
+                f" ({duration or '?'}s"
                 f" -> {len(transcription)} chars)"
             )
             # Pass the transcript as the message content, without the old

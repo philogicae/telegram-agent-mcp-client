@@ -12,16 +12,11 @@
       "Voice messages arrive as transcriptions prefixed with 🎤 - treat that text as the user's spoken message, never as a placeholder"
     ],
     "routines": {
-      "guidelines": [
-        "Routines are not callable tools, but higher‑level recipes to follow to perform complex tasks",
-        "Always follow routines when one is relevant or triggered"
-      ],
+      "guidelines": ["Routines are not callable tools, but higher‑level recipes to follow to perform complex tasks", "Always follow routines when one is relevant or triggered"],
       "default": {
         "available_tools": {
           "trigger": "for requests looking like 'What can you do?' or 'What are your tools?'",
-          "steps": [
-            "Reply with the list of available tools and also all available routines for the current agent"
-          ]
+          "steps": ["Reply with the list of available tools and also all available routines for the current agent"]
         }
       }
     },

@@ -13,6 +13,7 @@ from telebot.util import smart_split
 
 from ..abstract import Bot
 from ..utils import (
+    audio_payload,
     fixed_telegram,
     logify_telegram,
     reply_markup,
@@ -232,7 +233,12 @@ class TelegramBot(Bot):
         if handle_document:
 
             @self.core.message_handler(
-                func=lambda m: _is_private_or_reply(m, bot_id),
+                # Audio sent as a document (e.g. an .ogg file) belongs to the
+                # voice handler; keeping the filters disjoint avoids double
+                # processing when both handlers are configured.
+                func=lambda m: (
+                    _is_private_or_reply(m, bot_id) and audio_payload(m) is None
+                ),
                 content_types=["document"],
             )
             async def _handle_file(message: Message) -> None:
@@ -242,7 +248,9 @@ class TelegramBot(Bot):
 
             @self.core.message_handler(
                 func=lambda m: _is_private_or_reply(m, bot_id),
-                content_types=["voice"],
+                # `document`/`audio` cover audio sent as a file rather than
+                # recorded in-app; telegram_voice ignores non-audio ones.
+                content_types=["voice", "audio", "document"],
             )
             async def _handle_voice(message: Message) -> None:
                 await handle_voice(message)

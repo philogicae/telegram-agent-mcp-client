@@ -1,6 +1,7 @@
 """Utility functions for Telegram bot."""
 
 import re
+from pathlib import Path
 from typing import Any
 
 from telebot.types import InlineKeyboardMarkup, Message
@@ -15,6 +16,52 @@ def unpack_user(msg: Message) -> tuple[str, str]:
             msg.from_user.first_name,
         )
     return "?", "Unknown"
+
+
+# Audio sent as a file ("Send as file") arrives as a `document` (no audio
+# metadata) or an `audio` (with metadata), never as a `voice`. Clients do not
+# always attach a usable mime type to plain files, so the extension is the
+# fallback before routing the message to the voice pipeline.
+_AUDIO_EXTENSION_MIME = {
+    ".aac": "audio/aac",
+    ".amr": "audio/amr",
+    ".flac": "audio/flac",
+    ".m4a": "audio/mp4",
+    ".mp3": "audio/mpeg",
+    ".oga": "audio/ogg",
+    ".ogg": "audio/ogg",
+    ".opus": "audio/ogg",
+    ".wav": "audio/wav",
+    ".webm": "audio/webm",
+    ".wma": "audio/x-ms-wma",
+}
+
+
+def audio_payload(msg: Message) -> tuple[str, float | None, str] | None:
+    """Return ``(file_id, duration, mime_type)`` for a voice note or audio file.
+
+    Voice notes carry a duration; audio files and audio documents have no
+    reliable duration (``None``, resolved by decoding when transcription needs
+    it). ``None`` means the message carries no audio (e.g. a PDF document) and
+    the voice handler must ignore it.
+    """
+    if msg.voice:
+        return msg.voice.file_id, getattr(msg.voice, "duration", None), "audio/ogg"
+    if msg.audio:
+        return (
+            msg.audio.file_id,
+            getattr(msg.audio, "duration", None),
+            msg.audio.mime_type or "audio/mpeg",
+        )
+    if msg.document:
+        mime = (msg.document.mime_type or "").lower()
+        if mime.startswith("audio/"):
+            return msg.document.file_id, None, mime
+        if not mime.startswith("video/"):
+            ext = Path(msg.document.file_name or "").suffix.lower()
+            if ext in _AUDIO_EXTENSION_MIME:
+                return msg.document.file_id, None, _AUDIO_EXTENSION_MIME[ext]
+    return None
 
 
 def _escape_text(text: str) -> str:

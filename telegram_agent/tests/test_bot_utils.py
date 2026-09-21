@@ -1,6 +1,7 @@
 """Tests for ``telegram_agent/src/bot/utils.py``."""
 
 from telegram_agent.src.bot.utils import (
+    audio_payload,
     fixed_telegram,
     logify_telegram,
     progress_bar,
@@ -34,6 +35,77 @@ class TestUnpackUser:
     def test_missing_sender(self):
         msg = make_message(from_user=False)
         assert unpack_user(msg) == ("?", "Unknown")
+
+
+class TestAudioPayload:
+    def test_voice_note(self):
+        msg = make_message(
+            "", voice={"file_id": "v", "file_unique_id": "u", "duration": 12}
+        )
+        assert audio_payload(msg) == ("v", 12, "audio/ogg")
+
+    def test_audio_file_uses_its_mime(self):
+        msg = make_message(
+            "",
+            audio={
+                "file_id": "a",
+                "file_unique_id": "u",
+                "duration": 7,
+                "mime_type": "audio/mpeg",
+            },
+        )
+        assert audio_payload(msg) == ("a", 7, "audio/mpeg")
+
+    def test_audio_document_by_mime(self):
+        msg = make_message(
+            "",
+            document={
+                "file_id": "d",
+                "file_unique_id": "u",
+                "file_name": "note.bin",
+                "mime_type": "audio/ogg",
+            },
+        )
+        assert audio_payload(msg) == ("d", None, "audio/ogg")
+
+    def test_octet_stream_document_falls_back_to_extension(self):
+        msg = make_message(
+            "",
+            document={
+                "file_id": "d",
+                "file_unique_id": "u",
+                "file_name": "Voice Note.OGG",
+                "mime_type": "application/octet-stream",
+            },
+        )
+        assert audio_payload(msg) == ("d", None, "audio/ogg")
+
+    def test_non_audio_document_is_none(self):
+        msg = make_message(
+            "",
+            document={
+                "file_id": "d",
+                "file_unique_id": "u",
+                "file_name": "report.pdf",
+                "mime_type": "application/pdf",
+            },
+        )
+        assert audio_payload(msg) is None
+
+    def test_video_document_never_matches_by_extension(self):
+        msg = make_message(
+            "",
+            document={
+                "file_id": "d",
+                "file_unique_id": "u",
+                "file_name": "clip.ogg",
+                "mime_type": "video/ogg",
+            },
+        )
+        assert audio_payload(msg) is None
+
+    def test_text_message_is_none(self):
+        assert audio_payload(make_message("hi")) is None
 
 
 class TestFixedTelegram:
