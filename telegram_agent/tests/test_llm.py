@@ -2,12 +2,14 @@
 
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 from langchain_core.messages import AIMessage
 from langchain_deepseek import ChatDeepSeek
 
+from telegram_agent.src.core import elevenlabs
 from telegram_agent.src.core import llm as llm_mod
 from telegram_agent.src.core.llm import (
     _OPENCODE_SESSION,
@@ -40,6 +42,7 @@ def clean_llm_state(monkeypatch):
         "FIREWORKS_API_KEY",
         "OPENCODE_API_KEY",
         "OPENROUTER_API_KEY",
+        "ELEVENLABS_API_KEY",
         "OLLAMA_API_BASE",
         "LLM_JAIL_STRIKES",
         "LLM_JAIL_HOURS",
@@ -298,6 +301,8 @@ class TestGetConstructsProviders:
                 "opencode": ("oc", frozenset()),
                 "opencode-alt": ("oc-alt", frozenset()),
                 "openrouter-tts": ("tts", frozenset()),
+                "elevenlabs-tts": ("eleven_v4_turbo", frozenset({"tts"})),
+                "elevenlabs-stt": ("scribe_v2", frozenset({"stt"})),
             },
         )
         for var, value in (
@@ -335,6 +340,22 @@ class TestGetConstructsProviders:
         LLM.get()
         assert clean_llm_state.llm["gemini"].kwargs["thinking_budget"] == 512
 
+    def test_elevenlabs_registers_both_speech_markers(
+        self, clean_llm_state, monkeypatch
+    ):
+        self._patch_models(monkeypatch, "gemini-3-pro")
+        monkeypatch.setenv("ELEVENLABS_API_KEY", "k")
+        LLM.get()
+        assert clean_llm_state.extra["elevenlabs-tts"] is True
+        assert clean_llm_state.extra["elevenlabs-stt"] is True
+
+    def test_elevenlabs_absent_without_a_key(self, clean_llm_state, monkeypatch):
+        self._patch_models(monkeypatch, "gemini-3-pro")
+        monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+        LLM.get()
+        assert "elevenlabs-tts" not in clean_llm_state.extra
+        assert "elevenlabs-stt" not in clean_llm_state.extra
+
 
 class TestTtsAdapt:
     async def test_adapts_text(self, monkeypatch):
@@ -371,10 +392,59 @@ class _FakeSpeech:
         return SimpleNamespace(content=self.content)
 
 
+def _select_elevenlabs(monkeypatch) -> None:
+    """Declare the ElevenLabs capabilities and run order explicitly.
+
+    CAPABILITIES is parsed from ELEVENLABS_*_MODEL at *import* time, so it only
+    lists the providers the ambient .env configures. Without this the pick
+    silently skips ElevenLabs on CI (no .env) and the test either fails or, worse,
+    passes without ever calling speak().
+    """
+    monkeypatch.setattr(
+        llm_mod,
+        "CAPABILITIES",
+        {"elevenlabs-tts": frozenset({"tts"}), "openrouter-tts": frozenset({"tts"})},
+    )
+    monkeypatch.setattr(llm_mod, "LLM_ORDER", ["elevenlabs-tts", "openrouter-tts"])
+    monkeypatch.setattr(llm_mod, "LLM_ORDER_FAST", ["elevenlabs-tts", "openrouter-tts"])
+
+
 class TestTts:
     async def test_no_client_returns_none(self, clean_llm_state, monkeypatch):
         monkeypatch.setattr(clean_llm_state, "extra", {})
         assert await LLM.tts("hello") is None
+
+    async def test_elevenlabs_used_when_selected(self, clean_llm_state, monkeypatch):
+        speak = AsyncMock(return_value=b"audio")
+        _select_elevenlabs(monkeypatch)
+        monkeypatch.setattr(clean_llm_state, "extra", {"elevenlabs-tts": True})
+        monkeypatch.setattr(elevenlabs, "speak", speak)
+        assert await LLM.tts("[excited] salut") == b"audio"
+        speak.assert_awaited_once_with("[excited] salut")
+
+    async def test_elevenlabs_failure_falls_back_to_openrouter(
+        self, clean_llm_state, monkeypatch
+    ):
+        speech = _FakeSpeech()
+        speak = AsyncMock(side_effect=elevenlabs.QuotaExhausted("spent"))
+        _select_elevenlabs(monkeypatch)
+        monkeypatch.setattr(
+            clean_llm_state, "extra", {"elevenlabs-tts": True, "openrouter-tts": speech}
+        )
+        monkeypatch.setattr(elevenlabs, "speak", speak)
+        # The provider is parked, so pick() moves on to the legacy endpoint.
+        assert await LLM.tts("hi") == b"audio"
+        speak.assert_awaited_once_with("hi")
+        assert speech.kwargs["input"] == "hi"
+
+    async def test_elevenlabs_failure_without_fallback_returns_none(
+        self, clean_llm_state, monkeypatch
+    ):
+        speak = AsyncMock(side_effect=elevenlabs.ElevenLabsError("boom"))
+        _select_elevenlabs(monkeypatch)
+        monkeypatch.setattr(clean_llm_state, "extra", {"elevenlabs-tts": True})
+        monkeypatch.setattr(elevenlabs, "speak", speak)
+        assert await LLM.tts("hi") is None
 
     async def test_generates_audio_and_strips_emotion_tags(
         self, clean_llm_state, monkeypatch

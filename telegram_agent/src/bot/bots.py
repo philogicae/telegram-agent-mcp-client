@@ -50,9 +50,12 @@ async def run_telegram_bot(dev: bool = False, persist: bool = False) -> None:
     }
     if getenv("TRANSMISSION_URL"):
         managers["download_torrent"] = DownloadManager
-    if getenv("GEMINI_API_KEY"):
+    if getenv("GEMINI_API_KEY") or getenv("ELEVENLABS_API_KEY"):
+        # Voice needs speech-to-text: Gemini as a chat model, ElevenLabs as a
+        # dedicated endpoint.
         handlers["voice"] = telegram_voice
-        handlers["image"] = telegram_image
+    if getenv("GEMINI_API_KEY"):
+        handlers["image"] = telegram_image  # vision: Gemini only
 
     with AgenticTelegramBot(telegram_id, dev, managers, persist) as bot:
         relay = start_relay(bot)

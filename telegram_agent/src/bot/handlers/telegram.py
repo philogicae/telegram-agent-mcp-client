@@ -18,8 +18,16 @@ from dotenv import load_dotenv
 from langchain.messages import HumanMessage
 from telebot.types import InputFile, InputMediaPhoto, Message
 
+from ...core import elevenlabs
 from ...core.cancel import reset_active_turn_cancel, set_active_turn_cancel
-from ...core.llm import _OPENCODE_SESSION, LLM, can_listen, can_see
+from ...core.llm import (
+    _OPENCODE_SESSION,
+    LLM,
+    can_listen,
+    can_see,
+    mark_alive,
+    mark_dead,
+)
 from ...core.progress import (
     TurnTrackerPanel,
     default_max_lines,
@@ -64,6 +72,26 @@ async def _read_image(path: str) -> bytes:
         return await f.read()
 
 
+async def _elevenlabs_stt(media: list[dict]) -> str | None:
+    """Transcribe an audio blob through ElevenLabs; None if it failed.
+
+    A dedicated transcription endpoint needs no prompt and no multimodal chat
+    model, so this is one request instead of a round-trip through an LLM. A
+    failure parks the provider with mark_dead(), which lets the caller re-pick
+    and fall back to the previous stt-capable chat model.
+    """
+    audio = media[0].get("data") or b""
+    mime = media[0].get("mime_type") or "audio/ogg"
+    try:
+        text = await elevenlabs.transcribe(audio, mime=mime)
+        mark_alive(elevenlabs.STT_PROVIDER)
+        return text
+    except Exception:
+        mark_dead(elevenlabs.STT_PROVIDER)
+        getLogger(__name__).warning("ElevenLabs STT failed", exc_info=True)
+        return None
+
+
 async def _media_to_text(
     media: list[dict], context: str = "", fast: bool = True
 ) -> str:
@@ -73,11 +101,19 @@ async def _media_to_text(
     Called when the main LLM lacks the matching multimodal capability.
     For images, returns a structured JSON description matching the
     `generate_image` schema so the agent can reuse it for edits or
-    regeneration. `fast` selects the fast helper model when available;
+    regeneration. Audio goes to a dedicated speech-to-text endpoint
+    (ElevenLabs Scribe v2) when one is selected, and to a chat model
+    otherwise. `fast` selects the fast helper model when available;
     transcription retries use the main capable model instead.
     """
     cap = "stt" if any("audio" in m.get("mime_type", "") for m in media) else "vision"
     helper = LLM.pick(cap, fast=fast)
+    if cap == "stt" and helper == elevenlabs.STT_PROVIDER:
+        text = await _elevenlabs_stt(media)
+        if text is not None:
+            return _strip_voice_timestamps(text)
+        # ElevenLabs is parked: re-pick to fall back to an stt-capable model.
+        helper = LLM.pick(cap, fast=fast)
     if not helper:
         return f"[Unsupported media: no {cap}-capable provider configured]"
     if cap == "stt":
@@ -179,11 +215,14 @@ async def _transcribe_segment(audio: bytes, mime: str, duration: float) -> str:
 
     Anything below `_STT_MIN_CHARS_PER_SECOND` per audio second is treated as
     a truncated transcript and retried, alternating between the fast and the
-    main capable model; the longest attempt wins.
+    main capable model; the longest attempt wins. A dedicated endpoint is
+    exempt: it either returns the whole segment or fails outright, so retrying
+    would only multiply a billed - and on a free plan, scarce - request.
     """
     best = ""
     error: Exception | None = None
-    for attempt in range(_STT_ATTEMPTS):
+    dedicated = LLM.pick("stt", fast=True) == elevenlabs.STT_PROVIDER
+    for attempt in range(1 if dedicated else _STT_ATTEMPTS):
         try:
             text = await _media_to_text(
                 [{"type": "media", "data": audio, "mime_type": mime}],
@@ -205,6 +244,10 @@ async def _transcribe_voice(
     audio: bytes, duration: float | None, mime: str = "audio/ogg"
 ) -> str:
     """Transcribe a voice note or audio file, segmenting long audio."""
+    if LLM.pick("stt", fast=True) == elevenlabs.STT_PROVIDER:
+        # One request, no ffmpeg decode and no retry loop: a dedicated
+        # endpoint has none of the LLM failure modes those guard against.
+        return await _transcribe_segment(audio, mime, duration or 0.0)
     pcm: bytes | None = None
     if duration is None:
         # Audio files sent as documents carry no duration metadata: decode

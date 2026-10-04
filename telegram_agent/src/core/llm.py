@@ -2,6 +2,7 @@
 
 import contextvars
 import re
+from contextlib import suppress
 from logging import getLogger
 from os import getenv
 from time import monotonic
@@ -23,6 +24,7 @@ from langchain_ollama import ChatOllama
 from openai import AsyncOpenAI
 
 from ..utils import Singleton, extract_response, parse_tool_call_markup
+from . import elevenlabs
 
 load_dotenv()
 
@@ -141,6 +143,8 @@ _MODEL_ENVS: dict[str, str] = {
     "OPENCODE_API_MODEL": "opencode",
     "OPENCODE_API_MODEL_ALT": "opencode-alt",
     "OPENROUTER_TTS_MODEL": "openrouter-tts",
+    "ELEVENLABS_TTS_MODEL": elevenlabs.TTS_PROVIDER,
+    "ELEVENLABS_STT_MODEL": elevenlabs.STT_PROVIDER,
 }
 SPECS: dict[str, tuple[str, frozenset[str]]] = {
     provider: _split(getenv(key)) for key, provider in _MODEL_ENVS.items()
@@ -253,6 +257,9 @@ class LLM(Singleton):
         self._initialized = True
         self.llm = {}
         self.extra = {}
+        # pick() builds providers through get(), and get() resolves its default
+        # provider through pick(): this breaks that cycle when nothing is set.
+        self._loading = False
 
     @staticmethod
     def pick(*caps: str, fast: bool = False) -> str | None:
@@ -262,16 +269,31 @@ class LLM(Singleton):
         declaring them all (fast list falls back to main list, then to any
         aux endpoint). Providers parked by mark_dead() sort last, so a dead
         key/model fails over to the next candidate instead of breaking calls.
+
+        Candidates come from the run order first, then from the capability
+        table. A capability-driven pick also walks `extra`, so a dedicated media
+        endpoint listed ahead of a chat model wins the capability it declares -
+        otherwise an `stt`-capable chat model would always shadow a
+        transcription endpoint that LLM_ORDER puts first. A pick without
+        capabilities deliberately stays inside `llm`: it resolves the default
+        *chat* model, and a media endpoint would leave get() with nothing.
         """
         obj = LLM()
-        if not obj.llm:
-            LLM.get()
-        seen: list[str] = []
+        if not obj.llm and not obj.extra and not obj._loading:
+            obj._loading = True
+            try:
+                # get() is called for its side effect only; it raises when no
+                # default provider resolves, which is a legitimate "none" here.
+                with suppress(ValueError):
+                    LLM.get()
+            finally:
+                obj._loading = False
+        configured = obj.llm.keys() | (obj.extra.keys() if caps else set())
+        ordered: list[str] = []
         for order in [LLM_ORDER_FAST, LLM_ORDER] if fast else [LLM_ORDER]:
-            seen += [p for p in order if p in obj.llm and p not in seen]
-        capable = [p for p in seen if not caps or supports(p, *caps)]
+            ordered += [p for p in order if p in configured and p not in ordered]
+        capable = [p for p in ordered if not caps or supports(p, *caps)]
         if caps:
-            configured = obj.llm.keys() | obj.extra.keys()
             capable += [
                 p
                 for p in CAPABILITIES
@@ -386,6 +408,13 @@ class LLM(Singleton):
                     api_key=openrouter_api_key,
                 ).audio.speech
 
+            # ElevenLabs serves both speech directions. The value is a marker,
+            # not a client: core.elevenlabs calls the API itself.
+            if elevenlabs.configured():
+                for name in (elevenlabs.TTS_PROVIDER, elevenlabs.STT_PROVIDER):
+                    if SPECS[name][0]:
+                        obj.extra[name] = True
+
         chosen_provider: str | None = provider or LLM.pick()
         llm: BaseChatModel | None = obj.llm.get(chosen_provider or "")
         if llm:
@@ -442,7 +471,25 @@ class LLM(Singleton):
 
     @staticmethod
     async def tts(text: str) -> bytes | None:
-        """Generate speech audio bytes from text using the TTS endpoint."""
+        """Generate speech audio bytes from text using the TTS endpoint.
+
+        ElevenLabs is tried whenever `pick("tts")` selects it, i.e. when it is
+        the first configured `tts`-capable provider in LLM_ORDER. On failure it
+        is parked with mark_dead() - which both cools it down and lets `pick`
+        fall through to the next candidate - and the previous OpenRouter/Grok
+        path below serves the request instead, so speech never goes silent just
+        because one provider is down.
+        """
+        if LLM.pick("tts") == elevenlabs.TTS_PROVIDER:
+            try:
+                audio = await elevenlabs.speak(text)
+                mark_alive(elevenlabs.TTS_PROVIDER)
+                return audio
+            except Exception:
+                mark_dead(elevenlabs.TTS_PROVIDER)
+                getLogger(__name__).warning(
+                    "ElevenLabs TTS failed - falling back", exc_info=True
+                )
         try:
             tts_client = LLM().extra.get("openrouter-tts")
             if not tts_client:

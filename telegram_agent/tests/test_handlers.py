@@ -8,6 +8,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from telegram_agent.src.bot.handlers import telegram as h
+from telegram_agent.src.core import elevenlabs
 from telegram_agent.tests.fakes import FakeAgent, FakeInstance, make_message
 
 
@@ -77,6 +78,52 @@ class TestMediaToText:
         assert "no vision-capable provider" in await h._media_to_text(
             [{"mime_type": "image/jpeg"}]
         )
+
+
+class TestMediaToTextElevenLabs:
+    """A dedicated STT endpoint answers directly instead of via an LLM."""
+
+    @pytest.fixture(autouse=True)
+    def _pick_elevenlabs(self, monkeypatch):
+        monkeypatch.setattr(
+            h.LLM, "pick", staticmethod(lambda *caps, **kw: "elevenlabs-stt")
+        )
+
+    async def test_transcribes_without_an_llm(self, monkeypatch):
+        patch_llm(monkeypatch, helper="elevenlabs-stt")
+        transcribe = AsyncMock(return_value="[00:01] bonjour")
+        monkeypatch.setattr(elevenlabs, "transcribe", transcribe)
+        out = await h._media_to_text([{"data": b"OGG", "mime_type": "audio/ogg"}])
+        assert out == "bonjour"
+        transcribe.assert_awaited_once_with(b"OGG", mime="audio/ogg")
+
+    async def test_failure_falls_back_to_a_chat_model(self, monkeypatch):
+        picks = iter(["elevenlabs-stt", "gemini-small"])
+        monkeypatch.setattr(h.LLM, "pick", staticmethod(lambda *c, **kw: next(picks)))
+        patch_llm(monkeypatch, helper="gemini-small", text="deuxieme essai")
+        monkeypatch.setattr(
+            elevenlabs,
+            "transcribe",
+            AsyncMock(side_effect=elevenlabs.QuotaExhausted("spent")),
+        )
+        out = await h._media_to_text([{"data": b"OGG", "mime_type": "audio/ogg"}])
+        assert out == "deuxieme essai"
+
+    async def test_failure_without_fallback_reports_unsupported(self, monkeypatch):
+        picks = iter(["elevenlabs-stt", None])
+        monkeypatch.setattr(h.LLM, "pick", staticmethod(lambda *c, **kw: next(picks)))
+        monkeypatch.setattr(
+            elevenlabs,
+            "transcribe",
+            AsyncMock(side_effect=elevenlabs.ElevenLabsError("boom")),
+        )
+        out = await h._media_to_text([{"data": b"OGG", "mime_type": "audio/ogg"}])
+        assert "no stt-capable provider" in out
+
+    async def test_image_still_uses_vision(self, monkeypatch):
+        patch_llm(monkeypatch, helper="gemini-small", text='{"subject": "x"}')
+        out = await h._media_to_text([{"data": b"JPG", "mime_type": "image/jpeg"}])
+        assert out == '{"subject": "x"}'
 
 
 class TestUserAdmin:
@@ -670,6 +717,19 @@ class TestVoiceTranscription:
     segments below ~10 chars per audio second are retried with the main model
     and the longest attempt wins.
     """
+
+    @pytest.fixture(autouse=True)
+    def _chat_model_stt(self, monkeypatch):
+        """Pin the chat-model path.
+
+        ElevenLabs short-circuits segmentation and retries entirely, so these
+        tests would otherwise bypass the loop they cover whenever the developer's
+        real .env has an ElevenLabs key.
+        """
+        monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+        monkeypatch.setattr(
+            h.LLM, "pick", staticmethod(lambda *caps, **kw: "gemini-small")
+        )
 
     def pcm(self, seconds: float) -> bytes:
         return bytes(int(h._STT_PCM_RATE * 2 * seconds))

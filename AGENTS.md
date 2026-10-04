@@ -38,6 +38,14 @@ uv run telegram-agent-mcp-client --agents   # verify agent config
 - [ ] `{ENV:VAR}` substitution in MCP tool configs - tool-loading errors print the raw exception (`core/tools.py`), which may echo URLs/headers containing secrets; confirm no secrets leak into logs or `--tools` output.
 - [ ] Config writes (`/allow-user`, `/ban-user`) are last-write-wins vs manual edits of the bind-mounted `config/` volume; add a file lock if it ever matters.
 
+## Speech (TTS + STT)
+
+`core/elevenlabs.py` serves both directions from one account: `elevenlabs.speak()` (TTS, `eleven_v4_turbo`) and `elevenlabs.transcribe()` (STT, `scribe_v2`). Registered as `elevenlabs-tts`/`elevenlabs-stt` in `core/llm.py`, so `LLM.pick("tts")`/`pick("stt")` select them by their `LLM_ORDER` position and the OpenRouter/Grok TTS + multimodal-chat-model STT remain the fallback (parked via `mark_dead()` on failure).
+
+- Eleven v4 has no `speed` and no `instructions`: delivery comes from the bracketed audio tags `LLM.tts_adapt` leaves inline, plus `stability`/`similarity_boost`. `apply_audio_tags()` keeps only tags in `_V4_TAGS` and drops the rest — v4 speaks an unrecognised bracketed span aloud, so a permissive heuristic leaks `[00:01]` or markdown labels into the audio.
+- Free-plan ceilings are enforced locally (`ELEVENLABS_TTS_MONTHLY_CHARS`, `ELEVENLABS_STT_MONTHLY_SECONDS`, reset on the calendar month) so a spent quota stops costing latency before the API answers 402/429.
+- Default voice `EXAVITQu4vr4xnSDxMaL` (Sarah) was verified against the public `GET /v1/voices`. Do **not** trust classic ElevenLabs IDs from memory: `JBFqnCBsd6RMkjVDRZzb` is George, not Rachel, and the old `21m00Tcm4TlvDq8ikWAM` defaults are deprecated and silently rerouted.
+
 ## Architecture backlog
 
 ### Core (`telegram_agent/src/core/`)

@@ -84,7 +84,7 @@ services:
     environment:
       TELEGRAM_AUTH_FILE: /app/data/authorized_tokens.json
     volumes:
-      - /mnt/user/shared/workspace/telegram-agent-mcp-client/data/torrent_search:/app/data
+      - /mnt/disk1/shared/workspace/telegram-agent-mcp-client/data/torrent_search:/app/data
     <<: [*default-dns, *default-logging, *default-networks]
 
   torrent-search-mcp:
@@ -105,7 +105,7 @@ services:
     environment:
       TORRENT_SEARCH_API_URL: http://torrent-search-api:8000
     volumes:
-      - /mnt/user/shared/workspace/telegram-agent-mcp-client/data/torrent_search:/app/data
+      - /mnt/disk1/shared/workspace/telegram-agent-mcp-client/data/torrent_search:/app/data
     <<: [*default-dns, *default-logging, *default-networks]
 
 volumes:

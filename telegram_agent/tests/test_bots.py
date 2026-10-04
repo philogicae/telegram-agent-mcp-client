@@ -68,6 +68,7 @@ class TestRunTelegramBot:
         monkeypatch.setenv("TRANSMISSION_URL", "http://t")
         monkeypatch.setenv("RAG_URL", "http://rag")  # legacy var must be inert
         monkeypatch.setenv("GEMINI_API_KEY", "k")
+        monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
         monkeypatch.setattr(bots_mod, "AgenticTelegramBot", FakeAgenticBot)
         monkeypatch.setattr(bots_mod, "start_relay", lambda instance: None)
         closes: list[Any] = []
@@ -86,6 +87,7 @@ class TestRunTelegramBot:
         monkeypatch.setenv("TELEGRAM_BOT_TOKEN_DEV", "dev")
         monkeypatch.delenv("TRANSMISSION_URL", raising=False)
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
         monkeypatch.setattr(bots_mod, "AgenticTelegramBot", FakeAgenticBot)
         monkeypatch.setattr(bots_mod, "start_relay", lambda instance: None)
         monkeypatch.setattr(bots_mod, "gather", patched_gather([]))
@@ -98,6 +100,7 @@ class TestRunTelegramBot:
         monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:ABC")
         monkeypatch.delenv("TRANSMISSION_URL", raising=False)
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
         monkeypatch.setattr(bots_mod, "AgenticTelegramBot", FakeAgenticBot)
         monkeypatch.setattr(bots_mod, "start_relay", lambda instance: "app")
         serve = AsyncMock()
@@ -107,6 +110,20 @@ class TestRunTelegramBot:
         await bots_mod.run_telegram_bot()
         assert serve.await_count == 0  # coroutine closed by the gather stub
         assert len(closes[0]) == 2  # bot.run + serve(relay)
+
+    async def test_elevenlabs_alone_wires_voice_but_not_image(self, monkeypatch):
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:ABC")
+        monkeypatch.delenv("TRANSMISSION_URL", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.setenv("ELEVENLABS_API_KEY", "k")
+        monkeypatch.setattr(bots_mod, "AgenticTelegramBot", FakeAgenticBot)
+        monkeypatch.setattr(bots_mod, "start_relay", lambda instance: None)
+        monkeypatch.setattr(bots_mod, "gather", patched_gather([]))
+
+        await bots_mod.run_telegram_bot()
+
+        # ElevenLabs covers speech-to-text but not vision, so image stays off.
+        assert set(FakeAgenticBot.last["handlers"]) == {"chat", "voice"}
 
 
 class TestTelegramLogger:
