@@ -72,18 +72,21 @@ async def _read_image(path: str) -> bytes:
         return await f.read()
 
 
-async def _elevenlabs_stt(media: list[dict]) -> str | None:
+async def _elevenlabs_stt(
+    media: list[dict], seconds: float | None = None
+) -> str | None:
     """Transcribe an audio blob through ElevenLabs; None if it failed.
 
     A dedicated transcription endpoint needs no prompt and no multimodal chat
-    model, so this is one request instead of a round-trip through an LLM. A
-    failure parks the provider with mark_dead(), which lets the caller re-pick
-    and fall back to the previous stt-capable chat model.
+    model, so this is one request instead of a round-trip through an LLM.
+    `seconds` feeds the local monthly budget guard. A failure parks the
+    provider with mark_dead(), which lets the caller re-pick and fall back to
+    the previous stt-capable chat model.
     """
     audio = media[0].get("data") or b""
     mime = media[0].get("mime_type") or "audio/ogg"
     try:
-        text = await elevenlabs.transcribe(audio, mime=mime)
+        text = await elevenlabs.transcribe(audio, mime=mime, seconds=seconds)
         mark_alive(elevenlabs.STT_PROVIDER)
         return text
     except Exception:
@@ -93,7 +96,10 @@ async def _elevenlabs_stt(media: list[dict]) -> str | None:
 
 
 async def _media_to_text(
-    media: list[dict], context: str = "", fast: bool = True
+    media: list[dict],
+    context: str = "",
+    fast: bool = True,
+    seconds: float | None = None,
 ) -> str:
     """
     Transcribe audio or describe images into text via a capable fallback LLM.
@@ -109,7 +115,7 @@ async def _media_to_text(
     cap = "stt" if any("audio" in m.get("mime_type", "") for m in media) else "vision"
     helper = LLM.pick(cap, fast=fast)
     if cap == "stt" and helper == elevenlabs.STT_PROVIDER:
-        text = await _elevenlabs_stt(media)
+        text = await _elevenlabs_stt(media, seconds)
         if text is not None:
             return _strip_voice_timestamps(text)
         # ElevenLabs is parked: re-pick to fall back to an stt-capable model.
@@ -227,6 +233,7 @@ async def _transcribe_segment(audio: bytes, mime: str, duration: float) -> str:
             text = await _media_to_text(
                 [{"type": "media", "data": audio, "mime_type": mime}],
                 fast=attempt % 2 == 0,
+                seconds=duration,
             )
         except Exception as exc:  # provider hiccup: try the next attempt
             error = exc

@@ -95,7 +95,7 @@ class TestMediaToTextElevenLabs:
         monkeypatch.setattr(elevenlabs, "transcribe", transcribe)
         out = await h._media_to_text([{"data": b"OGG", "mime_type": "audio/ogg"}])
         assert out == "bonjour"
-        transcribe.assert_awaited_once_with(b"OGG", mime="audio/ogg")
+        transcribe.assert_awaited_once_with(b"OGG", mime="audio/ogg", seconds=None)
 
     async def test_failure_falls_back_to_a_chat_model(self, monkeypatch):
         picks = iter(["elevenlabs-stt", "gemini-small"])
@@ -793,7 +793,7 @@ class TestVoiceTranscription:
     async def test_truncated_segment_is_retried_with_main_model(self, monkeypatch):
         calls = []
 
-        async def fake(media, context="", fast=True):
+        async def fake(media, context="", fast=True, seconds=None):
             calls.append(fast)
             return "court" if len(calls) == 1 else "x" * 120
 
@@ -815,7 +815,7 @@ class TestVoiceTranscription:
         assert transcribe.await_args.args[0][0]["mime_type"] == "audio/ogg"
 
     async def test_all_attempts_failing_raises_last_error(self, monkeypatch):
-        async def boom(media, context="", fast=True):
+        async def boom(media, context="", fast=True, seconds=None):
             raise RuntimeError("provider down")
 
         monkeypatch.setattr(h, "_media_to_text", boom)

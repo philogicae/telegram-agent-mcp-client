@@ -9,13 +9,13 @@ from datetime import UTC, datetime
 from json import JSONDecodeError, dump, loads
 from os import getenv
 from pathlib import Path
-from typing import Any, ClassVar, Self
-from uuid import uuid4
+from typing import Any, Self
 
 from addict import Dict
 from dotenv import load_dotenv
-from langchain.messages import AnyMessage, HumanMessage
+from langchain.messages import AnyMessage, HumanMessage, RemoveMessage
 from langchain.tools import BaseTool
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.prebuilt.tool_node import ToolNode
 from langgraph.types import StateSnapshot
 from langgraph_swarm import create_swarm
@@ -132,7 +132,6 @@ class Agent:
     dev: bool
     debug: bool
     user_config: dict[str, Any]
-    thread_mappings: ClassVar[dict[str, str]] = {}
 
     def __init__(
         self,
@@ -311,10 +310,6 @@ class Agent:
                 Panel(escape(content), title="👤 User", border_style="white")
             )
 
-        # Resolve thread_id mapping (for checkpoint jumps after ReContext)
-        base_thread_id = thread_id
-        thread_id = self.thread_mappings.get(base_thread_id, base_thread_id)
-
         # Determine user group from config; reject unknown users silently
         group = self._match_group(uid, user)
         if group is None:
@@ -349,7 +344,7 @@ class Agent:
             )  # Avoid empty reply
         else:
             content = f"{user}: {content}" if content else f"{user}: [media]"
-            messages: list[AnyMessage] = []
+            messages: list[AnyMessage | RemoveMessage] = []
 
             # ReContext - skip for media-only messages or short conversations
             # Threshold 200k: Gemini 3.x has 1M context, implicit caching makes
@@ -369,16 +364,18 @@ class Agent:
                     else ""
                 )
                 if summary:
-                    # Jump to new thread_id for clean checkpoint + fresh LLM cache prefix
-                    messages = pre_agent_hook(
-                        state.values,
-                        max_tokens=2000,
-                    ).get("messages", [])
-                    messages.append(HumanMessage("# " + summary))
-                    new_thread_id = f"{base_thread_id}:{uuid4().hex[:8]}"
-                    self.thread_mappings[base_thread_id] = new_thread_id
-                    swarm.active[new_thread_id] = swarm.active.pop(thread_id)
-                    thread_id = new_thread_id
+                    # Compact history in place: drop every prior message,
+                    # keep a trimmed tail + the summary. The thread_id never
+                    # changes, so the checkpoint itself is the whole mapping
+                    # and a restart loses nothing.
+                    messages = [
+                        RemoveMessage(REMOVE_ALL_MESSAGES),
+                        *pre_agent_hook(
+                            state.values,
+                            max_tokens=2000,
+                        ).get("messages", []),
+                        HumanMessage("# " + summary),
+                    ]
                 content = (
                     recontext.user_message
                     if ":" in recontext.user_message

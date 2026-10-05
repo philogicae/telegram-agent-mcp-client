@@ -4,7 +4,8 @@ from json import dumps
 from types import SimpleNamespace
 from typing import Any
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, ToolMessage
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from rich.console import Console
 
 from telegram_agent.src.core import agent as agent_mod
@@ -45,9 +46,9 @@ def make_swarm(
     return SimpleNamespace(
         config=SimpleNamespace(
             active=active,
-            tools_by_agent=tools_by_agent
-            if tools_by_agent is not None
-            else {active: []},
+            tools_by_agent=(
+                tools_by_agent if tools_by_agent is not None else {active: []}
+            ),
         ),
         active={},
         agent=FakeStreamAgent(streams, history),
@@ -64,7 +65,6 @@ def make_chat_agent(
     agent.console = Console()
     agent.dev = False
     agent.debug = False
-    agent.thread_mappings = {}
     return agent
 
 
@@ -482,7 +482,7 @@ class TestChat:
         events = [event async for event in agent.chat(msg)]
         assert events[-1][1] == "relayed"
 
-    async def test_recontext_rebases_thread(self, monkeypatch):
+    async def test_recontext_compacts_history_in_place(self, monkeypatch):
         swarm = make_swarm(streams=[[chunk_model(AIMessage("post-context"))]])
         agent = self.make({"admin": {"users": {"-1": "Developer"}}}, {"admin": swarm})
         swarm.agent.history = [HumanMessage("x" * 500_000)]
@@ -495,10 +495,14 @@ class TestChat:
         monkeypatch.setattr(agent_mod, "summarize_and_rephrase", fake_recontext)
         events = [event async for event in agent.chat("hi")]
         assert events[-1][1] == "post-context"
-        assert "test" in agent.thread_mappings
-        new_thread = agent.thread_mappings["test"]
-        assert new_thread.startswith("test:")
-        assert swarm.active[new_thread] == "A"
+        # Same thread, history rewritten in place: a wipe marker first, then
+        # the trimmed tail, the summary and the new user message.
+        sent = swarm.agent.inputs[0]["messages"]
+        assert isinstance(sent[0], RemoveMessage)
+        assert sent[0].id == REMOVE_ALL_MESSAGES
+        assert any("# Chat Summary: SUMMARY" in str(m.content) for m in sent)
+        assert sent[-1].content.endswith("Developer: rephrased")
+        assert list(swarm.active) == ["test"]
 
     async def test_group_without_swarm_gets_no_reply(self):
         agent = self.make({"admin": {"users": {"-1": "Developer"}}}, {})
