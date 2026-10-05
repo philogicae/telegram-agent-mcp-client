@@ -2,9 +2,12 @@
 """Ping trackers and remove dead ones from the additional section.
 
 A tracker is considered dead only if its hostname does not resolve (DNS
-failure) or the URL is malformed. Timeouts and connection refusals are kept
-because they are often caused by the local network environment rather than
-the tracker being down. Default trackers are reported but left untouched.
+failure), the URL is malformed, or its scheme is unsupported by Transmission
+(http, https and udp only; an unsupported scheme makes Transmission silently
+discard the whole default-trackers list). Timeouts and connection refusals
+are kept because they are often caused by the local network environment
+rather than the tracker being down. Default trackers are reported but left
+untouched.
 
 Run: python3 ping_trackers.py
 """
@@ -23,7 +26,7 @@ from urllib.parse import urlparse
 
 FILE = Path(__file__).with_name("transmission.trackers.txt")
 
-DEFAULT_PORTS = {"http": 80, "https": 443, "wss": 443}
+DEFAULT_PORTS = {"http": 80, "https": 443}
 
 
 def parse_sections(text: str) -> list[dict]:
@@ -132,21 +135,6 @@ def check_udp(host: str, port: int) -> tuple[bool | None, str]:
     return None, "timeout"
 
 
-def check_wss(host: str, port: int) -> tuple[bool | None, str]:
-    try:
-        sock = socket.create_connection((host, port), timeout=10)
-        sock.close()
-        return True, "TCP connect ok"
-    except socket.gaierror as exc:
-        return False, f"DNS error: {exc}"
-    except OSError as exc:
-        if _is_dns_error(exc):
-            return False, f"DNS error: {exc}"
-        return None, f"network: {exc}"
-    except Exception as exc:
-        return None, f"error: {exc}"
-
-
 def check_tracker(tracker: str) -> tuple[bool | None, str]:
     parsed = urlparse(tracker)
     scheme = parsed.scheme
@@ -163,8 +151,6 @@ def check_tracker(tracker: str) -> tuple[bool | None, str]:
         return check_http(tracker)
     if scheme == "udp":
         return check_udp(host, port)
-    if scheme == "wss":
-        return check_wss(host, port)
     return False, f"unsupported scheme: {scheme}"
 
 

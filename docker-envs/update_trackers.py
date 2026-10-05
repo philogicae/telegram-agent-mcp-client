@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlsplit
 
 FILE = Path(__file__).with_name("transmission.trackers.txt")
 
@@ -19,6 +20,15 @@ SOURCES = [
     "https://raw.githubusercontent.com/ngosang/trackerslist/refs/heads/master/trackers_best.txt",
     "https://raw.githubusercontent.com/XIU2/TrackersListCollection/refs/heads/master/best.txt",
 ]
+
+# Transmission only accepts these tracker schemes; an unsupported URL (e.g.
+# wss://) makes it silently discard the whole default-trackers list.
+SUPPORTED_SCHEMES = frozenset({"http", "https", "udp"})
+
+
+def is_supported_tracker(tracker: str) -> bool:
+    """Return True if Transmission can use this tracker URL's scheme."""
+    return urlsplit(tracker).scheme in SUPPORTED_SCHEMES
 
 
 def parse_sections(text: str) -> list[dict]:
@@ -65,6 +75,7 @@ def main() -> None:
 
     merged: list[str] = []
     seen: set[str] = set()
+    skipped: list[str] = []
     for url in SOURCES:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})  # noqa: S310 - only hardcoded http(s) sources
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 - only hardcoded http(s) source URLs are fetched
@@ -72,7 +83,10 @@ def main() -> None:
                 tracker = line.strip()
                 if tracker and tracker not in default_trackers and tracker not in seen:
                     seen.add(tracker)
-                    merged.append(tracker)
+                    if is_supported_tracker(tracker):
+                        merged.append(tracker)
+                    else:
+                        skipped.append(tracker)
 
     if len(sections) > 1:
         sections[1]["trackers"] = merged
@@ -89,6 +103,8 @@ def main() -> None:
         )
 
     FILE.write_text(build_file(sections))
+    for tracker in skipped:
+        print(f"Warning: dropping unsupported scheme: {tracker}")
     print(
         f"Updated {FILE.name}: default={len(default_trackers)}, additional={len(merged)}"
     )

@@ -4,18 +4,36 @@
 import json
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
+
+# Transmission only accepts these tracker schemes. Because its announce-list
+# parser is all-or-nothing, a single unsupported URL (e.g. wss://) makes the
+# daemon silently discard the whole default-trackers list.
+SUPPORTED_SCHEMES = frozenset({"http", "https", "udp"})
+
+
+def is_supported_tracker(tracker: str) -> bool:
+    """Return True if Transmission can use this tracker URL's scheme."""
+    return urlsplit(tracker).scheme in SUPPORTED_SCHEMES
 
 
 def load_trackers(trackers_file: str) -> list[str]:
-    """Load trackers from file, filter out comments, and deduplicate (preserving order)."""
+    """Load trackers, drop comments/unsupported schemes, and deduplicate."""
     trackers = []
     seen = set()
+    skipped = []
     with Path(trackers_file).open() as f:
         for raw_line in f:
             line = raw_line.strip()
-            if line and not line.startswith("#") and line not in seen:
-                seen.add(line)
-                trackers.append(line)
+            if not line or line.startswith("#") or line in seen:
+                continue
+            seen.add(line)
+            if not is_supported_tracker(line):
+                skipped.append(line)
+                continue
+            trackers.append(line)
+    for line in skipped:
+        print(f"Warning: skipping unsupported tracker scheme: {line}")
     return trackers
 
 
