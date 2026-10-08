@@ -4,8 +4,13 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain.agents import create_agent
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.tools import StructuredTool
+from langgraph.errors import GraphInterrupt
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
+from mcp.shared.exceptions import MCPError
 
 from telegram_agent.src.core import config as config_mod
 from telegram_agent.tests.test_tools import make_tool
@@ -271,7 +276,112 @@ class TestStripMessageNames:
         assert patched_agent_creation  # two agents created
         for kwargs in patched_agent_creation:
             kinds = {type(m).__name__ for m in kwargs["middleware"]}
-            assert {"PruneHistory", "StripMessageNames"} <= kinds
+            assert {"PruneHistory", "StripMessageNames", "GracefulToolErrors"} <= kinds
+
+
+class TestGracefulToolErrors:
+    """A failing tool must not abort the run - it becomes an error message."""
+
+    class FakeRequest:
+        def __init__(self, name: str = "search", call_id: str = "call-1") -> None:
+            self.tool_call = {"name": name, "id": call_id, "args": {}}
+
+    async def test_async_transport_failure_becomes_error_message(self):
+        middleware = config_mod.GracefulToolErrors()
+        error = MCPError(-32603, "Server returned an error response")
+
+        async def handler(request: Any) -> Any:
+            raise error
+
+        result = await middleware.awrap_tool_call(self.FakeRequest(), handler)
+        assert isinstance(result, ToolMessage)
+        assert result.status == "error"
+        assert result.name == "search"
+        assert result.tool_call_id == "call-1"
+        assert "Server returned an error response" in result.content
+
+    def test_sync_failure_becomes_error_message(self):
+        middleware = config_mod.GracefulToolErrors()
+
+        def handler(request: Any) -> Any:
+            raise RuntimeError("boom")
+
+        result = middleware.wrap_tool_call(self.FakeRequest("create_task"), handler)
+        assert isinstance(result, ToolMessage)
+        assert result.status == "error"
+        assert "create_task" in result.content
+        assert "boom" in result.content
+
+    async def test_success_is_passed_through(self):
+        middleware = config_mod.GracefulToolErrors()
+
+        async def handler(request: Any) -> str:
+            return "ok"
+
+        assert await middleware.awrap_tool_call(self.FakeRequest(), handler) == "ok"
+        assert middleware.wrap_tool_call(self.FakeRequest(), lambda r: "ok") == "ok"
+
+    async def test_interrupts_propagate(self):
+        middleware = config_mod.GracefulToolErrors()
+
+        async def handler(request: Any) -> Any:
+            raise GraphInterrupt()
+
+        with pytest.raises(GraphInterrupt):
+            await middleware.awrap_tool_call(self.FakeRequest(), handler)
+
+        def sync_handler(request: Any) -> Any:
+            raise GraphInterrupt()
+
+        with pytest.raises(GraphInterrupt):
+            middleware.wrap_tool_call(self.FakeRequest(), sync_handler)
+
+    async def test_parallel_batch_survives_a_failing_call(self):
+        """A failing MCP call in a parallel batch must not abort the run.
+
+        Reproduces the prod crash: the model issues two tool calls at once,
+        one transport-fails, and the sibling result must survive while the
+        failure reaches the model as an error message.
+        """
+
+        class ScriptedToolModel(GenericFakeChatModel):
+            def bind_tools(self, tools: Any, **kwargs: Any) -> Any:
+                return self
+
+        async def failing(**kwargs: Any) -> str:
+            raise MCPError(-32603, "Server returned an error response")
+
+        flaky = StructuredTool(
+            name="flaky", description="", args_schema={}, coroutine=failing
+        )
+        good = make_tool("good")
+        model = ScriptedToolModel(
+            messages=iter(
+                [
+                    AIMessage(
+                        "",
+                        tool_calls=[
+                            {"name": "flaky", "id": "1", "args": {}},
+                            {"name": "good", "id": "2", "args": {}},
+                        ],
+                    ),
+                    AIMessage("done"),
+                ]
+            )
+        )
+        agent = create_agent(
+            model=model,
+            tools=[flaky, good],
+            middleware=[config_mod.GracefulToolErrors()],
+        )
+        result = await agent.ainvoke({"messages": [HumanMessage("go")]})
+        statuses = {
+            message.name: message.status
+            for message in result["messages"]
+            if isinstance(message, ToolMessage)
+        }
+        assert statuses == {"flaky": "error", "good": "success"}
+        assert result["messages"][-1].content == "done"
 
 
 class TestPrintAgents:

@@ -66,7 +66,6 @@ class TestRunTelegramBot:
     async def test_wires_managers_and_handlers(self, monkeypatch):
         monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:ABC")
         monkeypatch.setenv("TRANSMISSION_URL", "http://t")
-        monkeypatch.setenv("RAG_URL", "http://rag")  # legacy var must be inert
         monkeypatch.setenv("GEMINI_API_KEY", "k")
         monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
         monkeypatch.setattr(bots_mod, "AgenticTelegramBot", FakeAgenticBot)

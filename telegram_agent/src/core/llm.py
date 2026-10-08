@@ -122,8 +122,8 @@ def _order(key: str, default: str) -> list[str]:
     return [p.strip() for p in getenv(key, default).split(",") if p.strip()]
 
 
-LLM_ORDER = _order("LLM_ORDER", "opencode-alt,opencode,gemini,gemini-small")
-LLM_ORDER_FAST = _order("LLM_ORDER_FAST", "opencode-alt,opencode,gemini-small")
+LLM_ORDER = _order("LLM_ORDER", "opencode,opencode-alt,gemini,gemini-small")
+LLM_ORDER_FAST = _order("LLM_ORDER_FAST", "opencode,opencode-alt,gemini-small,gemini")
 
 
 # ponytail: static capability table parsed from env at import; no runtime probing

@@ -1,5 +1,6 @@
 """Agent configuration and management."""
 
+from logging import getLogger
 from os import getenv
 from pathlib import Path
 from shutil import copyfile
@@ -9,7 +10,8 @@ from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain.agents.middleware import AgentMiddleware
 from langchain.tools import BaseTool
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, ToolMessage
+from langgraph.errors import GraphBubbleUp
 from langgraph_swarm import create_handoff_tool
 from pydantic import BaseModel
 from pyjson5 import loads
@@ -72,6 +74,52 @@ class StripMessageNames(AgentMiddleware):
 
     async def awrap_model_call(self, request: Any, handler: Any) -> Any:
         return await handler(request.override(messages=self._strip(request.messages)))
+
+
+class GracefulToolErrors(AgentMiddleware):
+    """Report tool failures to the model instead of aborting the run.
+
+    `langchain.mcp` propagates MCP transport failures - an unreachable
+    server, a non-2xx HTTP status (e.g. the Kaneo MCP endpoint answering 401
+    once the API key's request rate limit is spent), a failed handshake -
+    and langgraph's ToolNode re-raises them, killing the whole graph step and
+    the user turn with `Telegram -> Exception`. A failed call is not a failed
+    turn: the model gets the failure as an error `ToolMessage` and can retry,
+    fall back, or tell the user what happened. Control-flow exceptions
+    (interrupts used for elicitation, cancellation) still propagate, and the
+    failure is logged for the operator.
+    """
+
+    @staticmethod
+    def _failure(request: Any, error: Exception) -> ToolMessage:
+        name: str = request.tool_call.get("name") or "unknown"
+        getLogger(__name__).exception("Tool %r failed", name)
+        return ToolMessage(
+            content=(
+                f"Tool '{name}' failed: {type(error).__name__}: {error}. "
+                "The call did not complete; report the failure to the user or "
+                "try another approach rather than retrying it repeatedly."
+            ),
+            tool_call_id=request.tool_call.get("id") or "",
+            name=name,
+            status="error",
+        )
+
+    def wrap_tool_call(self, request: Any, handler: Any) -> Any:
+        try:
+            return handler(request)
+        except GraphBubbleUp:
+            raise
+        except Exception as error:
+            return self._failure(request, error)
+
+    async def awrap_tool_call(self, request: Any, handler: Any) -> Any:
+        try:
+            return await handler(request)
+        except GraphBubbleUp:
+            raise
+        except Exception as error:
+            return self._failure(request, error)
 
 
 class AgentConfig(BaseModel):
@@ -208,7 +256,7 @@ def get_agent_config(
 
         agent: Any = create_agent(
             model=model,
-            middleware=[PruneHistory(), StripMessageNames()],
+            middleware=[PruneHistory(), StripMessageNames(), GracefulToolErrors()],
             name=name,
             system_prompt=prompt
             or f"Missing system prompt for {name}. Signal it to the user.",
