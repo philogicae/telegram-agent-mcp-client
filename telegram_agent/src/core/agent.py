@@ -332,8 +332,22 @@ class Agent:
         swarm = self.agents.get(group)
         if swarm is None or not getattr(swarm, "agent", None):
             return  # Group has no valid config: no reply
-        if thread_id not in swarm.active:
-            swarm.active[thread_id] = swarm.config.active
+
+        # The in-memory `active` map starts empty on every process start while a
+        # checkpointed thread keeps its own `active_agent`: re-adopt the
+        # persisted agent or the in-memory map stays stale forever. Without
+        # this, the tool whitelist below, the status/log panels and the manager
+        # notifications all name the wrong agent - every tool the agent really
+        # running the turn calls is reported "Invalid tool" and hidden from the
+        # user (no tool lines in Telegram, no download-manager panel).
+        state = await self.state(swarm, thread_id)
+        persisted_agent = state.values.get("active_agent")
+        swarm.active[thread_id] = (
+            persisted_agent
+            if isinstance(persisted_agent, str)
+            and persisted_agent in swarm.config.tools_by_agent
+            else swarm.config.active
+        )
 
         if not content and not media:
             yield (
@@ -349,7 +363,6 @@ class Agent:
             # ReContext - skip for media-only messages or short conversations
             # Threshold 200k: Gemini 3.x has 1M context, implicit caching makes
             # old tokens 75-90% cheaper, so keep history intact as long as possible
-            state = await self.state(swarm, thread_id)
             history_msgs = state.values.get("messages", [])
             history_tokens = token_counter(history_msgs)
             is_media_only = content.endswith(("[media]", "[voice message]"))

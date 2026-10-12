@@ -22,10 +22,14 @@ class FakeStreamAgent:
     """Scripted ``swarm.agent``: one astream per entry, plus state snapshots."""
 
     def __init__(
-        self, streams: list[list[dict[str, Any]]] | None = None, history: Any = None
+        self,
+        streams: list[list[dict[str, Any]]] | None = None,
+        history: Any = None,
+        active_agent: str | None = None,
     ) -> None:
         self.streams = list(streams or [])
         self.history = history if history is not None else []
+        self.active_agent = active_agent
         self.inputs: list[Any] = []
 
     async def astream(self, payload: Any, config: Any, subgraphs: bool = False):
@@ -34,7 +38,10 @@ class FakeStreamAgent:
             yield ("", chunk)
 
     async def aget_state(self, config: Any) -> Any:
-        return SimpleNamespace(values={"messages": list(self.history)})
+        values: dict[str, Any] = {"messages": list(self.history)}
+        if self.active_agent is not None:
+            values["active_agent"] = self.active_agent
+        return SimpleNamespace(values=values)
 
 
 def make_swarm(
@@ -42,6 +49,7 @@ def make_swarm(
     tools_by_agent: dict[str, list[str]] | None = None,
     streams: list[list[dict[str, Any]]] | None = None,
     history: Any = None,
+    persisted_active: str | None = None,
 ) -> Any:
     return SimpleNamespace(
         config=SimpleNamespace(
@@ -51,7 +59,7 @@ def make_swarm(
             ),
         ),
         active={},
-        agent=FakeStreamAgent(streams, history),
+        agent=FakeStreamAgent(streams, history, persisted_active),
     )
 
 
@@ -453,6 +461,53 @@ class TestChat:
         assert events[-1][:3] == ("A", "ok", True)
         # The ignored tool's result never reaches the turn (no tool event for it).
         assert all(e[3].get("tool") != "not_allowed" for e in events)
+
+    async def test_persisted_agent_replaces_stale_in_memory_map(self):
+        """A restarted process must re-adopt the thread's checkpointed agent.
+
+        The in-memory map is empty on start while the checkpoint still routes to
+        the agent active before the restart: keying the tool whitelist on the
+        stale default reported every real tool call as "Invalid tool" and hid
+        it - no tool line in Telegram, no download-manager notification.
+        """
+        call = AIMessage(
+            "", tool_calls=[{"name": "download_torrent", "id": "1", "args": {}}]
+        )
+        result = ToolMessage(
+            '{"hashString": "abc"}', name="download_torrent", tool_call_id="1"
+        )
+        swarm = make_swarm(
+            active="A",
+            tools_by_agent={"A": [], "B": ["download_torrent"]},
+            streams=[
+                [
+                    chunk_model(call),
+                    chunk_tools(result),
+                    chunk_model(AIMessage("done")),
+                ]
+            ],
+            persisted_active="B",
+        )
+        agent = self.make({"admin": {"users": {"-1": "Developer"}}}, {"admin": swarm})
+        events = [event async for event in agent.chat("hi")]
+        assert swarm.active["test"] == "B"
+        # The tool call is logged and reported as a result, not swallowed.
+        tool_events = [e for e in events if e[3].get("tool") == "download_torrent"]
+        assert tool_events
+        assert tool_events[-1][3]["tool_ok"] is True
+        assert any("Download Torrent" in e[1] for e in tool_events)
+
+    async def test_unknown_persisted_agent_falls_back_to_default(self):
+        swarm = make_swarm(
+            active="A",
+            tools_by_agent={"A": ["known"], "B": []},
+            streams=[[chunk_model(AIMessage("ok"))]],
+            persisted_active="Removed Agent",
+        )
+        agent = self.make({"admin": {"users": {"-1": "Developer"}}}, {"admin": swarm})
+        events = [event async for event in agent.chat("hi")]
+        assert swarm.active["test"] == "A"
+        assert events[-1][:3] == ("A", "ok", True)
 
     async def test_transfer_switches_active_agent(self):
         call = AIMessage(
