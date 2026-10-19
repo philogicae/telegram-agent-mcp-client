@@ -378,7 +378,7 @@ class LLM(Singleton):
             model_opencode = SPECS["opencode"][0]
             if api_key_opencode and model_opencode:
                 obj.llm["opencode"] = OpenCodeChatModel(
-                    base_url="https://opencode.ai/zen/go/v1",
+                    base_url="https://opencode.ai/inference/go/openai/v1",
                     api_key=api_key_opencode,
                     model=model_opencode,
                     reasoning_effort="low",
@@ -390,7 +390,7 @@ class LLM(Singleton):
             model_opencode_alt = SPECS["opencode-alt"][0]
             if api_key_opencode and model_opencode_alt:
                 obj.llm["opencode-alt"] = OpenCodeChatModel(
-                    base_url="https://opencode.ai/zen/go/v1",
+                    base_url="https://opencode.ai/inference/go/openai/v1",
                     api_key=api_key_opencode,
                     model=model_opencode_alt,
                     reasoning_effort="low",
