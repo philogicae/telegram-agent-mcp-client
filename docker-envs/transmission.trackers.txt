@@ -74,15 +74,12 @@ udp://zer0day.ch:1337/announce
 # additional deduped trackers from:
 # - https://raw.githubusercontent.com/ngosang/trackerslist/refs/heads/master/trackers_best.txt
 # - https://raw.githubusercontent.com/XIU2/TrackersListCollection/refs/heads/master/best.txt
-http://1337.abcvg.info:80/announce
-http://bt1.archive.org:6969/announce
 http://bt2.archive.org:6969/announce
 http://torrentsmd.com:8080/announce
 http://tracker.dler.com:6969/announce
 http://tracker.internetwarriors.net:1337/announce
 http://tracker.mywaifu.best:6969/announce
 http://tracker.waaa.moe:6969/announce
-http://tracker2.dler.org:80/announce
 http://www.wareztorrent.com:80/announce
 https://004430.xyz:443/announce
 https://1.tracker.eu.org:443/announce
@@ -105,11 +102,12 @@ udp://opentracker.lain.moscow:6969/announce
 udp://p4p.arenabg.com:1337/announce
 udp://torrent.tracker.durukanbal.com:6969/announce
 udp://tr4ck3r.duckdns.org:6969/announce
-udp://tracker.aruku.ovh:8081/announce
 udp://tracker.cn.nyaa.net:6969/announce
 udp://tracker.ducks.party:1984/announce
+udp://tracker.gmi.gd:6969/announce
 udp://tracker.nyaa.net:6969/announce
 udp://tracker.nyaa.vc:6969/announce
+udp://tracker.okade.pro:1337/announce
 udp://tracker.skynetcloud.site:6969/announce
 udp://tracker.skyts.net:6969/announce
 udp://tracker.wildkat.net:6969/announce

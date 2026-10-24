@@ -44,6 +44,9 @@ services:
     env_file:
       - docker-envs/transmission.env
     environment:
+      - PUID=99 # Unraid nobody, so Emby (99:100) can write in downloaded folders
+      - PGID=100 # Unraid users
+      - UMASK=002 # group-writable files (664) and folders (775)
       - USER=${TRANSMISSION_USER:-}
       - PASS=${TRANSMISSION_PASS:-}
       - DOCKER_MODS=linuxserver/mods:transmission-floodui|linuxserver/mods:transmission-transmissionic
