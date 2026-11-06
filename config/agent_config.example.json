@@ -30,7 +30,7 @@
       "transfer": "for any request falling outside the scope of other specialized agents"
     },
     "Search Agent": {
-      "prompt": "You are the Search Agent, responsible for intelligent web research. Follow a 3-phase pipeline: EXPAND (generate diverse queries targeting different source types) → SEARCH (fire queries in parallel using the optimal tools) → SYNTHESIZE (merge results with credibility hierarchy, cite sources, rate confidence). Use `wiki_search` for encyclopedic facts (action='smart' by default), `news_search` for current events, `web_search` for general/technical queries, and `fetch_urls` for batch URL retrieval. If standard fetch fails, fall back to scrapling tools (`stealthy_fetch`, `bulk_stealthy_fetch`). Always cross-reference 3+ sources, state consensus and conflicts explicitly, and never use `deep_search` unless the user explicitly requests it.",
+      "prompt": "You are the Search Agent, responsible for intelligent web research. Follow a 3-phase pipeline: EXPAND (generate diverse queries targeting different source types) → SEARCH (fire queries in parallel using the optimal tools) → SYNTHESIZE (merge results with credibility hierarchy, cite sources, rate confidence). Use `wiki_search` for encyclopedic facts (action='smart' by default), `news_search` for current events, `web_search` for general/technical queries, and `fetch_urls` for batch URL retrieval. If standard fetch fails, fall back to scrapling: `browser_fetch_once` for a one-shot stealth render, or `browser_open` then `browser_fetch` + `browser_extract` when the page needs several interactions. Always cross-reference 3+ sources, state consensus and conflicts explicitly.",
       "routines": {
         "research_topic": {
           "trigger": "for requests looking like 'Research <topic>' or when comprehensive multi-source research is needed",
@@ -54,7 +54,7 @@
           "steps": [
             "`web_search` to find relevant URLs",
             "Batch-fetch the most relevant URLs with `fetch_urls` (up to 5 at once)",
-            "If a page blocks standard fetch, retry with `stealthy_fetch` or `bulk_stealthy_fetch`",
+            "If a page blocks standard fetch, retry with `browser_fetch_once`, or `make_request` when a plain HTTP client with browser impersonation is enough",
             "Synthesize gathered content into a coherent answer with source citations"
           ]
         },
@@ -69,9 +69,9 @@
         "scrape_page": {
           "trigger": "when standard fetch fails (blocked, anti-bot, Cloudflare) or when interacting with dynamic/JS-heavy pages",
           "steps": [
-            "`open_session` to start a browser session",
-            "`stealthy_fetch` or `bulk_stealthy_fetch` to bypass anti-bot protections",
-            "Use `screenshot` if visual context is needed",
+            "`browser_fetch_once` for a one-shot stealth render, or `browser_open` to get a `session_id` when the page needs several interactions",
+            "`browser_fetch` to navigate inside that session, then `browser_extract` with extraction_type='markdown' (or 'text') to read the page cheaply",
+            "`browser_actions` to click/type/wait and `browser_evaluate` for JS-only data; `browser_screenshot` or `browser_observe` if visual context is needed",
             "`close_session` when done",
             "Synthesize extracted content with source citations"
           ]
@@ -83,19 +83,23 @@
         "wiki_search",
         "fetch_url",
         "fetch_urls",
-        "fetch",
-        "bulk_fetch",
-        "bulk_get",
-        "stealthy_fetch",
-        "bulk_stealthy_fetch",
-        "screenshot",
-        "open_session",
-        "close_session",
-        "list_sessions",
         "make_request",
         "open_request_session",
-        "session_fetch",
-        "session_make_request"
+        "session_make_request",
+        "browser_open",
+        "browser_fetch",
+        "browser_fetch_once",
+        "browser_extract",
+        "browser_actions",
+        "browser_evaluate",
+        "browser_screenshot",
+        "browser_observe",
+        "browser_network_requests",
+        "browser_network_request",
+        "browser_save_state",
+        "browser_load_state",
+        "list_sessions",
+        "close_session"
       ],
       "transfer": "for any request requiring searching the web, news, fetching a URL, looking up information, or finding media information (such as new/last movie/series/release/media)"
     },

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Ping trackers and remove dead ones from the additional section.
 
-A tracker is considered dead only if its hostname does not resolve (DNS
-failure), the URL is malformed, or its scheme is unsupported by Transmission
-(http, https and udp only; an unsupported scheme makes Transmission silently
-discard the whole default-trackers list). Timeouts and connection refusals
-are kept because they are often caused by the local network environment
-rather than the tracker being down. Default trackers are reported but left
-untouched.
+A tracker is considered dead only if its hostname does not exist (permanent
+DNS failure: NXDOMAIN/NODATA), the URL is malformed, or its scheme is
+unsupported by Transmission (http, https and udp only; an unsupported scheme
+makes Transmission silently discard the whole default-trackers list).
+Timeouts, connection refusals and *transient* resolver failures (EAI_AGAIN /
+EAI_FAIL, e.g. a flaky local resolver) are kept because they are caused by
+the local network environment rather than the tracker being down. Default
+trackers are reported but left untouched.
 
 Run: python3 ping_trackers.py
 """
@@ -63,21 +64,39 @@ def build_file(sections: list[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _is_dns_error(exc: Exception) -> bool:
-    """Return True if the exception indicates the hostname does not resolve."""
+def _dns_error_kind(exc: Exception) -> str | None:
+    """Classify a resolver failure as "dead", "inconclusive" or None (not DNS).
+
+    `gaierror` covers both "this name does not exist" (EAI_NONAME/EAI_NODATA, a
+    real answer) and "the resolver could not tell you right now"
+    (EAI_AGAIN/EAI_FAIL). Only the former says anything about the tracker, so a
+    transient failure must not count as dead -- otherwise one resolver blip
+    silently strips live trackers from the list.
+    """
     if isinstance(exc, socket.gaierror):
-        return True
-    if isinstance(exc, OSError):
-        code = exc.errno
-        if code in (-2, -5):
-            return True
-        msg = str(exc).lower()
-        if "name or service not known" in msg or "no address associated" in msg:
-            return True
+        return "dead" if exc.errno in (-2, -5) else "inconclusive"
     reason = getattr(exc, "reason", None)
     if isinstance(reason, Exception):
-        return _is_dns_error(reason)
-    return False
+        return _dns_error_kind(reason)
+    if isinstance(exc, OSError):
+        if exc.errno in (-2, -5):
+            return "dead"
+        msg = str(exc).lower()
+        if "name or service not known" in msg or "no address associated" in msg:
+            return "dead"
+        if "temporary failure in name resolution" in msg:
+            return "inconclusive"
+    return None
+
+
+def _dns_verdict(exc: Exception) -> tuple[bool | None, str] | None:
+    """Turn a resolver failure into a check verdict, or None if it is not DNS."""
+    kind = _dns_error_kind(exc)
+    if kind == "dead":
+        return False, f"DNS error: {exc}"
+    if kind == "inconclusive":
+        return None, f"DNS inconclusive: {exc}"
+    return None
 
 
 def check_http(url: str) -> tuple[bool | None, str]:
@@ -89,8 +108,8 @@ def check_http(url: str) -> tuple[bool | None, str]:
     except urllib.error.HTTPError as exc:
         return True, f"HTTP {exc.code}"
     except Exception as exc:
-        if _is_dns_error(exc):
-            return False, f"DNS error: {exc}"
+        if verdict := _dns_verdict(exc):
+            return verdict
         # GET fallback before giving up on ambiguous errors
         try:
             req = urllib.request.Request(url, method="GET")  # noqa: S310
@@ -100,8 +119,8 @@ def check_http(url: str) -> tuple[bool | None, str]:
         except urllib.error.HTTPError as exc2:
             return True, f"GET HTTP {exc2.code}"
         except Exception as exc2:
-            if _is_dns_error(exc2):
-                return False, f"DNS error: {exc2}"
+            if verdict := _dns_verdict(exc2):
+                return verdict
             return None, f"network: {exc2}"
 
 
@@ -121,11 +140,9 @@ def check_udp(host: str, port: int) -> tuple[bool | None, str]:
             return None, "bad response"
         except TimeoutError:
             pass
-        except socket.gaierror as exc:
-            return False, f"DNS error: {exc}"
         except OSError as exc:
-            if _is_dns_error(exc):
-                return False, f"DNS error: {exc}"
+            if verdict := _dns_verdict(exc):
+                return verdict
             return None, f"network: {exc}"
         except Exception as exc:
             return None, f"error: {exc}"

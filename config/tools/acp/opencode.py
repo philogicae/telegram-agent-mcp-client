@@ -371,11 +371,10 @@ async def _watch_progress(session_id: str, tracker: ProgressTracker) -> None:
                         if delta := text[len(last) :].strip():
                             prefix = "💭" if kind == "reasoning" else "💬"
                             tracker.set_line(f"{kind}:{pid}", f"{prefix} {delta}")
-                elif kind == "patch":
-                    if pid not in emitted:
-                        emitted[pid] = "patch"
-                        if line := _progress_line(part):
-                            tracker.add_line(line)
+                elif kind == "patch" and pid not in emitted:
+                    emitted[pid] = "patch"
+                    if line := _progress_line(part):
+                        tracker.add_line(line)
         await tracker.emit()
         await asyncio.sleep(_PROGRESS_POLL)
 

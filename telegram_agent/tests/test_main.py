@@ -155,12 +155,16 @@ class TestImportHygiene:
             "logging.getLogger('httpx2').info('httpx2-noise'); "
             "from langchain.mcp import MCPAdapter"
         )
+        # The chain is ~6k modules; on a slow filesystem (network/virtiofs
+        # mounts, contended CI runners) a cold import can exceed a minute. This
+        # test asserts the import is *quiet*, not that it is fast, so the
+        # ceiling only needs to be loose enough not to trip on I/O speed.
         proc = subprocess.run(  # noqa: S603
             [sys.executable, "-c", code],
             capture_output=True,
             text=True,
             check=True,
-            timeout=60,
+            timeout=300,
         )
         assert "LangChainBetaWarning" not in proc.stderr
         assert "httpx2-noise" not in proc.stderr

@@ -275,7 +275,7 @@ class TelegramBot(Bot):
             return updates
 
         # Report the end of a hiccup episode once polling succeeds again.
-        self.core.get_updates = watched_get_updates  # ty: ignore[invalid-assignment]
+        self.core.get_updates = watched_get_updates
         # Long-poll 30s: short cycles recycle connections before they go stale
         # (transient 502s heal on the next poll); latency is unaffected since
         # polls return immediately when updates arrive.
